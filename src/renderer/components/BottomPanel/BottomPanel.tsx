@@ -302,6 +302,23 @@ const BottomPanel: React.FC = () => {
   }, [])
 
   // コンポーネントアンマウント時のクリーンアップ
+  // 入力タイプが変更された際のクリーンアップ
+  useEffect(() => {
+    // 入力タイプが変更された場合、既存のマイクモニタリングを停止
+    if (inputType !== 'microphone' && micMonitorRef.current) {
+      console.log('🎤 入力タイプ変更によりマイクモニタリングを停止:', inputType)
+      try {
+        micMonitorRef.current.stopMonitoring()
+        micMonitorRef.current = null
+        setMicStatus(null)
+        setMicAlerts([])
+      } catch (error) {
+        console.error('マイクモニタリング停止エラー:', error)
+      }
+    }
+  }, [inputType])
+
+  // コンポーネントアンマウント時のクリーンアップ
   useEffect(() => {
     return () => {
       // マイク監視のクリーンアップ
@@ -363,7 +380,12 @@ const BottomPanel: React.FC = () => {
                 googAutoGainControl2: false,
                 googEchoCancellation: false,
                 googNoiseSuppression: false,
-                googTypingNoiseDetection: false
+                googTypingNoiseDetection: false,
+                // 追加の音声分離設定
+                systemAudioSource: 'system',  // システム音声のみ
+                microphoneCapture: false,  // マイク音声を明示的に無効化
+                systemAudioPreferredSampleRate: 48000,
+                isolateSystemAudio: true  // システム音声を分離
               } as any,
               video: false // 音声のみ
             });
@@ -387,7 +409,12 @@ const BottomPanel: React.FC = () => {
                 googAutoGainControl2: false,
                 googEchoCancellation: false,
                 googNoiseSuppression: false,
-                googTypingNoiseDetection: false
+                googTypingNoiseDetection: false,
+                // 追加の音声分離設定
+                systemAudioSource: 'system',  // システム音声のみ
+                microphoneCapture: false,  // マイク音声を明示的に無効化
+                systemAudioPreferredSampleRate: 48000,
+                isolateSystemAudio: true  // システム音声を分離
               } as any,
               video: {
                 chromeMediaSource: 'desktop',
@@ -1124,6 +1151,7 @@ const BottomPanel: React.FC = () => {
           micMonitorRef.current.stopMonitoring()
           micMonitorRef.current = null
           setMicStatus(null)
+          setMicAlerts([])  // マイクアラートもクリア
           console.log('✅ マイク監視停止完了')
         } catch (micError) {
           console.error('❌ マイク監視停止エラー:', micError)
@@ -1313,13 +1341,14 @@ const BottomPanel: React.FC = () => {
 
         {/* デスクトップソース選択（デスクトップの場合のみ） */}
         {inputType === 'desktop' && (
-          <div className="flex items-center gap-md">
-            <label className="text-secondary" style={{ minWidth: '100px' }}>キャプチャ対象:</label>
-            <select 
-              className="select flex-1"
-              value={selectedDesktopSource}
-              onChange={(e) => setSelectedDesktopSource(e.target.value)}
-              disabled={isRecording}
+          <>
+            <div className="flex items-center gap-md">
+              <label className="text-secondary" style={{ minWidth: '100px' }}>キャプチャ対象:</label>
+              <select 
+                className="select flex-1"
+                value={selectedDesktopSource}
+                onChange={(e) => setSelectedDesktopSource(e.target.value)}
+                disabled={isRecording}
               style={{ opacity: isRecording ? 0.5 : 1 }}
             >
               <option value="">選択してください</option>
@@ -1335,6 +1364,7 @@ const BottomPanel: React.FC = () => {
               </div>
             )}
           </div>
+        </>
         )}
         
         {/* システム音声デバイス選択（ステレオミックスの場合のみ） */}
