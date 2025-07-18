@@ -1,0 +1,550 @@
+PS D:\work\voise-encoder> npm run start
+
+> voise-encoder@1.0.0 start
+> electron .
+
+
+[2025-07-12T23:22:59.485Z] 繧｢繝励Μ繧ｱ繝ｼ繧ｷ繝ｧ繝ｳ髢句ｧ・[2025-07-12T23:22:59.693Z] [Renderer Console 1] Electron API 縺梧ｭ｣蟶ｸ縺ｫ隱ｭ縺ｿ霎ｼ縺ｾ繧後∪縺励◆ (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.716Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "hasFile": false,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.717Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.777Z] [Renderer Console 1] LeftPanel蛻晄悄蛹厄ｼ壹ョ繝輔か繝ｫ繝医ヵ繧ｩ繝ｫ繝繧偵メ繧ｧ繝・け荳ｭ... (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.778Z] [Renderer Console 1] Electron API 縺梧ｭ｣蟶ｸ縺ｫ隱ｭ縺ｿ霎ｼ縺ｾ繧後∪縺励◆ (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.782Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "hasFile": false,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.783Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.784Z] [Renderer Console 1] 繝・ヵ繧ｩ繝ｫ繝医ヵ繧ｩ繝ｫ繝: C:\Users\yuuri\Desktop\VoiceRecordings (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.785Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "hasFile": false,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.787Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.788Z] [Renderer Console 1] LeftPanel蛻晄悄蛹厄ｼ壹ョ繝輔か繝ｫ繝医ヵ繧ｩ繝ｫ繝繧偵メ繧ｧ繝・け荳ｭ... (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.789Z] [Renderer Console 1] 繝輔ぃ繧､繝ｫ荳隕ｧ蜿門ｾ怜ｮ御ｺ・ 4 莉ｶ (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.790Z] [Renderer Console 2] %cElectron Security Warning (Disabled webSecurity) font-weight: bold; This renderer process has "webSecurity" disabled. This
+  exposes users of this app to severe security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. (node:electron/js2c/sandbox_bundle:2)
+[2025-07-12T23:22:59.790Z] [Renderer Console 2] %cElectron Security Warning (allowRunningInsecureContent) font-weight: bold; This renderer process has "allowRunningInsecureContent"
+  enabled. This exposes users of this app to severe security risks.
+
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. (node:electron/js2c/sandbox_bundle:2)
+[2025-07-12T23:22:59.791Z] [Renderer Console 2] %cElectron Security Warning (experimentalFeatures) font-weight: bold; This renderer process has "experimentalFeatures" enabled.
+  This exposes users of this app to some security risk. If you do not need
+  this feature, you should disable it.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. (node:electron/js2c/sandbox_bundle:2)
+[2025-07-12T23:22:59.792Z] [Renderer Console 2] %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged. (node:electron/js2c/sandbox_bundle:2)
+[2025-07-12T23:22:59.794Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "hasFile": false,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.795Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.807Z] [Renderer Console 1] 繝・ヵ繧ｩ繝ｫ繝医ヵ繧ｩ繝ｫ繝: C:\Users\yuuri\Desktop\VoiceRecordings (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:22:59.809Z] [Renderer Console 1] 繝輔ぃ繧､繝ｫ荳隕ｧ蜿門ｾ怜ｮ御ｺ・ 4 莉ｶ (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.018Z] [Renderer Console 1] 繝輔ぃ繧､繝ｫ驕ｸ謚・ recording_20250713_034155.wav (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.019Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.019Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.020Z] [Renderer Console 1] AudioPlayer: 繝輔ぃ繧､繝ｫ螟画峩讀懷・: C:\Users\yuuri\Desktop\VoiceRecordings\recording_20250713_034155.wav (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.021Z] [Renderer Console 1] Audio File Loading Started: C:\Users\yuuri\Desktop\VoiceRecordings\recording_20250713_034155.wav (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.021Z] Audio File Loading Started: C:\Users\yuuri\Desktop\VoiceRecordings\recording_20250713_034155.wav
+[2025-07-12T23:23:04.024Z] Audio File Loading Completed: recording_20250713_034155.wav (1054924 bytes)
+[2025-07-12T23:23:04.029Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": true,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.030Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.030Z] [Renderer Console 1] Audio File Loading Success, Data URL Length: 1406590 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.035Z] [Renderer Console 1] Audio element state immediately after load(): {
+  "readyState": 0,
+  "networkState": 3,
+  "duration": null,
+  "src": "data:audio/wav;base64,GkXfo59ChoEBQveBAULygQRC84EI..."
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.036Z] [Renderer Console 1] useAudioPlayer: time update 0 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.057Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": true,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.058Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.059Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": true,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.060Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.061Z] [Renderer Console 1] useAudioPlayer: loadedmetadata event {
+  "audioDuration": null,
+  "isFiniteAudioDuration": false,
+  "readyState": 1,
+  "networkState": 2
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.062Z] [Renderer Console 2] Duration is Infinity, setting to 0 for live/unknown duration (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.062Z] [Renderer Console 1] Duration set from loadedmetadata: 0 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.062Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.063Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.069Z] [Renderer Console 1] useAudioPlayer: canplay event [object Object] (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:04.069Z] [Renderer Console 1] useAudioPlayer: canplaythrough event [object Object] (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:06.919Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:06.920Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:06.921Z] [Renderer Console 1] Force getting duration on play: Infinity (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:06.921Z] [Renderer Console 1] Force getting duration on play: Infinity (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.172Z] [Renderer Console 1] useAudioPlayer: time update 0.182555 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.173Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 0.182555,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.174Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0.182555,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0.182555,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.439Z] [Renderer Console 1] useAudioPlayer: time update 0.447793 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.439Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 0.447793,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.441Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0.447793,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0.447793,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.703Z] [Renderer Console 1] useAudioPlayer: time update 0.713223 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.704Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 0.713223,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.705Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0.713223,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0.713223,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.970Z] [Renderer Console 1] useAudioPlayer: time update 0.980205 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.971Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 0.980205,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:07.971Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0.980205,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0.980205,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.234Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 1.24495,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.236Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 1.24495,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 1.24495,
+  "formatTimeResult": "0:01",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.501Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 1.510913,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.502Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 1.510913,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 1.510913,
+  "formatTimeResult": "0:01",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.766Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": true,
+    "currentTime": 1.776438,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.767Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 1.776438,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 1.776438,
+  "formatTimeResult": "0:01",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.890Z] [Renderer Console 1] useAudioPlayer: time update 0 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.891Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 1.776438,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.892Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 1.776438,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 1.776438,
+  "formatTimeResult": "0:01",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.892Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.893Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.894Z] [Renderer Console 1] useAudioPlayer: time update 0 (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.894Z] [Renderer Console 1] useAudioPlayer: canplay event [object Object] (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.894Z] [Renderer Console 1] useAudioPlayer: canplaythrough event [object Object] (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.895Z] [Renderer Console 1] AudioPlayer render DEBUG: {
+  "filePath": "C:\\Users\\yuuri\\Desktop\\VoiceRecordings\\recording_20250713_034155.wav",
+  "fileName": "recording_20250713_034155.wav",
+  "hasFile": true,
+  "audioState": {
+    "isPlaying": false,
+    "currentTime": 0,
+    "duration": 0,
+    "loading": false,
+    "error": null
+  }
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
+[2025-07-12T23:23:08.897Z] [Renderer Console 1] SeekBar render DEBUG: {
+  "currentTime": 0,
+  "duration": 0,
+  "progress": 0,
+  "isDragging": false,
+  "dragPosition": 0,
+  "displayProgress": 0,
+  "displayTime": 0,
+  "formatTimeResult": "0:00",
+  "isCurrentTimeFinite": true,
+  "isDurationFinite": true
+} (file:///D:/work/voise-encoder/dist/renderer/renderer.js:2)
