@@ -22,11 +22,15 @@ const BottomPanel: React.FC = () => {
   // デバイス関連状態
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState<string>('')
-  const [inputType, setInputType] = useState<'microphone' | 'desktop'>('microphone')
+  const [inputType, setInputType] = useState<'microphone' | 'desktop' | 'stereo-mix'>('microphone')
   
   // デスクトップキャプチャ関連状態
   const [desktopSources, setDesktopSources] = useState<any[]>([])
   const [selectedDesktopSource, setSelectedDesktopSource] = useState<string>('')
+  
+  // ステレオミックス関連状態
+  const [systemAudioDevices, setSystemAudioDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedSystemDevice, setSelectedSystemDevice] = useState<string>('')
   
   // 処理状態
   // 削除: isTranscribing, isConverting は不要
@@ -184,15 +188,29 @@ const BottomPanel: React.FC = () => {
         const devices = await navigator.mediaDevices.enumerateDevices()
         const audioInputs = devices.filter(device => device.kind === 'audioinput')
         setAvailableDevices(audioInputs)
+        
+        // システム音声デバイスを分離して取得
+        const systemDevices = audioInputs.filter(device => 
+          device.label.toLowerCase().includes('stereo mix') ||
+          device.label.toLowerCase().includes('what you hear') ||
+          device.label.toLowerCase().includes('system audio') ||
+          device.label.toLowerCase().includes('ステレオミックス')
+        )
+        setSystemAudioDevices(systemDevices)
+        
         if (audioInputs.length > 0 && !selectedDevice) {
           setSelectedDevice(audioInputs[0].deviceId)
+        }
+        
+        if (systemDevices.length > 0 && !selectedSystemDevice) {
+          setSelectedSystemDevice(systemDevices[0].deviceId)
         }
       } catch (error) {
         console.error('デバイス取得エラー:', error)
       }
     }
     getDevices()
-  }, [selectedDevice])
+  }, [selectedDevice, selectedSystemDevice])
   
   // デスクトップキャプチャソース一覧を取得
   useEffect(() => {
@@ -333,10 +351,19 @@ const BottomPanel: React.FC = () => {
             console.log('🎵 音声のみでデスクトップキャプチャを試行...');
             stream = await navigator.mediaDevices.getUserMedia({
               audio: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: selectedDesktopSource
-                }
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: selectedDesktopSource,
+                // マイク音声を除外するための設定
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                suppressLocalAudioPlayback: true,  // ローカル音声再生を抑制
+                googAudioMirroring: false,  // 音声ミラーリングを無効
+                googAutoGainControl: false,
+                googAutoGainControl2: false,
+                googEchoCancellation: false,
+                googNoiseSuppression: false,
+                googTypingNoiseDetection: false
               } as any,
               video: false // 音声のみ
             });
@@ -348,20 +375,27 @@ const BottomPanel: React.FC = () => {
             // 音声のみでキャプチャできない場合、映像も含めて取得
             stream = await navigator.mediaDevices.getUserMedia({
               audio: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: selectedDesktopSource
-                }
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: selectedDesktopSource,
+                // マイク音声を除外するための設定
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                suppressLocalAudioPlayback: true,  // ローカル音声再生を抑制
+                googAudioMirroring: false,  // 音声ミラーリングを無効
+                googAutoGainControl: false,
+                googAutoGainControl2: false,
+                googEchoCancellation: false,
+                googNoiseSuppression: false,
+                googTypingNoiseDetection: false
               } as any,
               video: {
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  chromeMediaSourceId: selectedDesktopSource,
-                  minWidth: 640,   // 最小限のサイズに縮小
-                  maxWidth: 1280,
-                  minHeight: 360,
-                  maxHeight: 720
-                }
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: selectedDesktopSource,
+                minWidth: 640,   // 最小限のサイズに縮小
+                maxWidth: 1280,
+                minHeight: 360,
+                maxHeight: 720
               } as any
             });
             
@@ -419,56 +453,41 @@ const BottomPanel: React.FC = () => {
         } catch (desktopError) {
           console.error('Desktop capturer failed:', desktopError);
           
-          // フォールバック: 従来の方法を試行
-          console.log('Falling back to traditional methods...');
+          // フォールバック処理を無効化し、直接エラーを投げる
+          const errorMessage = `🔊 デスクトップ音声キャプチャに失敗しました。\n\n❌ 発生したエラー:\n${desktopError instanceof Error ? desktopError.message : String(desktopError)}\n\n🔧 対処法:\n\n【方法1】入力タイプを「ステレオミックス」に変更\n- システム音声のみを録音したい場合はステレオミックスを使用\n\n【方法2】Windows設定でステレオミックスを有効化\n- 音声設定 → 録音デバイス → ステレオミックス有効\n\n【方法3】仮想オーディオケーブルを使用\n- VB-Cable等のソフトウェアをインストール`;
           
-          try {
-            // ステレオミックス等のシステム音声デバイスを検索
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const audioInputs = devices.filter(device => device.kind === 'audioinput');
-            
-            console.log('Available audio input devices:', audioInputs.map(d => ({
-              deviceId: d.deviceId,
-              label: d.label
-            })));
-            
-            const systemAudioDevice = audioInputs.find(device => 
-              device.label.toLowerCase().includes('stereo mix') ||
-              device.label.toLowerCase().includes('what you hear') ||
-              device.label.toLowerCase().includes('system audio')
-            );
-            
-            if (systemAudioDevice) {
-              console.log('Found system audio device:', systemAudioDevice.label);
-              
-              stream = await navigator.mediaDevices.getUserMedia({
-                audio: { 
-                  deviceId: systemAudioDevice.deviceId,
-                  echoCancellation: false,
-                  noiseSuppression: false,
-                  autoGainControl: false
-                }
-              });
-              
-              console.log('System audio device capture successful');
-            } else {
-              throw new Error('システム音声デバイスが見つかりません');
+          console.error('💡 デスクトップ音声録音のトラブルシューティング情報:', {
+            selectedDesktopSource,
+            errorDetails: {
+              desktop: desktopError
             }
-          } catch (fallbackError) {
-            console.error('All fallback methods failed:', fallbackError);
-            const errorMessage = `🔊 デスクトップ音声キャプチャに失敗しました。\n\n❌ 発生したエラー:\n1. デスクトップキャプチャ: ${desktopError instanceof Error ? desktopError.message : String(desktopError)}\n2. フォールバック: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}\n\n🔧 対処法:\n\n【方法1】Windows設定でステレオミックスを有効化\n- 音声設定 → 録音デバイス → ステレオミックス有効\n\n【方法2】仮想オーディオケーブルを使用\n- VB-Cable等のソフトウェアをインストール\n\n【方法3】確認事項\n- 音声を出力中のアプリケーションがあることを確認\n- デスクトップ音声の音量が0でないことを確認\n- 他のアプリケーションが音声デバイスを使用していないか確認\n\n【方法4】管理者権限で実行\n- アプリケーションを管理者として実行`;
-            
-            console.error('💡 デスクトップ音声録音のトラブルシューティング情報:', {
-              selectedDesktopSource,
-              errorDetails: {
-                desktop: desktopError,
-                fallback: fallbackError
-              }
-            });
-            
-            throw new Error(errorMessage);
-          }
+          });
+          
+          throw new Error(errorMessage);
         }
+        
+      } else if (inputType === 'stereo-mix') {
+        // ステレオミックスでシステム音声を録音
+        console.log('🔊 ステレオミックスでシステム音声録音開始:', selectedSystemDevice);
+        
+        if (!selectedSystemDevice) {
+          throw new Error('システム音声デバイスが選択されていません');
+        }
+        
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { 
+            deviceId: selectedSystemDevice,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
+        });
+        
+        console.log('✅ ステレオミックスストリーム取得成功:', {
+          id: stream.id,
+          active: stream.active,
+          audioTracks: stream.getAudioTracks().length
+        })
         
       } else {
         // マイク音声
@@ -1166,7 +1185,7 @@ const BottomPanel: React.FC = () => {
           <select 
             className="select"
             value={inputType}
-            onChange={(e) => setInputType(e.target.value as 'microphone' | 'desktop')}
+            onChange={(e) => setInputType(e.target.value as 'microphone' | 'desktop' | 'stereo-mix')}
             disabled={isRecording}
             style={{ 
               width: '200px',
@@ -1175,10 +1194,18 @@ const BottomPanel: React.FC = () => {
           >
             <option value="microphone">🎤 マイク音声</option>
             <option value="desktop">🖥️ デスクトップ音声</option>
+            <option value="stereo-mix">🔊 ステレオミックス</option>
           </select>
           {inputType === 'desktop' && (
             <div className="text-secondary" style={{ fontSize: '11px' }}>
               ※画面共有で「システム音声を共有」を有効にしてください
+              <br />
+              ⚠️ マイク音声も混入する場合は、Windows音声設定でマイクの「聞く」を無効にしてください
+            </div>
+          )}
+          {inputType === 'stereo-mix' && (
+            <div className="text-secondary" style={{ fontSize: '11px' }}>
+              ※システム音声のみを録音します。マイク音声も含む場合があります。
             </div>
           )}
         </div>
@@ -1310,6 +1337,32 @@ const BottomPanel: React.FC = () => {
           </div>
         )}
         
+        {/* システム音声デバイス選択（ステレオミックスの場合のみ） */}
+        {inputType === 'stereo-mix' && (
+          <div className="flex items-center gap-md">
+            <label className="text-secondary" style={{ minWidth: '100px' }}>システム音声デバイス:</label>
+            <select 
+              className="select flex-1"
+              value={selectedSystemDevice}
+              onChange={(e) => setSelectedSystemDevice(e.target.value)}
+              disabled={isRecording}
+              style={{ opacity: isRecording ? 0.5 : 1 }}
+            >
+              <option value="">選択してください</option>
+              {systemAudioDevices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `システムデバイス ${device.deviceId.slice(0, 8)}`}
+                </option>
+              ))}
+            </select>
+            {systemAudioDevices.length === 0 && (
+              <div className="text-secondary" style={{ fontSize: '11px' }}>
+                システム音声デバイスが見つかりません。Windows設定でステレオミックスを有効化してください。
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* 録音コントロール */}
         <div className="flex items-center gap-md">
           <div className="flex gap-sm">
@@ -1320,7 +1373,8 @@ const BottomPanel: React.FC = () => {
                   onClick={handleStartRecordingWithTranscription}
                   disabled={
                     (inputType === 'microphone' && !selectedDevice) ||
-                    (inputType === 'desktop' && !selectedDesktopSource)
+                    (inputType === 'desktop' && !selectedDesktopSource) ||
+                    (inputType === 'stereo-mix' && !selectedSystemDevice)
                   }
                 >
                   ● 録音・文字起こし
@@ -1330,7 +1384,8 @@ const BottomPanel: React.FC = () => {
                   onClick={handleStartRecordingOnly}
                   disabled={
                     (inputType === 'microphone' && !selectedDevice) ||
-                    (inputType === 'desktop' && !selectedDesktopSource)
+                    (inputType === 'desktop' && !selectedDesktopSource) ||
+                    (inputType === 'stereo-mix' && !selectedSystemDevice)
                   }
                 >
                   ● 録音のみ
