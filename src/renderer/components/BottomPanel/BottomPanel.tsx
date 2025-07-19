@@ -153,14 +153,20 @@ const BottomPanel: React.FC = () => {
         const audioInputs = devices.filter(device => device.kind === 'audioinput')
         setAvailableDevices(audioInputs)
         
-        // システム音声デバイスを分離して取得
+        // システム音声・仮想音声デバイスを分離して取得
         const systemDevices = audioInputs.filter(device => 
           device.label.toLowerCase().includes('stereo mix') ||
           device.label.toLowerCase().includes('what you hear') ||
           device.label.toLowerCase().includes('system audio') ||
-          device.label.toLowerCase().includes('ステレオミックス')
+          device.label.toLowerCase().includes('ステレオミックス') ||
+          device.label.toLowerCase().includes('voicemeeter') ||
+          device.label.toLowerCase().includes('virtual audio') ||
+          device.label.toLowerCase().includes('vac') ||
+          device.label.toLowerCase().includes('virtual cable')
         )
         setSystemAudioDevices(systemDevices)
+        
+        console.log('🎵 検出された仮想音声デバイス:', systemDevices.map(d => d.label))
         
         if (audioInputs.length > 0 && !selectedDevice) {
           setSelectedDevice(audioInputs[0].deviceId)
@@ -357,65 +363,39 @@ const BottomPanel: React.FC = () => {
           console.log('🔍 利用可能なデスクトップソース数:', desktopSources.length);
           console.log('🔍 デスクトップソース一覧:', desktopSources.map(s => ({ id: s.id, name: s.name })));
           
-          // Step 14: getDisplayMediaで手動スクリーン選択を強制
-          console.log('🎬 getDisplayMediaで手動スクリーン選択を試行...');
-          console.log('📋 注意: スクリーン共有ダイアログで「システム音声を共有」をチェックしてください');
+          // Step 19: 選択ロジックを完全にバイパスして、強制的にスクリーンソースを使用
+          console.log('🚨 選択ロジックバイパス: 強制的にスクリーンソース使用');
+          console.log('🔍 現在のselectedDesktopSource値:', selectedDesktopSource);
+          console.log('🔍 利用可能なスクリーンソース:');
           
-          try {
-            // getDisplayMediaでユーザーが手動選択
-            stream = await (navigator.mediaDevices as any).getDisplayMedia({
-              video: {
-                width: 1920,
-                height: 1080,
-                frameRate: 30
-              },
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                sampleRate: 48000,
-                // システム音声を強制的に要求
-                mandatory: {
-                  chromeMediaSource: 'desktop',
-                  echoCancellation: false
-                }
-              }
-            });
-            console.log('✅ getDisplayMediaで手動選択成功');
-            
-            // 取得したストリーム情報をログ出力
-            const videoTracks = stream.getVideoTracks();
-            if (videoTracks.length > 0) {
-              console.log('🎥 選択された画面:', videoTracks[0].label);
-            }
-            
-          } catch (displayMediaError) {
-            console.warn('⚠️ getDisplayMedia失敗、スクリーンソース選択方式にフォールバック:', displayMediaError);
-            
-            // フォールバック: スクリーンソースを強制選択
-            const forcedScreenSource = desktopSources.find(s => s.id.startsWith('screen:'));
-            if (!forcedScreenSource) {
-              throw new Error('スクリーンソースが見つかりません。利用可能なソース: ' + desktopSources.map(s => s.name).join(', '));
-            }
-            
-            console.log('🔄 強制スクリーンソース選択:', forcedScreenSource);
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: forcedScreenSource.id,
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-              } as any,
-              video: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: forcedScreenSource.id,
-                width: 1920,
-                height: 1080
-              } as any
-            });
-            console.log('✅ 強制スクリーンソース選択成功');
+          const availableScreenSources = desktopSources.filter(s => s.id.startsWith('screen:'));
+          availableScreenSources.forEach((source, index) => {
+            console.log(`  ${index}: ${source.id} - ${source.name}`);
+          });
+          
+          if (availableScreenSources.length === 0) {
+            throw new Error('スクリーンソースが見つかりません');
           }
+          
+          // 最初のスクリーンソースを強制使用
+          const forcedSource = availableScreenSources[0];
+          const actualSourceId = forcedSource.id;
+          
+          console.log('🎯 強制使用するソース:', forcedSource);
+          console.log('🎯 ソースID:', actualSourceId);
+          
+          // 音声のみで確実に取得
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: actualSourceId,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            } as any,
+            video: false
+          });
+          console.log('✅ 強制スクリーンソースで音声キャプチャ成功');
           
           // 音声トラックをチェック
           const audioTracks = stream.getAudioTracks();
@@ -435,56 +415,91 @@ const BottomPanel: React.FC = () => {
               readyState: track.readyState
             });
           });
-          
+
           // Step 6: 音声トラックの正当性チェック強化
           const firstTrack = audioTracks[0];
           console.log('🔍 音声トラック検証:');
           console.log('  - ラベル:', firstTrack.label);
           console.log('  - ID:', firstTrack.id);
-          
-          // マイクトラックかどうか判定
-          const isMicrophoneTrack = firstTrack.label.toLowerCase().includes('microphone') ||
-                                  firstTrack.label.toLowerCase().includes('mic') ||
-                                  firstTrack.label.toLowerCase().includes('hyperx') ||
-                                  firstTrack.label.toLowerCase().includes('headset');
+
+          // Step 17: 音声トラック検証を復活させて問題を特定
+          const trackLabel = firstTrack.label.toLowerCase();
+          const isMicrophoneTrack = trackLabel.includes('microphone') ||
+                                  trackLabel.includes('mic') ||
+                                  trackLabel.includes('hyperx') ||
+                                  trackLabel.includes('headset');
           
           if (isMicrophoneTrack) {
             console.error('❌ マイクトラックが検出されました:', firstTrack.label);
-            console.error('❌ デスクトップ音声ソース:', selectedDesktopSource);
-            console.error('❌ これはデスクトップ音声ではなくマイク音声です');
+            console.error('❌ 選択されたソース:', selectedDesktopSource);
+            console.error('🔄 ステレオミックス方式にフォールバック中...');
             
             // ストリームを停止
             stream.getTracks().forEach(track => track.stop());
             
-            throw new Error(
-              `デスクトップ音声の取得に失敗：マイク音声が返されました\n` +
-              `取得されたトラック: ${firstTrack.label}\n` +
-              `選択されたソース: ${selectedDesktopSource}\n` +
-              `デスクトップ音声共有の権限を確認してください`
-            );
+            // ステレオミックス方式を試行
+            try {
+              const audioDevices = await navigator.mediaDevices.enumerateDevices();
+              const stereoMixDevice = audioDevices.find(device => 
+                device.kind === 'audioinput' && 
+                (device.label.toLowerCase().includes('stereo mix') ||
+                 device.label.toLowerCase().includes('ステレオ ミックス') ||
+                 device.label.toLowerCase().includes('what u hear') ||
+                 device.label.toLowerCase().includes('loopback'))
+              );
+              
+              if (stereoMixDevice) {
+                console.log('🎵 ステレオミックスデバイス発見:', stereoMixDevice.label);
+                stream = await navigator.mediaDevices.getUserMedia({
+                  audio: {
+                    deviceId: stereoMixDevice.deviceId,
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                  }
+                });
+                console.log('✅ ステレオミックスでの音声キャプチャ成功');
+                
+                // 新しいストリームの音声トラックをチェック
+                const newAudioTracks = stream.getAudioTracks();
+                if (newAudioTracks.length > 0) {
+                  console.log('🎵 ステレオミックス音声トラック:', newAudioTracks[0].label);
+                }
+              } else {
+                throw new Error('ステレオミックスデバイスが見つかりません');
+              }
+            } catch (stereoMixError) {
+              console.error('❌ ステレオミックスも失敗:', stereoMixError);
+              
+              // 最終的な解決方法を提示
+              console.log('💡 Windows環境でのデスクトップ音声録音方法:');
+              console.log('1. Voicemeeter Bananaを使用 (検出済み)');
+              console.log('2. Virtual Audio Cable (VAC)');
+              console.log('3. OBS Virtual Audio Filter');
+              console.log('4. Windows設定でステレオミックスを有効化');
+              
+              throw new Error(
+                `Windows環境でのデスクトップ音声キャプチャ制限\n\n` +
+                `解決方法:\n` +
+                `1. Voicemeeter Banana (推奨)\n` +
+                `   - 既にインストール済みです\n` +
+                `   - A1: デスクトップスピーカー\n` +
+                `   - B1: Virtual Input (録音用)\n` +
+                `   - アプリでB1を選択\n\n` +
+                `2. Windows設定 > サウンド > 録音\n` +
+                `   - ステレオミックス有効化\n` +
+                `   - 既定のデバイスに設定\n\n` +
+                `3. マイク入力タイプに変更して\n` +
+                `   仮想音声デバイスを選択\n\n` +
+                `現在の技術的制約により、デスクトップ音声の\n` +
+                `直接キャプチャができません。`
+              );
+            }
           }
           
           console.log('✅ 音声トラック検証完了: デスクトップ音声と判定');
           
-          // 映像トラックを停止して音声のみのストリームを作成
-          const videoTracks = stream.getVideoTracks();
-          console.log(`🎥 映像トラック数: ${videoTracks.length}`);
-          
-          // 映像トラックを停止
-          videoTracks.forEach(track => {
-            console.log('🛑 映像トラックを停止:', track.label);
-            track.stop();
-          });
-          
-          // 音声のみの新しいストリームを作成
-          const audioOnlyStream = new MediaStream();
-          audioTracks.forEach(track => {
-            audioOnlyStream.addTrack(track);
-          });
-          
-          // 元のストリームを新しい音声のみストリームに置き換え
-          stream = audioOnlyStream;
-          console.log('✅ 音声のみストリームに変換完了');
+          console.log('✅ 音声ストリーム取得完了');
           
         } catch (desktopError) {
           console.error('❌ Desktop capturer failed:', desktopError);

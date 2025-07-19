@@ -406,26 +406,32 @@ app.whenReady().then(async () => {
   });
 });
 
-// デスクトップキャプチャ・音声録音・映像キャプチャの権限設定
+// デスクトップキャプチャ・システム音声録音の権限設定
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
 app.commandLine.appendSwitch('allow-http-screen-capture');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('allow-loopback-in-peer-connection');
 app.commandLine.appendSwitch('enable-media-stream');
-app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
-
+// 実際のシステム音声を取得するため fake-ui は削除
+app.commandLine.appendSwitch('enable-webrtc-srtp-aes-gcm');
+app.commandLine.appendSwitch('enable-webrtc-stun-origin');
+app.commandLine.appendSwitch('disable-web-security');
+app.commandLine.appendSwitch('allow-running-insecure-content');
 // システムの権限設定
 if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('enable-features', 'ScreenCaptureKitMac');
 } else if (process.platform === 'win32') {
-  // Windows用のデスクトップキャプチャ設定
-  app.commandLine.appendSwitch('disable-web-security');
+  // Windows用のシステム音声キャプチャ設定
   app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
-  app.commandLine.appendSwitch('allow-running-insecure-content');
   app.commandLine.appendSwitch('disable-background-timer-throttling');
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.commandLine.appendSwitch('enable-features', 'VizDisplayCompositor,UseSkiaRenderer');
+  
+  // Windows システム音声キャプチャの問題を解決
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+  app.commandLine.appendSwitch('use-angle', 'gl');
+  app.commandLine.appendSwitch('enable-zero-copy');
 }
 
 // すべてのウィンドウが閉じられたときの処理
