@@ -44,46 +44,20 @@ const BottomPanel: React.FC = () => {
   const realtimeProcessorRef = useRef<FileBasedRealtimeProcessor | null>(null)
   const micMonitorRef = useRef<MicrophoneMonitor | null>(null)
   
-  // WebMヘッダー作成関数 - 最初のチャンクから基本情報を抽出して使用
+  // WebMヘッダー作成関数
   const createWebMHeader = useCallback((clusterData: ArrayBuffer): ArrayBuffer => {
     try {
-      // 固定のWebMヘッダー（最小限の構造）
+      // 固定のWebMヘッダー（EBML + Segment + Info + Tracks構造）
       const webmHeader = new Uint8Array([
-        // EBML Header
-        0x1A, 0x45, 0xDF, 0xA3, // EBML
-        0x9F, // Header size
-        0x42, 0x86, 0x81, 0x01, // EBMLVersion = 1
-        0x42, 0xF7, 0x81, 0x01, // EBMLReadVersion = 1
-        0x42, 0xF2, 0x81, 0x04, // EBMLMaxIDLength = 4
-        0x42, 0xF3, 0x81, 0x08, // EBMLMaxSizeLength = 8
-        0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6D, // DocType = "webm"
-        0x42, 0x87, 0x81, 0x04, // DocTypeVersion = 4
-        0x42, 0x85, 0x81, 0x02, // DocTypeReadVersion = 2
-        
-        // Segment Header
-        0x18, 0x53, 0x80, 0x67, // Segment
-        0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // Unknown length
-        
-        // Info Section
-        0x15, 0x49, 0xA9, 0x66, // Info
-        0x8E, // Info size
-        0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40, // TimecodeScale = 1000000
-        0x4D, 0x80, 0x84, 0x77, 0x65, 0x62, 0x6D, // MuxingApp = "webm" 
-        0x57, 0x41, 0x84, 0x77, 0x65, 0x62, 0x6D, // WritingApp = "webm"
-        
-        // Tracks Section
-        0x16, 0x54, 0xAE, 0x6B, // Tracks
-        0xA7, // Tracks size
-        0xAE, // TrackEntry
-        0xA0, // TrackEntry size
-        0xD7, 0x81, 0x01, // TrackNumber = 1
-        0x73, 0xC5, 0x88, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // TrackUID
-        0x83, 0x81, 0x02, // TrackType = Audio
-        0x86, 0x86, 0x41, 0x5F, 0x4F, 0x50, 0x55, 0x53, // CodecID = "A_OPUS"
-        0xE1, // Audio
-        0x87, // Audio size
-        0xB5, 0x84, 0x47, 0x70, 0x00, 0x00, // SamplingFrequency = 48000
-        0x9F, 0x81, 0x02 // Channels = 2
+        0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01,
+        0x42, 0xF2, 0x81, 0x04, 0x42, 0xF3, 0x81, 0x08, 0x42, 0x82, 0x84, 0x77, 0x65,
+        0x62, 0x6D, 0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02, 0x18, 0x53, 0x80,
+        0x67, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x15, 0x49, 0xA9, 0x66,
+        0x8E, 0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40, 0x4D, 0x80, 0x84, 0x77, 0x65,
+        0x62, 0x6D, 0x57, 0x41, 0x84, 0x77, 0x65, 0x62, 0x6D, 0x16, 0x54, 0xAE, 0x6B,
+        0xA7, 0xAE, 0xA0, 0xD7, 0x81, 0x01, 0x73, 0xC5, 0x88, 0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x83, 0x81, 0x02, 0x86, 0x86, 0x41, 0x5F, 0x4F, 0x50,
+        0x55, 0x53, 0xE1, 0x87, 0xB5, 0x84, 0x47, 0x70, 0x00, 0x00, 0x9F, 0x81, 0x02
       ])
       
       // Cluster header with data
@@ -436,77 +410,37 @@ const BottomPanel: React.FC = () => {
         })
       }
       
-      // WebM形式で録音（推奨形式）
+      // MediaRecorder設定
       let mediaRecorder: MediaRecorder
       let selectedMimeType: string
+      const chunkSizeMs = 20 * 1000; // 20秒間隔
       
-      // WebM形式を優先（品質と互換性のバランス）
-      // timeslice設定でチャンクファイル保存を有効化（20秒間隔）
-      const chunkSizeMs = 20 * 1000; // 20秒
-      
-      console.log('🎬 MediaRecorderの設定開始...')
-      
-      // MediaRecorderの設定オプション（メモリ最適化）
       const recorderOptions: MediaRecorderOptions = {
-        audioBitsPerSecond: 128000, // 128kbps - 品質と容量のバランス
-        // videoBitsPerSecond: 不要（音声のみ）
+        audioBitsPerSecond: 128000
       };
       
       if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         selectedMimeType = 'audio/webm;codecs=opus'
         recorderOptions.mimeType = selectedMimeType
-        console.log('✅ audio/webm;codecs=opus サポート確認')
         mediaRecorder = new MediaRecorder(stream, recorderOptions)
-        console.log('Recording in WebM format with Opus codec (20s chunks)')
       } else if (MediaRecorder.isTypeSupported('audio/webm')) {
         selectedMimeType = 'audio/webm'
         recorderOptions.mimeType = selectedMimeType
-        console.log('✅ audio/webm サポート確認')
         mediaRecorder = new MediaRecorder(stream, recorderOptions)
-        console.log('Recording in WebM format with timeslice (20s chunks)')
       } else {
-        // フォールバック
-        console.log('⚠️ WebM非サポート、フォールバック使用')
         mediaRecorder = new MediaRecorder(stream, recorderOptions)
         selectedMimeType = mediaRecorder.mimeType
-        console.log('Recording in fallback format with timeslice:', selectedMimeType)
       }
-      
-      console.log('📝 MediaRecorder作成完了:', {
-        state: mediaRecorder.state,
-        mimeType: selectedMimeType,
-        streamActive: stream.active,
-        audioTracks: stream.getAudioTracks().length
-      })
-      
-      // MediaRecorderの設定完了
       
       mediaRecorderRef.current = mediaRecorder
 
-      // MediaRecorderイベントリスナー追加
-      mediaRecorder.onstart = () => {
-        console.log('▶️ MediaRecorder開始イベント受信')
-      }
-      
+      // MediaRecorderイベントリスナー
       mediaRecorder.onerror = (event) => {
-        console.error('❌ MediaRecorderエラーイベント:', event)
-        console.error('❌ MediaRecorderエラー詳細:', {
-          error: event.error,
-          state: mediaRecorder.state,
-          mimeType: mediaRecorder.mimeType,
-          memoryUsage: (performance as any).memory ? {
-            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-            jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit
-          } : 'N/A'
-        })
-        
-        // エラー発生時の緊急停止処理
+        console.error('MediaRecorderエラー:', event.error)
         try {
           if (mediaRecorder.state === 'recording') {
             mediaRecorder.stop()
           }
-          // ストリームの停止
           stream.getTracks().forEach(track => track.stop())
         } catch (cleanupError) {
           console.error('エラー時のクリーンアップ失敗:', cleanupError)
@@ -522,64 +456,13 @@ const BottomPanel: React.FC = () => {
       let tempFolderPath: string | null = null
       const chunkFiles: string[] = []
       
-      // 期間別のチャンクデータ保存
       const periodChunks: Blob[] = []
       let lastChunkSaveTime = Date.now()
       
-      // メモリ監視とクラッシュ防止
-      let memoryCheckInterval: NodeJS.Timeout | null = null
-      let totalBlobSize = 0
-      const MAX_MEMORY_USAGE_MB = 500 // 500MB制限
-      const MEMORY_CHECK_INTERVAL_MS = 30000 // 30秒ごと
-      
-      // メモリ監視開始
-      const startMemoryMonitoring = () => {
-        memoryCheckInterval = setInterval(() => {
-          const memoryMB = totalBlobSize / (1024 * 1024)
-          
-          if ((performance as any).memory) {
-            const memory = (performance as any).memory
-            const usedMemoryMB = memory.usedJSHeapSize / (1024 * 1024)
-            const totalMemoryMB = memory.totalJSHeapSize / (1024 * 1024)
-            
-            console.log(`🧠 メモリ使用量: ${usedMemoryMB.toFixed(1)}MB / ${totalMemoryMB.toFixed(1)}MB, 録音データ: ${memoryMB.toFixed(1)}MB`)
-            
-            // メモリ使用量が危険レベルに達した場合
-            if (memoryMB > MAX_MEMORY_USAGE_MB || usedMemoryMB > 800) {
-              console.warn('⚠️ メモリ使用量が危険レベルに達しました。録音を安全に停止します。')
-              
-              // 安全に録音を停止
-              if (mediaRecorder.state === 'recording') {
-                console.log('🛑 メモリ不足のため録音を停止します')
-                mediaRecorder.stop()
-              }
-              
-              // メモリ監視を停止
-              if (memoryCheckInterval) {
-                clearInterval(memoryCheckInterval)
-                memoryCheckInterval = null
-              }
-            }
-          }
-        }, MEMORY_CHECK_INTERVAL_MS)
-      }
-      
-      // メモリ監視開始
-      startMemoryMonitoring()
-      
       mediaRecorder.ondataavailable = async (event) => {
-        console.log('📊 ondataavailable イベント受信:', {
-          dataSize: event.data.size,
-          totalChunks: chunks.length + 1,
-          currentTime: new Date().toISOString()
-        })
-        
         if (event.data.size > 0) {
           chunks.push(event.data)
           periodChunks.push(event.data)
-          
-          // メモリ使用量を追跡
-          totalBlobSize += event.data.size
           
           // 20秒経過またはタイムスライスごとにチャンクファイル作成
           const currentTime = Date.now()
@@ -596,7 +479,6 @@ const BottomPanel: React.FC = () => {
               if (!tempFolderPath && recordingFilename) {
                 const baseFilename = recordingFilename.replace('.webm', '')
                 tempFolderPath = `temp_${baseFilename}`
-                console.log(`チャンクファイル用テンポラリフォルダ: ${tempFolderPath}`)
               }
               
               if (tempFolderPath && periodChunks.length > 0) {
@@ -608,18 +490,13 @@ const BottomPanel: React.FC = () => {
                     
                     await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath)
                     chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
-                    
-                    console.log(`完全なWebMチャンク保存: ${chunkFilename} (${chunkBuffer.byteLength} bytes)`)
                   } else {
-                    // 2番目以降のチャンクは累積データから部分WebMを作成
-                    // 最初から現在までの全データを含む完全なWebMファイルを作成
+                    // 2番目以降のチャンクは累積データから完全なWebMファイルを作成
                     const cumulativeChunkBlob = new Blob(chunks, { type: selectedMimeType })
                     const cumulativeBuffer = await cumulativeChunkBlob.arrayBuffer()
                     
                     await window.electronAPI.saveFile(cumulativeBuffer, chunkFilename, tempFolderPath)
                     chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
-                    
-                    console.log(`累積WebMチャンク保存: ${chunkFilename} (${cumulativeBuffer.byteLength} bytes)`)
                   }
                 } catch (error) {
                   console.error('チャンクファイル保存エラー:', error)
@@ -642,10 +519,8 @@ const BottomPanel: React.FC = () => {
               
               if (!recordingFilePath && recordingFilename) {
                 recordingFilePath = await window.electronAPI.saveFile(arrayBuffer, recordingFilename)
-                console.log('録音中ファイルの初回書き込み:', recordingFilePath)
               } else if (recordingFilename) {
                 await window.electronAPI.saveFile(arrayBuffer, recordingFilename)
-                console.log('録音中ファイルの更新:', recordingFilePath, 'サイズ:', arrayBuffer.byteLength, 'bytes')
               }
             } catch (error) {
               console.error('録音中ファイル書き込みエラー:', error)
@@ -655,50 +530,23 @@ const BottomPanel: React.FC = () => {
       }
       
       mediaRecorder.onstop = async () => {
-        console.log('⏹️ MediaRecorder停止イベント受信')
-        
-        // メモリ監視を停止
-        if (memoryCheckInterval) {
-          clearInterval(memoryCheckInterval)
-          memoryCheckInterval = null
-          console.log('🧠 メモリ監視を停止しました')
-        }
-        
-        // 録音停止時は統計情報のみ記録（安全性を優先）
-        if (periodChunks.length > 0) {
-          chunkSequence++
-          const chunkBlob = new Blob(periodChunks, { type: selectedMimeType })
-          console.log(`最終チャンク情報: ${chunkSequence}番目 (${chunkBlob.size} bytes) - 情報のみ記録`)
-        }
-        
-        console.log(`📁 チャンクファイル保存完了: ${chunkFiles.length}個のファイル`)
-        console.log(`📊 総メモリ使用量: ${(totalBlobSize / (1024 * 1024)).toFixed(1)}MB`)
-        
         // 正確な録音時間を計算（ミリ秒単位、一時停止時間を除外）
         const recordingEndTime = Date.now()
         const actualDurationMs = recordingEndTime - recordingStartTimeRef.current - pausedTimeRef.current
         const actualDurationSeconds = Math.round(actualDurationMs / 1000)
         
-        console.log('Recording stopped - Precise duration:', actualDurationMs, 'ms (', actualDurationSeconds, 'seconds)')
-        console.log('Recording format:', selectedMimeType)
-        
         // WebM形式でBlobを作成
         const originalBlob = new Blob(chunks, { type: selectedMimeType })
-        console.log('Original WebM blob created, size:', originalBlob.size, 'bytes')
         
         try {
           // HTMLAudioElementで正確なdurationを取得
-          console.log('Getting accurate duration using HTMLAudioElement...')
           let accurateDuration: number
           
           try {
             accurateDuration = await getAccurateDuration(originalBlob)
-            console.log('Accurate duration obtained:', accurateDuration, 'seconds')
           } catch (durationError) {
-            console.warn('AudioElementでのduration取得に失敗:', durationError)
             // フォールバック：録音時間から推定durationを計算
             accurateDuration = actualDurationSeconds
-            console.log('計算されたdurationを使用:', accurateDuration, 'seconds')
           }
           
           // 元のWebMファイルをそのまま使用
