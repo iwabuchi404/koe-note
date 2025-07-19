@@ -348,6 +348,8 @@ function createWindow(): void {
       allowRunningInsecureContent: true,
       experimentalFeatures: true,
       preload: path.join(__dirname, 'preload.js'),
+      // 音声録音権限を明示的に有効化
+      backgroundThrottling: false, // 音声録音中のスロットリング防止
     },
     frame: false, // カスタムタイトルバーのため標準フレームを無効化
     titleBarStyle: 'hiddenInset', // macOS対応
@@ -364,6 +366,13 @@ function createWindow(): void {
     // 本番環境でもテスト用にDevToolsを開く
     mainWindow.webContents.openDevTools();
   }
+
+  // メディア権限要求ハンドラー（音声録音・映像キャプチャ・デスクトップキャプチャ）
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    writeLog(`権限要求: ${permission}`);
+    // 全てのメディア関連権限を許可
+    callback(true);
+  });
 
   // レンダラープロセスのコンソールログを監視
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -397,9 +406,13 @@ app.whenReady().then(async () => {
   });
 });
 
-// デスクトップキャプチャの権限設定
+// デスクトップキャプチャ・音声録音・映像キャプチャの権限設定
 app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
 app.commandLine.appendSwitch('allow-http-screen-capture');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('allow-loopback-in-peer-connection');
+app.commandLine.appendSwitch('enable-media-stream');
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 
 // システムの権限設定
 if (process.platform === 'darwin') {

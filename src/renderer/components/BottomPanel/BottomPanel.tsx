@@ -184,10 +184,48 @@ const BottomPanel: React.FC = () => {
           const sources = await window.electronAPI.getDesktopSources()
           setDesktopSources(sources)
           
-          // デフォルトで最初のスクリーンを選択
-          const screenSource = sources.find(source => source.name.includes('Screen') || source.name.includes('screen'))
-          if (screenSource && !selectedDesktopSource) {
-            setSelectedDesktopSource(screenSource.id)
+          // Step 7: デスクトップソース詳細ログと改善された選択ロジック
+          console.log('🔍 デスクトップソース詳細分析:');
+          sources.forEach((source, index) => {
+            console.log(`  ${index}: ID="${source.id}", Name="${source.name}"`);
+          });
+          
+          // スクリーンソース優先選択（screen: で始まるもの）
+          const screenSources = sources.filter(source => source.id.startsWith('screen:'));
+          console.log('🖥️ スクリーンソース候補:', screenSources.map(s => ({ id: s.id, name: s.name })));
+          
+          // 最優先: メインスクリーンを特定（英語・日本語両対応）
+          let selectedSource = screenSources.find(source => {
+            const name = source.name.toLowerCase();
+            return name.includes('entire screen') || 
+                   name.includes('全画面');
+          });
+          
+          // フォールバック: プライマリディスプレイを選択（通常はscreen:0:0）
+          if (!selectedSource) {
+            selectedSource = screenSources.find(source => source.id === 'screen:0:0');
+          }
+          
+          // フォールバック: 任意のスクリーンソース
+          if (!selectedSource && screenSources.length > 0) {
+            selectedSource = screenSources[0];
+          }
+          
+          // 最終フォールバック: Screen名や画面名を含むソース（日本語・英語両対応）
+          if (!selectedSource) {
+            selectedSource = sources.find(source => {
+              const name = source.name.toLowerCase();
+              return (name.includes('screen') || source.name.includes('画面')) && 
+                     !source.id.startsWith('window:');
+            });
+          }
+          
+          if (selectedSource && selectedSource.id !== selectedDesktopSource) {
+            console.log('✅ 選択されたデスクトップソース:', selectedSource);
+            setSelectedDesktopSource(selectedSource.id);
+          } else if (!selectedSource) {
+            console.warn('⚠️ 適切なスクリーンソースが見つかりません');
+            console.warn('利用可能なソース:', sources.map(s => s.name));
           }
         } catch (error) {
           console.error('デスクトップソース取得エラー:', error)
@@ -195,7 +233,7 @@ const BottomPanel: React.FC = () => {
       }
       getDesktopSources()
     }
-  }, [inputType, selectedDesktopSource])
+  }, [inputType]) // selectedDesktopSourceを依存から除去して無限ループを防ぐ
   
   // ファイルベースリアルタイム文字起こしシステム初期化
   useEffect(() => {
@@ -314,84 +352,149 @@ const BottomPanel: React.FC = () => {
         }
         
         try {
-          // まず音声のみでキャプチャを試行
+          console.log('🎬 デスクトップ音声キャプチャ開始');
+          console.log('🔍 選択されたデスクトップソース:', selectedDesktopSource);
+          console.log('🔍 利用可能なデスクトップソース数:', desktopSources.length);
+          console.log('🔍 デスクトップソース一覧:', desktopSources.map(s => ({ id: s.id, name: s.name })));
+          
+          // Step 14: getDisplayMediaで手動スクリーン選択を強制
+          console.log('🎬 getDisplayMediaで手動スクリーン選択を試行...');
+          console.log('📋 注意: スクリーン共有ダイアログで「システム音声を共有」をチェックしてください');
+          
           try {
-            stream = await navigator.mediaDevices.getUserMedia({
+            // getDisplayMediaでユーザーが手動選択
+            stream = await (navigator.mediaDevices as any).getDisplayMedia({
+              video: {
+                width: 1920,
+                height: 1080,
+                frameRate: 30
+              },
               audio: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: selectedDesktopSource,
-                // マイク音声を除外するための設定
                 echoCancellation: false,
                 noiseSuppression: false,
                 autoGainControl: false,
-                suppressLocalAudioPlayback: true,  // ローカル音声再生を抑制
-                googAudioMirroring: false,  // 音声ミラーリングを無効
-                googAutoGainControl: false,
-                googAutoGainControl2: false,
-                googEchoCancellation: false,
-                googNoiseSuppression: false,
-                googTypingNoiseDetection: false,
-                // 追加の音声分離設定
-                systemAudioSource: 'system',  // システム音声のみ
-                microphoneCapture: false,  // マイク音声を明示的に無効化
-                systemAudioPreferredSampleRate: 48000,
-                isolateSystemAudio: true  // システム音声を分離
-              } as any,
-              video: false // 音声のみ
+                sampleRate: 48000,
+                // システム音声を強制的に要求
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  echoCancellation: false
+                }
+              }
             });
-          } catch (audioOnlyError) {
+            console.log('✅ getDisplayMediaで手動選択成功');
             
-            // 音声のみでキャプチャできない場合、映像も含めて取得
+            // 取得したストリーム情報をログ出力
+            const videoTracks = stream.getVideoTracks();
+            if (videoTracks.length > 0) {
+              console.log('🎥 選択された画面:', videoTracks[0].label);
+            }
+            
+          } catch (displayMediaError) {
+            console.warn('⚠️ getDisplayMedia失敗、スクリーンソース選択方式にフォールバック:', displayMediaError);
+            
+            // フォールバック: スクリーンソースを強制選択
+            const forcedScreenSource = desktopSources.find(s => s.id.startsWith('screen:'));
+            if (!forcedScreenSource) {
+              throw new Error('スクリーンソースが見つかりません。利用可能なソース: ' + desktopSources.map(s => s.name).join(', '));
+            }
+            
+            console.log('🔄 強制スクリーンソース選択:', forcedScreenSource);
             stream = await navigator.mediaDevices.getUserMedia({
               audio: {
                 chromeMediaSource: 'desktop',
-                chromeMediaSourceId: selectedDesktopSource,
-                // マイク音声を除外するための設定
+                chromeMediaSourceId: forcedScreenSource.id,
                 echoCancellation: false,
                 noiseSuppression: false,
-                autoGainControl: false,
-                suppressLocalAudioPlayback: true,  // ローカル音声再生を抑制
-                googAudioMirroring: false,  // 音声ミラーリングを無効
-                googAutoGainControl: false,
-                googAutoGainControl2: false,
-                googEchoCancellation: false,
-                googNoiseSuppression: false,
-                googTypingNoiseDetection: false,
-                // 追加の音声分離設定
-                systemAudioSource: 'system',  // システム音声のみ
-                microphoneCapture: false,  // マイク音声を明示的に無効化
-                systemAudioPreferredSampleRate: 48000,
-                isolateSystemAudio: true  // システム音声を分離
+                autoGainControl: false
               } as any,
               video: {
                 chromeMediaSource: 'desktop',
-                chromeMediaSourceId: selectedDesktopSource,
-                minWidth: 640,   // 最小限のサイズに縮小
-                maxWidth: 1280,
-                minHeight: 360,
-                maxHeight: 720
+                chromeMediaSourceId: forcedScreenSource.id,
+                width: 1920,
+                height: 1080
               } as any
             });
+            console.log('✅ 強制スクリーンソース選択成功');
           }
           
           // 音声トラックをチェック
           const audioTracks = stream.getAudioTracks();
+          console.log(`🎵 音声トラック数: ${audioTracks.length}`);
+          
           if (audioTracks.length === 0) {
             throw new Error('デスクトップからの音声トラックが取得できませんでした');
           }
           
-          // 映像トラックを停止（音声のみ必要）
-          const videoTracks = stream.getVideoTracks();
-          if (videoTracks.length > 0) {
-            videoTracks.forEach(track => {
-              track.stop();
-              stream.removeTrack(track);
+          // 音声トラック詳細をログ出力
+          audioTracks.forEach((track, index) => {
+            console.log(`🎤 音声トラック${index}:`, {
+              id: track.id,
+              label: track.label,
+              enabled: track.enabled,
+              muted: track.muted,
+              readyState: track.readyState
             });
+          });
+          
+          // Step 6: 音声トラックの正当性チェック強化
+          const firstTrack = audioTracks[0];
+          console.log('🔍 音声トラック検証:');
+          console.log('  - ラベル:', firstTrack.label);
+          console.log('  - ID:', firstTrack.id);
+          
+          // マイクトラックかどうか判定
+          const isMicrophoneTrack = firstTrack.label.toLowerCase().includes('microphone') ||
+                                  firstTrack.label.toLowerCase().includes('mic') ||
+                                  firstTrack.label.toLowerCase().includes('hyperx') ||
+                                  firstTrack.label.toLowerCase().includes('headset');
+          
+          if (isMicrophoneTrack) {
+            console.error('❌ マイクトラックが検出されました:', firstTrack.label);
+            console.error('❌ デスクトップ音声ソース:', selectedDesktopSource);
+            console.error('❌ これはデスクトップ音声ではなくマイク音声です');
+            
+            // ストリームを停止
+            stream.getTracks().forEach(track => track.stop());
+            
+            throw new Error(
+              `デスクトップ音声の取得に失敗：マイク音声が返されました\n` +
+              `取得されたトラック: ${firstTrack.label}\n` +
+              `選択されたソース: ${selectedDesktopSource}\n` +
+              `デスクトップ音声共有の権限を確認してください`
+            );
           }
           
+          console.log('✅ 音声トラック検証完了: デスクトップ音声と判定');
+          
+          // 映像トラックを停止して音声のみのストリームを作成
+          const videoTracks = stream.getVideoTracks();
+          console.log(`🎥 映像トラック数: ${videoTracks.length}`);
+          
+          // 映像トラックを停止
+          videoTracks.forEach(track => {
+            console.log('🛑 映像トラックを停止:', track.label);
+            track.stop();
+          });
+          
+          // 音声のみの新しいストリームを作成
+          const audioOnlyStream = new MediaStream();
+          audioTracks.forEach(track => {
+            audioOnlyStream.addTrack(track);
+          });
+          
+          // 元のストリームを新しい音声のみストリームに置き換え
+          stream = audioOnlyStream;
+          console.log('✅ 音声のみストリームに変換完了');
+          
         } catch (desktopError) {
-          console.error('Desktop capturer failed:', desktopError);
-          throw new Error('デスクトップ音声キャプチャに失敗しました');
+          console.error('❌ Desktop capturer failed:', desktopError);
+          console.error('❌ エラー詳細:', {
+            name: desktopError instanceof Error ? desktopError.name : 'Unknown',
+            message: desktopError instanceof Error ? desktopError.message : String(desktopError),
+            selectedDesktopSource,
+            availableSources: desktopSources.length
+          });
+          throw new Error(`デスクトップ音声キャプチャに失敗しました: ${desktopError instanceof Error ? desktopError.message : String(desktopError)}`);
         }
         
       } else if (inputType === 'stereo-mix') {
