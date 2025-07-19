@@ -177,6 +177,8 @@ React Context + useReducer
 
 axios
 
+## 5. アーキテクチャ設計
+
 ### 5.1 プロセス構成
 ```
 ┌─────────────────┐    IPC    ┌─────────────────┐
@@ -213,63 +215,6 @@ App
 ```
 
 ### 5.3 状態管理
-React Context + useReducer パターンを使用
-
-```typescript
-interface AppState {
-  // 録音関連
-  isRecording: boolean;
-  isPaused: boolean;
-  recordingTime: number;
-  audioLevel: number;
-  selectedInputDevice: MediaDeviceInfo | null;
-  availableInputDevices: MediaDeviceInfo[];
-  
-  // ファイル管理
-  saveFolder: string;
-  fileList: AudioFile[];
-  selectedFile: AudioFile | null;
-  
-  // 再生関連
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  
-  // 文字起こし関連
-  transcriptionText: string;
-  isTranscribing: boolean;
-  transcriptionProgress: number;
-  
-  // 変換関連
-  isConverting: boolean;
-  conversionProgress: number;
-}
-```
-
-## 5. アーキテクチャ設計
-```
-App
-├── TitleBar
-│   └── WindowControls, AppTitle
-├── MainLayout
-│   ├── LeftPanel (FileExplorer)
-│   │   ├── FolderSelector
-│   │   ├── FileTree
-│   │   └── FileItem (with context menu)
-│   └── RightPanel
-│       ├── TopPanel (TextEditor)
-│       │   ├── TranscriptionDisplay
-│       │   └── TextControls
-│       └── BottomPanel (ControlPanel)
-│           ├── InputDeviceSelector
-│           ├── RecordingControls
-│           ├── PlaybackControls
-│           ├── TranscribeButton
-│           ├── ConvertToMP3Button
-│           └── AudioLevelMeter
-```
-
-### 4.3 状態管理
 React Context + useReducer パターンを使用
 
 ```typescript
@@ -499,9 +444,252 @@ AI応答: 対策案...
 - faster-whisper (Kotoba) 統合
 - リアルタイム文字起こし
 
-## 10. 次ステップへの準備
+## 10. リアルタイム文字起こし詳細設計
 
-### 10.1 音声認識統合準備
+### 10.1 ファイルベースリアルタイム文字起こし実装プラン
+
+#### 概要
+現在のメモリベース処理から、ファイルベース処理に変更してリアルタイム文字起こしの安定性を向上させる。
+
+#### 実装方針
+- **段階的実装**: 既存システムを残しながら新システムを構築
+- **シンプル設計**: 並列処理なし、単一ファイル順次処理
+- **エラー耐性**: 1回リトライ→失敗時スキップ記録
+
+#### 実装ステップ
+
+**Phase 1: 基盤整備**
+- 目標: チャンクファイル保存とファイル監視機能
+- Step 1.1: 録音制御の拡張
+  ```typescript
+  // 対象ファイル: src/renderer/components/RecordingControl/*
+  // 新機能:
+  - MediaRecorder timeslice設定（20秒間隔）
+  - チャンクファイル自動保存
+  - テンポラリフォルダ管理
+  ```
+- Step 1.2: ファイル監視システム
+  ```typescript
+  // 新ファイル: src/renderer/services/ChunkFileWatcher.ts
+  // 機能:
+  - テンポラリフォルダの新ファイル検出
+  - ファイル処理順序保証
+  - 処理済みファイル管理
+  ```
+
+**Phase 2: 文字起こし処理**
+- 目標: 順次ファイル処理とエラーハンドリング
+- Step 2.1: ファイルベース文字起こしエンジン
+  ```typescript
+  // 新ファイル: src/renderer/services/FileBasedTranscriptionEngine.ts
+  // 機能:
+  - 単一ファイル順次処理
+  - 1回リトライ機能
+  - スキップ記録
+  ```
+- Step 2.2: 結果統合システム
+  ```typescript
+  // 新ファイル: src/renderer/services/RealtimeTextManager.ts
+  // 機能:
+  - メモリバッファ管理
+  - ファイル書き込み
+  - UI表示用データ提供
+  ```
+
+**Phase 3: UI統合**
+- 目標: 新システムとUIの連携
+- Step 3.1: 表示制御の更新
+- Step 3.2: 録音・文字起こし統合ボタン
+
+**Phase 4: エラーハンドリング・最適化**
+- 目標: 安定性とパフォーマンス向上
+- Step 4.1: 包括的エラーハンドリング
+- Step 4.2: パフォーマンス最適化
+
+**Phase 5: 統合・テスト**
+- 目標: 新旧システムの統合とテスト
+- Step 5.1: システム統合
+- Step 5.2: 総合テスト
+
+#### 設定・定数
+```typescript
+const CHUNK_CONFIG = {
+  SIZE_SECONDS: 20,           // チャンクサイズ
+  FILE_CHECK_INTERVAL: 1000,  // ファイル監視間隔（ms）
+  PROCESSING_TIMEOUT: 180000, // 処理タイムアウト（3分）
+  MAX_RETRY_COUNT: 1,         // 最大リトライ回数
+};
+
+const FILE_CONFIG = {
+  CHUNK_PREFIX: 'chunk_',
+  TEMP_FOLDER_PREFIX: 'temp_',
+  TEXT_UPDATE_INTERVAL: 3000,  // テキスト書き込み間隔
+  SEQUENCE_PADDING: 5,         // シーケンス番号桁数
+};
+
+const UI_CONFIG = {
+  DISPLAY_UPDATE_DEBOUNCE: 500, // 表示更新遅延
+  AUTO_SCROLL_THRESHOLD: 100,   // 自動スクロール閾値
+  STATUS_UPDATE_INTERVAL: 1000, // 進行状況更新間隔
+};
+```
+
+### 10.2 リアルタイム文字起こし動作フロー
+
+#### 主要コンポーネント
+1. **RealTimeTranscriptionProcessor**: リアルタイム文字起こしの中央制御
+2. **ChunkTranscriptionManager**: チャンク処理の統合管理
+3. **SpeechRecognition コンポーネント**: 文字起こし結果の表示
+
+#### 動作フロー詳細
+
+**Phase 1: 初期化・開始**
+```
+1. ユーザーが録音中ファイルに対して文字起こし開始
+   ↓
+2. ChunkTranscriptionManager.startChunkTranscription() 呼び出し
+   ↓
+3. 録音中WebMファイル検出
+   ↓
+4. RealTimeTranscriptionProcessor.startRealTimeTranscription() 開始
+   ↓
+5. 初期化処理:
+   - chunkSequence = 0
+   - lastProcessedOffset = 0
+   - processedChunks.clear()
+   - 処理間隔 5秒のタイマー開始
+```
+
+**Phase 2: 定期監視・データ検出**
+```
+タイマー実行（5秒間隔）:
+1. checkAndProcessNewData() 実行
+   ↓
+2. ファイルサイズチェック
+   - 現在のファイルサイズ取得
+   - 前回処理位置と比較
+   ↓
+3. 新しいデータ検出判定
+   - 推定時間計算: (新しいデータサイズ) / 16000 bytes/秒
+   - 最小処理時間（20秒）との比較
+   ↓
+4. 処理条件満たした場合 → processNewChunk() 呼び出し
+```
+
+**Phase 3: チャンク処理**
+```
+processNewChunk() 実行:
+1. チャンクID生成: realtime_chunk_{chunkSequence}
+   ↓
+2. 時間範囲計算:
+   - startTime = chunkSequence * chunkSize
+   - endTime = startTime + chunkSize
+   ↓
+3. 重複処理チェック:
+   - 既に処理済みか確認
+   - 処理中フラグ確認
+   ↓
+4. 処理中フラグ設定:
+   - processingChunkId = chunkId
+   - processedChunks.set(processing_{chunkId})
+   ↓
+5. transcribeRecordingChunk() 呼び出し
+```
+
+**Phase 4: WAVファイル作成・文字起こし**
+```
+transcribeRecordingChunk() 実行:
+1. リトライループ開始（最大3回）
+   ↓
+2. createTempWavFromRecording() 呼び出し:
+   - WebMファイルからArrayBuffer取得
+   - 時間範囲指定でデータ抽出
+   - WAVヘッダー追加
+   - 一時ファイル保存
+   ↓
+3. サーバー状態確認:
+   - ensureServerRunning()
+   ↓
+4. 文字起こしAPI呼び出し:
+   - window.electronAPI.speechTranscribe()
+   ↓
+5. 結果処理:
+   - ChunkResult形式に変換
+   - 成功時: 次チャンクへ進行
+   - 失敗時: リトライまたはエラー記録
+```
+
+**Phase 5: 結果統合・表示**
+```
+文字起こし完了後:
+1. processedChunks.set(chunkId, result)
+   ↓
+2. コールバック実行:
+   - onChunkCompletedCallbacks.forEach()
+   ↓
+3. イベント発火:
+   - chunkTranscriptionCompleted
+   ↓
+4. SpeechRecognition コンポーネント:
+   - transcriptionResult 更新
+   - UI再レンダリング
+   ↓
+5. 次チャンク準備:
+   - chunkSequence++
+   - lastProcessedOffset 更新
+```
+
+#### 現在の設定値
+- **チャンクサイズ**: 20秒
+- **処理間隔**: 5秒
+- **最小処理時間**: 20秒
+- **最大リトライ回数**: 2回
+- **処理中フラグタイムアウト**: 3分
+- **推定バイト/秒**: 16,000 bytes
+
+#### 問題発生パターンと対策
+1. **処理中フラグスタック**: 3分タイムアウトで強制削除
+2. **サーバー接続切断**: エラー検出時の自動再起動
+3. **チャンク時間範囲エラー**: 固定サイズチャンク使用
+4. **データ不足エラー**: 初回チャンクの最小時間緩和
+
+#### 改善案：新しいファイルベースアプローチ
+
+**録音制御**
+1. 録音開始が押される
+2. 録音開始
+3. 保存用に内容が空のファイル作成
+4. テンポラリ用にファイル名と同じフォルダ作成
+5. チャンクサイズがたまったらチャンクごとにファイル保存
+6. 録音停止が押される
+7. トータル録音ファイルを空のファイルに上書き
+
+**文字起こし制御**
+1. リアルタイム文字起こし開始
+2. テンポラリフォルダに新しいファイルがあるか定期的にチェック
+3. 新しいファイルがあったら文字起こし開始
+4. １ファイルの文字起こしが終わるテキストをテキストファイルに書きだし、なければ作成
+5. 次のファイルを文字起こし開始、次のファイルがなければテンポラリフォルダを定期的にチェック
+6. 3に戻る
+
+**UI制御**
+- 文字起こし結果エリア: 書き出されたテキストファイルを定期監視して表示更新
+- 文字起こしエリア: チャンク書き出し・文字起こし状況を監視して表示
+- 録音コントロール: 録音・文字起こし統合ボタンを追加
+
+### 10.3 次ステップへの準備
+
+#### 技術的準備
 - 録音データのリアルタイム送信準備
 - WebSocket通信の基盤設計
 - チャンク分割処理の考慮
+
+#### スケジュール
+| Phase | 期間 | 主要成果物 |
+|-------|------|------------|
+| Phase 1 | 3日 | ファイル保存・監視 |
+| Phase 2 | 4日 | 文字起こしエンジン |
+| Phase 3 | 2日 | UI統合 |
+| Phase 4 | 2日 | エラーハンドリング |
+| Phase 5 | 2日 | 統合・テスト |
+| **合計** | **13日** | **完全実装** |
