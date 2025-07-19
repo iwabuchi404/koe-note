@@ -14,10 +14,7 @@ const BottomPanel: React.FC = () => {
   const [isPaused, setIsPaused] = useState<boolean>(false)
   const [recordingTime, setRecordingTime] = useState<number>(0)
   
-  // 再生関連状態
-  const [isPlaying, setIsPlaying] = useState<boolean>(false)
-  const [currentTime, setCurrentTime] = useState<number>(0)
-  const [duration, setDuration] = useState<number>(0)
+  // 再生関連状態（削除済み - RightPanelで管理）
   
   // デバイス関連状態
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([])
@@ -32,12 +29,8 @@ const BottomPanel: React.FC = () => {
   const [systemAudioDevices, setSystemAudioDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedSystemDevice, setSelectedSystemDevice] = useState<string>('')
   
-  // 処理状態
-  // 削除: isTranscribing, isConverting は不要
-  
   // ファイルベースリアルタイム文字起こし状態
   const [isRealtimeTranscribing, setIsRealtimeTranscribing] = useState<boolean>(false)
-  const [realtimeStats, setRealtimeStats] = useState<any>(null)
   
   // マイク監視状態
   const [micStatus, setMicStatus] = useState<MicrophoneStatus | null>(null)
@@ -45,7 +38,6 @@ const BottomPanel: React.FC = () => {
   
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const recordingStartTimeRef = useRef<number>(0)
   const pausedTimeRef = useRef<number>(0) // 一時停止時間の累計
@@ -217,16 +209,13 @@ const BottomPanel: React.FC = () => {
     if (inputType === 'desktop') {
       const getDesktopSources = async () => {
         try {
-          console.log('デスクトップソースを取得中...')
           const sources = await window.electronAPI.getDesktopSources()
-          console.log('取得したデスクトップソース:', sources)
           setDesktopSources(sources)
           
           // デフォルトで最初のスクリーンを選択
           const screenSource = sources.find(source => source.name.includes('Screen') || source.name.includes('screen'))
           if (screenSource && !selectedDesktopSource) {
             setSelectedDesktopSource(screenSource.id)
-            console.log('デフォルトスクリーンを選択:', screenSource.name)
           }
         } catch (error) {
           console.error('デスクトップソース取得エラー:', error)
@@ -249,20 +238,9 @@ const BottomPanel: React.FC = () => {
       textFormat: 'detailed'
     })
     
-    // 統計更新コールバック
-    realtimeProcessorRef.current.onStatsUpdate((stats) => {
-      setRealtimeStats(stats)
-      console.log('リアルタイム文字起こし統計更新:', stats)
-    })
-    
     // エラーコールバック
     realtimeProcessorRef.current.onError((error) => {
       console.error('リアルタイム文字起こしエラー:', error)
-    })
-    
-    // 文字起こし完了コールバック
-    realtimeProcessorRef.current.onTranscriptionComplete((result, chunkInfo) => {
-      console.log(`チャンク文字起こし完了: ${chunkInfo.filename} → ${result.segments.length}セグメント`)
     })
     
     return () => {
@@ -349,23 +327,16 @@ const BottomPanel: React.FC = () => {
   // 録音処理の共通関数
   const startRecording = useCallback(async (enableTranscription: boolean) => {
     try {
-      console.log('🎬 録音開始処理開始:', { inputType, selectedDevice, enableTranscription })
       let stream: MediaStream
       
       if (inputType === 'desktop') {
-        // Electron desktopCapturerを使用したデスクトップキャプチャ
-        console.log('Starting desktop capture with desktopCapturer...');
-        
         if (!selectedDesktopSource) {
           throw new Error('デスクトップソースが選択されていません');
         }
         
         try {
-          console.log('🖥️ デスクトップ音声録音開始 - Using desktop source:', selectedDesktopSource);
-          
           // まず音声のみでキャプチャを試行
           try {
-            console.log('🎵 音声のみでデスクトップキャプチャを試行...');
             stream = await navigator.mediaDevices.getUserMedia({
               audio: {
                 chromeMediaSource: 'desktop',
@@ -389,10 +360,7 @@ const BottomPanel: React.FC = () => {
               } as any,
               video: false // 音声のみ
             });
-            
-            console.log('✅ 音声のみキャプチャ成功');
           } catch (audioOnlyError) {
-            console.warn('⚠️ 音声のみキャプチャ失敗、映像込みで試行:', audioOnlyError);
             
             // 音声のみでキャプチャできない場合、映像も含めて取得
             stream = await navigator.mediaDevices.getUserMedia({
@@ -425,29 +393,10 @@ const BottomPanel: React.FC = () => {
                 maxHeight: 720
               } as any
             });
-            
-            console.log('✅ 映像込みキャプチャ成功');
           }
-          
-          console.log('🎵 Desktop capture stream obtained:', {
-            id: stream.id,
-            active: stream.active,
-            audioTracks: stream.getAudioTracks().length,
-            videoTracks: stream.getVideoTracks().length
-          });
           
           // 音声トラックをチェック
           const audioTracks = stream.getAudioTracks();
-          console.log('🎤 Audio tracks:', audioTracks.map(track => ({
-            id: track.id,
-            kind: track.kind,
-            label: track.label,
-            enabled: track.enabled,
-            readyState: track.readyState,
-            constraints: track.getConstraints()
-          })));
-          
-          // 音声トラックが取得できているかチェック
           if (audioTracks.length === 0) {
             throw new Error('デスクトップからの音声トラックが取得できませんでした');
           }
@@ -455,48 +404,18 @@ const BottomPanel: React.FC = () => {
           // 映像トラックを停止（音声のみ必要）
           const videoTracks = stream.getVideoTracks();
           if (videoTracks.length > 0) {
-            console.log('🎥 映像トラックを停止します:', videoTracks.length);
             videoTracks.forEach(track => {
-              console.log('🛑 Stopping video track:', track.id);
               track.stop();
-              // ストリームから映像トラックを削除
               stream.removeTrack(track);
             });
           }
           
-          // 最終的なストリーム状態を確認
-          console.log('🔊 最終ストリーム状態:', {
-            audioTracks: stream.getAudioTracks().length,
-            videoTracks: stream.getVideoTracks().length,
-            active: stream.active
-          });
-          
-          if (audioTracks.length === 0) {
-            throw new Error('デスクトップ音声トラックが取得できませんでした。システム音声の出力がない可能性があります。');
-          }
-          
-          console.log('Desktop audio capture successful');
-          
         } catch (desktopError) {
           console.error('Desktop capturer failed:', desktopError);
-          
-          // フォールバック処理を無効化し、直接エラーを投げる
-          const errorMessage = `🔊 デスクトップ音声キャプチャに失敗しました。\n\n❌ 発生したエラー:\n${desktopError instanceof Error ? desktopError.message : String(desktopError)}\n\n🔧 対処法:\n\n【方法1】入力タイプを「ステレオミックス」に変更\n- システム音声のみを録音したい場合はステレオミックスを使用\n\n【方法2】Windows設定でステレオミックスを有効化\n- 音声設定 → 録音デバイス → ステレオミックス有効\n\n【方法3】仮想オーディオケーブルを使用\n- VB-Cable等のソフトウェアをインストール`;
-          
-          console.error('💡 デスクトップ音声録音のトラブルシューティング情報:', {
-            selectedDesktopSource,
-            errorDetails: {
-              desktop: desktopError
-            }
-          });
-          
-          throw new Error(errorMessage);
+          throw new Error('デスクトップ音声キャプチャに失敗しました');
         }
         
       } else if (inputType === 'stereo-mix') {
-        // ステレオミックスでシステム音声を録音
-        console.log('🔊 ステレオミックスでシステム音声録音開始:', selectedSystemDevice);
-        
         if (!selectedSystemDevice) {
           throw new Error('システム音声デバイスが選択されていません');
         }
@@ -510,22 +429,10 @@ const BottomPanel: React.FC = () => {
           }
         });
         
-        console.log('✅ ステレオミックスストリーム取得成功:', {
-          id: stream.id,
-          active: stream.active,
-          audioTracks: stream.getAudioTracks().length
-        })
-        
       } else {
         // マイク音声
-        console.log('🎤 マイク音声でストリーム取得開始:', selectedDevice)
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { deviceId: selectedDevice }
-        })
-        console.log('✅ マイクストリーム取得成功:', {
-          id: stream.id,
-          active: stream.active,
-          audioTracks: stream.getAudioTracks().length
         })
       }
       
