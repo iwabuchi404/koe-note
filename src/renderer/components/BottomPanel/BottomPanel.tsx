@@ -14,8 +14,6 @@ const BottomPanel: React.FC = () => {
   const [isPaused, setIsPaused] = useState<boolean>(false)
   const [recordingTime, setRecordingTime] = useState<number>(0)
   
-  // 再生関連状態（削除済み - RightPanelで管理）
-  
   // デバイス関連状態
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState<string>('')
@@ -288,15 +286,22 @@ const BottomPanel: React.FC = () => {
   }, [])
 
   
-  // 録音開始（リアルタイム文字起こし付き）
+  // 録音開始ハンドラー
   const handleStartRecordingWithTranscription = useCallback(async () => {
     await startRecording(true);
-  }, []);
+  }, [inputType, selectedDevice, selectedDesktopSource, selectedSystemDevice]);
 
-  // 録音開始（録音のみ）
   const handleStartRecordingOnly = useCallback(async () => {
     await startRecording(false);
-  }, []);
+  }, [inputType, selectedDevice, selectedDesktopSource, selectedSystemDevice]);
+
+  // 録音状態リセット共通関数
+  const resetRecordingState = useCallback(() => {
+    setIsRecording(false)
+    setGlobalIsRecording(false)
+    setIsPaused(false)
+    setRecordingTime(0)
+  }, [setGlobalIsRecording]);
 
   // 録音処理の共通関数
   const startRecording = useCallback(async (enableTranscription: boolean) => {
@@ -413,7 +418,7 @@ const BottomPanel: React.FC = () => {
       // MediaRecorder設定
       let mediaRecorder: MediaRecorder
       let selectedMimeType: string
-      const chunkSizeMs = 20 * 1000; // 20秒間隔
+      const chunkSizeMs = 20 * 1000;
       
       const recorderOptions: MediaRecorderOptions = {
         audioBitsPerSecond: 128000
@@ -448,14 +453,11 @@ const BottomPanel: React.FC = () => {
       }
       
       const chunks: Blob[] = []
-      let recordingFilePath: string | null = null  // 録音中のファイルパスを保存
-      let recordingFilename: string | null = null  // 録音中のファイル名を保存
-      
-      // チャンクファイル管理
+      let recordingFilePath: string | null = null
+      let recordingFilename: string | null = null
       let chunkSequence = 0
       let tempFolderPath: string | null = null
       const chunkFiles: string[] = []
-      
       const periodChunks: Blob[] = []
       let lastChunkSaveTime = Date.now()
       
@@ -464,18 +466,16 @@ const BottomPanel: React.FC = () => {
           chunks.push(event.data)
           periodChunks.push(event.data)
           
-          // 20秒経過またはタイムスライスごとにチャンクファイル作成
           const currentTime = Date.now()
           const timeSinceLastSave = currentTime - lastChunkSaveTime
           
-          if (timeSinceLastSave >= chunkSizeMs - 1000) { // 19秒経過でチャンク保存（余裕を持たせる）
+          if (timeSinceLastSave >= chunkSizeMs - 1000) {
             try {
               chunkSequence++
               const timestamp = Date.now()
               const paddedSequence = String(chunkSequence).padStart(5, '0')
               const chunkFilename = `chunk_${paddedSequence}_${timestamp}.webm`
               
-              // テンポラリフォルダが未作成の場合は作成
               if (!tempFolderPath && recordingFilename) {
                 const baseFilename = recordingFilename.replace('.webm', '')
                 tempFolderPath = `temp_${baseFilename}`
@@ -483,26 +483,15 @@ const BottomPanel: React.FC = () => {
               
               if (tempFolderPath && periodChunks.length > 0) {
                 try {
-                  if (chunkSequence === 1) {
-                    // 最初のチャンクは完全なWebMファイルなので安全に保存
-                    const completeChunkBlob = new Blob(chunks, { type: selectedMimeType })
-                    const chunkBuffer = await completeChunkBlob.arrayBuffer()
-                    
-                    await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath)
-                    chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
-                  } else {
-                    // 2番目以降のチャンクは累積データから完全なWebMファイルを作成
-                    const cumulativeChunkBlob = new Blob(chunks, { type: selectedMimeType })
-                    const cumulativeBuffer = await cumulativeChunkBlob.arrayBuffer()
-                    
-                    await window.electronAPI.saveFile(cumulativeBuffer, chunkFilename, tempFolderPath)
-                    chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
-                  }
+                  const chunkBlob = new Blob(chunks, { type: selectedMimeType })
+                  const chunkBuffer = await chunkBlob.arrayBuffer()
+                  
+                  await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath)
+                  chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
                 } catch (error) {
                   console.error('チャンクファイル保存エラー:', error)
                 }
                 
-                // 期間チャンクをリセット
                 periodChunks.length = 0
                 lastChunkSaveTime = currentTime
               }
@@ -511,7 +500,6 @@ const BottomPanel: React.FC = () => {
             }
           }
           
-          // 従来の全体ファイル更新も継続（互換性のため）
           if (chunks.length > 0) {
             try {
               const combinedBlob = new Blob(chunks, { type: selectedMimeType })
@@ -608,10 +596,7 @@ const BottomPanel: React.FC = () => {
         }
         
         // 録音状態をリセット
-        setIsRecording(false)
-        setGlobalIsRecording(false)
-        setIsPaused(false)
-        setRecordingTime(0)
+        resetRecordingState()
         
         // 録音完了後にrecordingFileをクリア（ファイルリスト更新は LeftPanel に任せる）
         const cleanupRecordingState = () => {
@@ -795,57 +780,17 @@ const BottomPanel: React.FC = () => {
         enableTranscription
       })
       
-      // DOMExceptionの詳細情報を取得
-      let detailMessage = '';
-      let errorCode = '';
-      
-      if (error instanceof DOMException) {
-        detailMessage = `DOMException: ${error.name} - ${error.message}`;
-        errorCode = error.code?.toString() || 'unknown';
-        
-        console.error('DOMException詳細:', {
-          name: error.name,
-          message: error.message,
-          code: error.code,
-          stack: error.stack
-        });
-        
-        // Windowsでの一般的なエラーコードの解説
-        let specificAdvice = '';
-        switch (error.name) {
-          case 'NotAllowedError':
-            specificAdvice = '権限が拒否されました。管理者として実行するか、Windows設定でスクリーンキャプチャを許可してください。';
-            break;
-          case 'NotFoundError':
-            specificAdvice = 'キャプチャ可能なデバイスが見つかりません。別のアプリケーションが使用中の可能性があります。';
-            break;
-          case 'NotSupportedError':
-            specificAdvice = 'このブラウザまたはシステムではデスクトップキャプチャがサポートされていません。';
-            break;
-          case 'SecurityError':
-            specificAdvice = 'セキュリティ制限により拒否されました。HTTPSまたはローカル環境で実行してください。';
-            break;
-          default:
-            specificAdvice = 'システム設定を確認してください。';
-        }
-        detailMessage += `\n詳細: ${specificAdvice}`;
-      } else {
-        console.error('Unknown error type:', error);
-        detailMessage = error?.toString() || 'Unknown error';
-      }
+      const detailMessage = error instanceof Error ? error.message : String(error);
       
       const errorMessage = inputType === 'desktop' 
-        ? `デスクトップ音声へのアクセスが拒否されました。\n${detailMessage}\n\nWindows環境での対処法:\n1. 画面共有ダイアログで「システム音声を共有」をチェック\n2. Windowsプライバシー設定でデスクトップアプリのカメラ/マイクアクセスを許可\n3. Electronアプリを管理者として実行\n4. 他のアプリケーションがオーディオを使用していないか確認`
+        ? `デスクトップ音声へのアクセスが拒否されました。\n${detailMessage}`
         : `マイクへのアクセスが拒否されました。\n${detailMessage}`
       
       alert(errorMessage)
       console.error('録音開始エラー (full):', error)
       
       // エラー時も録音状態をリセット
-      setIsRecording(false)
-      setGlobalIsRecording(false)
-      setIsPaused(false)
-      setRecordingTime(0)
+      resetRecordingState()
       
       // エラー時にも録音中のファイルエントリを削除
       const removeRecordingFileEntry = async () => {
@@ -891,7 +836,7 @@ const BottomPanel: React.FC = () => {
       
       removeRecordingFileEntry()
     }
-  }, [selectedDevice, inputType, selectedDesktopSource])
+  }, [inputType, selectedDevice, selectedDesktopSource, selectedSystemDevice, resetRecordingState])
   
   // 録音停止
   const handleStopRecording = useCallback(async () => {
