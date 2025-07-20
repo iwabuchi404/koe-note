@@ -358,44 +358,98 @@ const BottomPanel: React.FC = () => {
         }
         
         try {
-          console.log('🎬 デスクトップ音声キャプチャ開始');
-          console.log('🔍 選択されたデスクトップソース:', selectedDesktopSource);
-          console.log('🔍 利用可能なデスクトップソース数:', desktopSources.length);
-          console.log('🔍 デスクトップソース一覧:', desktopSources.map(s => ({ id: s.id, name: s.name })));
+          console.log('🎬 Windowsデスクトップ音声録音開始（getDisplayMedia使用）');
           
-          // Step 19: 選択ロジックを完全にバイパスして、強制的にスクリーンソースを使用
-          console.log('🚨 選択ロジックバイパス: 強制的にスクリーンソース使用');
-          console.log('🔍 現在のselectedDesktopSource値:', selectedDesktopSource);
-          console.log('🔍 利用可能なスクリーンソース:');
+          // 最優先: getDisplayMedia API + WASAPIロープバック
+          console.log('🆕 getDisplayMedia API試行（Windows WASAPIロープバック対応）');
           
-          const availableScreenSources = desktopSources.filter(s => s.id.startsWith('screen:'));
-          availableScreenSources.forEach((source, index) => {
-            console.log(`  ${index}: ${source.id} - ${source.name}`);
-          });
-          
-          if (availableScreenSources.length === 0) {
-            throw new Error('スクリーンソースが見つかりません');
+          try {
+            // @ts-ignore
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              audio: true,
+              video: {
+                width: { ideal: 1 },
+                height: { ideal: 1 }
+              }
+            });
+            
+            console.log('✅ getDisplayMedia成功 - Windows WASAPIロープバック使用');
+            
+            // 取得結果の詳細ログ
+            console.log('🔍 getDisplayMedia結果詳細:');
+            console.log('  音声トラック数:', stream.getAudioTracks().length);
+            console.log('  映像トラック数:', stream.getVideoTracks().length);
+            
+            const audioTracks = stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              const audioTrack = audioTracks[0];
+              console.log('🎵 getDisplayMedia音声トラック:', {
+                label: audioTrack.label,
+                id: audioTrack.id,
+                kind: audioTrack.kind,
+                enabled: audioTrack.enabled,
+                readyState: audioTrack.readyState,
+                settings: audioTrack.getSettings()
+              });
+            }
+            
+            // MediaRecorder対応チェック
+            console.log('🔍 MediaRecorder対応チェック:');
+            console.log('  - ストリーム有効:', !!stream);
+            console.log('  - 音声トラック数:', stream.getAudioTracks().length);
+            console.log('  - 映像トラック数:', stream.getVideoTracks().length);
+            
+            // サポートされているMIMEタイプをチェック
+            const supportedTypes = [
+              'audio/webm',
+              'audio/webm;codecs=opus',
+              'audio/webm;codecs=vorbis',
+              'video/webm',
+              'video/webm;codecs=vp8',
+              'video/webm;codecs=vp9'
+            ];
+            
+            console.log('🔍 サポートされているMIMEタイプ:');
+            supportedTypes.forEach(type => {
+              const isSupported = MediaRecorder.isTypeSupported(type);
+              console.log(`  - ${type}: ${isSupported}`);
+            });
+            
+            // 映像トラックがある場合は削除して音声のみにする
+            const videoTracks = stream.getVideoTracks();
+            if (videoTracks.length > 0) {
+              console.log('🎥 映像トラックを停止して音声のみに変更');
+              videoTracks.forEach(track => {
+                track.stop();
+                stream.removeTrack(track);
+              });
+              console.log('✅ 映像トラック削除完了、音声のみのストリーム作成');
+            }
+            
+          } catch (getDisplayMediaError) {
+            console.warn('❌ getDisplayMedia失敗、従来方式にフォールバック:', getDisplayMediaError);
+            
+            // フォールバック: 従来のgetUserMedia方式
+            const availableScreenSources = desktopSources.filter(s => s.id.startsWith('screen:'));
+            if (availableScreenSources.length === 0) {
+              throw new Error('スクリーンソースが見つかりません');
+            }
+            
+            const forcedSource = availableScreenSources[0];
+            console.log('🔄 フォールバック: getUserMedia使用', forcedSource.id);
+            
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: forcedSource.id,
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+              } as any,
+              video: false
+            });
+            console.log('✅ フォールバック成功');
           }
-          
-          // 最初のスクリーンソースを強制使用
-          const forcedSource = availableScreenSources[0];
-          const actualSourceId = forcedSource.id;
-          
-          console.log('🎯 強制使用するソース:', forcedSource);
-          console.log('🎯 ソースID:', actualSourceId);
-          
-          // 音声のみで確実に取得
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: actualSourceId,
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false
-            } as any,
-            video: false
-          });
-          console.log('✅ 強制スクリーンソースで音声キャプチャ成功');
           
           // 音声トラックをチェック
           const audioTracks = stream.getAudioTracks();
@@ -534,6 +588,13 @@ const BottomPanel: React.FC = () => {
       }
       
       // MediaRecorder設定
+      console.log('🎬 MediaRecorder初期化開始');
+      console.log('  - ストリーム状態:', {
+        active: stream.active,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length
+      });
+      
       let mediaRecorder: MediaRecorder
       let selectedMimeType: string
       const chunkSizeMs = 20 * 1000;
@@ -542,17 +603,42 @@ const BottomPanel: React.FC = () => {
         audioBitsPerSecond: 128000
       };
       
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        selectedMimeType = 'audio/webm;codecs=opus'
-        recorderOptions.mimeType = selectedMimeType
-        mediaRecorder = new MediaRecorder(stream, recorderOptions)
-      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-        selectedMimeType = 'audio/webm'
-        recorderOptions.mimeType = selectedMimeType
-        mediaRecorder = new MediaRecorder(stream, recorderOptions)
-      } else {
-        mediaRecorder = new MediaRecorder(stream, recorderOptions)
-        selectedMimeType = mediaRecorder.mimeType
+      try {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          selectedMimeType = 'audio/webm;codecs=opus'
+          recorderOptions.mimeType = selectedMimeType
+          console.log('🎵 MediaRecorder初期化:', selectedMimeType);
+          mediaRecorder = new MediaRecorder(stream, recorderOptions)
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          selectedMimeType = 'audio/webm'
+          recorderOptions.mimeType = selectedMimeType
+          console.log('🎵 MediaRecorder初期化:', selectedMimeType);
+          mediaRecorder = new MediaRecorder(stream, recorderOptions)
+        } else {
+          console.log('🎵 MediaRecorder初期化: デフォルトオプション');
+          mediaRecorder = new MediaRecorder(stream, recorderOptions)
+          selectedMimeType = mediaRecorder.mimeType
+        }
+        
+        console.log('✅ MediaRecorder作成成功:', {
+          mimeType: selectedMimeType,
+          state: mediaRecorder.state,
+          audioBitsPerSecond: recorderOptions.audioBitsPerSecond
+        });
+        
+      } catch (mediaRecorderError) {
+        console.error('❌ MediaRecorder作成エラー:', mediaRecorderError);
+        
+        // より安全なデフォルト設定で再試行
+        console.log('🔄 デフォルト設定でMediaRecorder再試行');
+        try {
+          mediaRecorder = new MediaRecorder(stream);
+          selectedMimeType = mediaRecorder.mimeType;
+          console.log('✅ デフォルト設定でMediaRecorder作成成功:', selectedMimeType);
+        } catch (fallbackError) {
+          console.error('❌ デフォルト設定でも失敗:', fallbackError);
+          throw new Error(`MediaRecorderの初期化に失敗しました: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+        }
       }
       
       mediaRecorderRef.current = mediaRecorder
@@ -836,8 +922,31 @@ const BottomPanel: React.FC = () => {
       
       // チャンクファイル保存用のタイムスライス設定（20秒間隔）
       console.log('🎬 MediaRecorder開始中...', { chunkSizeMs, state: mediaRecorder.state })
-      mediaRecorder.start(chunkSizeMs)
-      console.log('✅ MediaRecorder.start()呼び出し完了, 新しいstate:', mediaRecorder.state)
+      console.log('🔍 開始前最終チェック:', {
+        streamActive: stream.active,
+        audioTracks: stream.getAudioTracks().map(t => ({
+          label: t.label,
+          enabled: t.enabled,
+          readyState: t.readyState
+        })),
+        recorderState: mediaRecorder.state,
+        mimeType: selectedMimeType
+      });
+      
+      try {
+        mediaRecorder.start(chunkSizeMs)
+        console.log('✅ MediaRecorder.start()呼び出し完了, 新しいstate:', mediaRecorder.state)
+      } catch (startError) {
+        console.error('❌ MediaRecorder.start()エラー:', startError);
+        console.error('❌ エラー時の状態:', {
+          streamActive: stream.active,
+          audioTracksCount: stream.getAudioTracks().length,
+          recorderState: mediaRecorder.state,
+          errorName: startError instanceof Error ? startError.name : 'Unknown',
+          errorMessage: startError instanceof Error ? startError.message : String(startError)
+        });
+        throw new Error(`録音開始に失敗しました: ${startError instanceof Error ? startError.message : String(startError)}`);
+      }
       setIsRecording(true)
       setGlobalIsRecording(true)
       setRecordingTime(0)

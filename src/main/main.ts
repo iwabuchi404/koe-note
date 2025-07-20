@@ -371,7 +371,37 @@ function createWindow(): void {
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
     writeLog(`権限要求: ${permission}`);
     // 全てのメディア関連権限を許可
-    callback(true);
+    if (permission === 'media') {
+      callback(true);
+    } else {
+      callback(true);
+    }
+  });
+
+  // getDisplayMediaのダイアログを処理するためのハンドラー（Windows WASAPIロープバック対応）
+  mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+    writeLog(`ディスプレイメディア要求を受信`);
+    
+    // desktopCapturerでソースを取得
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      writeLog(`利用可能なスクリーンソース数: ${sources.length}`);
+      
+      if (sources.length > 0) {
+        // Windows WASAPIロープバック使用
+        callback({ 
+          video: sources[0],
+          audio: 'loopback'  // Windows システム音声キャプチャ
+        });
+        writeLog(`✅ ディスプレイメディア応答: ビデオ=${sources[0].name}, オーディオ=loopback`);
+      } else {
+        writeLog(`❌ スクリーンソースが見つかりません`);
+        callback({});
+      }
+    }).catch(error => {
+      writeLog(`❌ desktopCapturer エラー:`);
+      writeLog(String(error));
+      callback({});
+    });
   });
 
   // レンダラープロセスのコンソールログを監視
@@ -428,10 +458,22 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.commandLine.appendSwitch('enable-features', 'VizDisplayCompositor,UseSkiaRenderer');
   
-  // Windows システム音声キャプチャの問題を解決
-  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+  // Windows システム音声キャプチャの根本的修正
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,DesktopCaptureAudio');
   app.commandLine.appendSwitch('use-angle', 'gl');
   app.commandLine.appendSwitch('enable-zero-copy');
+  
+  // デスクトップ音声キャプチャを強制
+  app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
+  app.commandLine.appendSwitch('force-system-audio-capture');
+  app.commandLine.appendSwitch('enable-logging', 'stderr');
+  app.commandLine.appendSwitch('vmodule', 'webrtc*=1');
+  
+  // フェイクデバイスを完全に無効化し、実デバイスを強制
+  app.commandLine.appendSwitch('disable-default-apps');
+  app.commandLine.appendSwitch('use-real-device-for-media-stream');
+  app.commandLine.appendSwitch('enable-system-audio-capture-for-desktop-share');
+  app.commandLine.appendSwitch('force-audio-service-sandbox', 'false');
 }
 
 // すべてのウィンドウが閉じられたときの処理
