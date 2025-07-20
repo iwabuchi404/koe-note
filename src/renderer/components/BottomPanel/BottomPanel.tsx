@@ -3,6 +3,7 @@ import { useAppContext } from '../../App'
 import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor'
 import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor'
 import { AudioMixingService, MixingConfig, AudioLevels } from '../../services/AudioMixingService' 
+import { SimpleChunkedWebmFixer } from '../../services/SimpleChunkedWebmFixer';
 /**
  * 下部パネル - コントロールパネル
  * 録音・再生・文字起こし等の主要操作を提供
@@ -57,73 +58,12 @@ const BottomPanel: React.FC = () => {
   const realtimeProcessorRef = useRef<FileBasedRealtimeProcessor | null>(null)
   const micMonitorRef = useRef<MicrophoneMonitor | null>(null)
   
-  // WebMヘッダー作成関数
-  const createWebMHeader = useCallback((clusterData: ArrayBuffer): ArrayBuffer => {
-    try {
-      // 固定のWebMヘッダー（EBML + Segment + Info + Tracks構造）
-      const webmHeader = new Uint8Array([
-        0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81, 0x01,
-        0x42, 0xF2, 0x81, 0x04, 0x42, 0xF3, 0x81, 0x08, 0x42, 0x82, 0x84, 0x77, 0x65,
-        0x62, 0x6D, 0x42, 0x87, 0x81, 0x04, 0x42, 0x85, 0x81, 0x02, 0x18, 0x53, 0x80,
-        0x67, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x15, 0x49, 0xA9, 0x66,
-        0x8E, 0x2A, 0xD7, 0xB1, 0x83, 0x0F, 0x42, 0x40, 0x4D, 0x80, 0x84, 0x77, 0x65,
-        0x62, 0x6D, 0x57, 0x41, 0x84, 0x77, 0x65, 0x62, 0x6D, 0x16, 0x54, 0xAE, 0x6B,
-        0xA7, 0xAE, 0xA0, 0xD7, 0x81, 0x01, 0x73, 0xC5, 0x88, 0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x01, 0x83, 0x81, 0x02, 0x86, 0x86, 0x41, 0x5F, 0x4F, 0x50,
-        0x55, 0x53, 0xE1, 0x87, 0xB5, 0x84, 0x47, 0x70, 0x00, 0x00, 0x9F, 0x81, 0x02
-      ])
-      
-      // Cluster header with data
-      const clusterHeaderSize = clusterData.byteLength + 8 // +8 for timecode
-      let clusterSizeBytes: Uint8Array
-      
-      // VINT encoding for cluster size
-      if (clusterHeaderSize < 0x7F) {
-        clusterSizeBytes = new Uint8Array([0x80 | clusterHeaderSize])
-      } else if (clusterHeaderSize < 0x3FFF) {
-        clusterSizeBytes = new Uint8Array([
-          0x40 | (clusterHeaderSize >> 8),
-          clusterHeaderSize & 0xFF
-        ])
-      } else if (clusterHeaderSize < 0x1FFFFF) {
-        clusterSizeBytes = new Uint8Array([
-          0x20 | (clusterHeaderSize >> 16),
-          (clusterHeaderSize >> 8) & 0xFF,
-          clusterHeaderSize & 0xFF
-        ])
-      } else {
-        // Use unknown length for large clusters
-        clusterSizeBytes = new Uint8Array([0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
-      }
-      
-      const clusterHeader = new Uint8Array([
-        0x1F, 0x43, 0xB6, 0x75, // Cluster
-        ...clusterSizeBytes,
-        0xE7, 0x81, 0x00 // Timecode = 0
-      ])
-      
-      // Combine all parts
-      const totalSize = webmHeader.length + clusterHeader.length + clusterData.byteLength
-      const result = new ArrayBuffer(totalSize)
-      const resultView = new Uint8Array(result)
-      
-      let offset = 0
-      resultView.set(webmHeader, offset)
-      offset += webmHeader.length
-      
-      resultView.set(clusterHeader, offset)
-      offset += clusterHeader.length
-      
-      resultView.set(new Uint8Array(clusterData), offset)
-      
-      console.log(`WebMヘッダー作成完了: ${totalSize} bytes (ヘッダー: ${webmHeader.length + clusterHeader.length}, データ: ${clusterData.byteLength})`)
-      
-      return result
-    } catch (error) {
-      console.error('WebMヘッダー作成エラー:', error)
-      throw error
-    }
-  }, [])
+  // ライブラリなしでのWebMチャンク修正クラス
+
+    
+  // WebMチャンク修正クラスのインスタンスはuseRefで管理
+  const webmFixerRef = useRef<SimpleChunkedWebmFixer>(new SimpleChunkedWebmFixer());
+
   
   // HTMLAudioElementを使って正確なdurationを取得する関数
   const getAccurateDuration = (blob: Blob): Promise<number> => {
@@ -703,63 +643,77 @@ const BottomPanel: React.FC = () => {
       const chunkFiles: string[] = []
       const periodChunks: Blob[] = []
       let lastChunkSaveTime = Date.now()
-      
-      mediaRecorder.ondataavailable = async (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data)
-          periodChunks.push(event.data)
-          
-          const currentTime = Date.now()
-          const timeSinceLastSave = currentTime - lastChunkSaveTime
-          
-          if (timeSinceLastSave >= chunkSizeMs - 1000) {
-            try {
-              chunkSequence++
-              const timestamp = Date.now()
-              const paddedSequence = String(chunkSequence).padStart(5, '0')
-              const chunkFilename = `chunk_${paddedSequence}_${timestamp}.webm`
-              
-              if (!tempFolderPath && recordingFilename) {
-                const baseFilename = recordingFilename.replace('.webm', '')
-                tempFolderPath = `temp_${baseFilename}`
-              }
-              
-              if (tempFolderPath && periodChunks.length > 0) {
-                try {
-                  const chunkBlob = new Blob(chunks, { type: selectedMimeType })
-                  const chunkBuffer = await chunkBlob.arrayBuffer()
-                  
-                  await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath)
-                  chunkFiles.push(`${tempFolderPath}/${chunkFilename}`)
-                } catch (error) {
-                  console.error('チャンクファイル保存エラー:', error)
+            
+
+      mediaRecorder.ondataavailable = async (event: BlobEvent) => {
+        if (event.data.size === 0) return;
+
+        // 1. まずはデータを配列に蓄積するだけ
+        chunks.push(event.data);
+        periodChunks.push(event.data);
+
+        const currentTime = Date.now();
+        const timeSinceLastSave = currentTime - lastChunkSaveTime;
+
+        // 2. 20秒経過した場合にのみ、ファイル処理をまとめて実行
+        if (timeSinceLastSave >= chunkSizeMs) {
+          try {
+            chunkSequence++;
+
+            if (!tempFolderPath && recordingFilename) {
+              tempFolderPath = `temp_${recordingFilename.replace('.webm', '')}`;
+            }
+            if (!tempFolderPath) {
+              console.warn('⚠️ テンポラリフォルダ未設定。');
+              return;
+            }
+
+            // ★★★ 20秒間蓄積したすべてのデータ片を、ここで初めて一つのBlobに結合 ★★★
+            const chunkBlob = new Blob(periodChunks, { type: selectedMimeType });
+            
+            // 次の期間のためにリセット
+            periodChunks.length = 0; 
+            lastChunkSaveTime = currentTime;
+
+            if (chunkBlob.size === 0) return;
+
+            // --- ここから、完全に結合されたBlobに対してFixerを適用する ---
+            let finalChunkBlob: Blob | null = null;
+            const chunkFilename = `chunk_${String(chunkSequence).padStart(5, '0')}.webm`;
+
+            if (chunkSequence === 1) {
+              // 最初の20秒分の完全なチャンク
+              finalChunkBlob = chunkBlob;
+              console.log(`📝 チャンク1: 完全なBlobを処理 (サイズ: ${finalChunkBlob.size} bytes)`);
+              await webmFixerRef.current.processFirstChunk(finalChunkBlob);
+            } else {
+              // 2つ目以降の20秒分の完全なチャンク
+              if (webmFixerRef.current.isHeaderReady) {
+                console.log(`📝 チャンク${chunkSequence}: ヘッダー結合処理を実行中...`);
+                // ★ createValidChunkに渡すのは、生データ(event.data)ではなく、結合済みのchunkBlob
+                finalChunkBlob = await webmFixerRef.current.createValidChunk(chunkBlob);
+                if (!finalChunkBlob) {
+                  throw new Error(`チャンク${chunkSequence}の有効なファイル作成に失敗`);
                 }
-                
-                periodChunks.length = 0
-                lastChunkSaveTime = currentTime
+              } else {
+                console.warn(`⚠️ チャンク${chunkSequence}: ヘッダー未準備のためスキップ。`);
+                return;
               }
-            } catch (error) {
-              console.error('チャンクファイル保存エラー:', error)
             }
-          }
-          
-          if (chunks.length > 0) {
-            try {
-              const combinedBlob = new Blob(chunks, { type: selectedMimeType })
-              const arrayBuffer = await combinedBlob.arrayBuffer()
-              
-              if (!recordingFilePath && recordingFilename) {
-                recordingFilePath = await window.electronAPI.saveFile(arrayBuffer, recordingFilename)
-              } else if (recordingFilename) {
-                await window.electronAPI.saveFile(arrayBuffer, recordingFilename)
-              }
-            } catch (error) {
-              console.error('録音中ファイル書き込みエラー:', error)
+
+            // ファイル保存
+            const chunkBuffer = await finalChunkBlob.arrayBuffer();
+            if (chunkBuffer.byteLength > 0) {
+              console.log(`💾 チャンク${chunkSequence}を保存: ${chunkFilename}`);
+              await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath);
+              chunkFiles.push(`${tempFolderPath}/${chunkFilename}`);
             }
+          } catch (error) {
+            console.error(`❌ チャンク${chunkSequence}の処理中にエラー:`, error);
           }
         }
-      }
-      
+      };
+        
       mediaRecorder.onstop = async () => {
         // 正確な録音時間を計算（ミリ秒単位、一時停止時間を除外）
         const recordingEndTime = Date.now()
@@ -995,6 +949,10 @@ const BottomPanel: React.FC = () => {
       recordingStartTimeRef.current = Date.now()
       pausedTimeRef.current = 0 // 一時停止時間をリセット
       console.log('Recording started at:', new Date(recordingStartTimeRef.current).toISOString())
+      
+      // WebMチャンク修正クラスをリセット
+      webmFixerRef.current.reset()
+      console.log('📝 WebMチャンク修正システム初期化完了')
       
       // テンポラリフォルダパスを事前に設定
       if (recordingFilename && typeof recordingFilename === 'string') {
