@@ -21,13 +21,13 @@
 ### 2.1 必須機能
 - **録音機能**
   - **音声入力デバイス選択**
-    - マイク入力（複数デバイス対応）
-    - デスクトップ音声キャプチャ
-    - アプリケーション音声キャプチャ
+    - **標準モード (FFmpeg不要)**: マイク入力 + システム音声全体のミキシング（標準APIにて対応）
+    - **高機能モード (FFmpeg必須)**: 上記に加え、アプリケーション単位での個別音声キャプチャに対応(@roamhq/electron-recorderにて対応)
     - **マルチソース・ミキシング録音**
       - マイク入力（自分の声）とデスクトップ音声（相手の声）を同時に録音する機能。
       - オンライン会議など、複数音源を一つのファイルに記録する主要ユースケースに対応。
       - ユーザーは入力デバイスを複数選択可能。
+      
 
 
 - **録音制御**
@@ -90,9 +90,16 @@
 
 ### 3.2 音声処理ライブラリ
 - **音声入力**: 
-  - `navigator.mediaDevices` (Web API)
-  - `@roamhq/electron-recorder` - デスクトップ音声
-  - `electron-audio-capture` - システム音声
+  - `navigator.mediaDevices` (Web API) - マイク入力・デスクトップ音声
+  - **Windows デスクトップ音声**: `desktopCapturer` + `getDisplayMedia` (実装済み)
+    - Windows WASAPI ロープバック機能使用
+    - Electron v28以降で安定対応
+    - 外部ライブラリ不要
+    **録音バックエンドは、ユーザー環境のFFmpegの有無により動的に切り替えるハイブリッド構成を採用する。**
+    - **1. FFmpegが存在しない場合 (標準モード)**:
+      - `Web Audio API`: マイクとデスクトップ音声（システム全体）をミキシングするために使用。
+    - **2. FFmpegが存在する場合 (高機能モード)**:
+      - `@roamhq/electron-recorder`: アプリケーションごとの音声キャプチャを含む、より高度で安定した録音処理に使用。
 - **MP3変換**: 
   - **Option 1**: `ffmpeg.wasm` (推奨) - 高品質、多機能
   - **Option 2**: `lamejs` - 軽量、シンプル
@@ -126,8 +133,10 @@
 - **録音形式**: WebM (Opus codec) → 後にMP3変換可能
 - **音声入力**:
   - `navigator.mediaDevices.getUserMedia()` - マイク入力
-  - `navigator.mediaDevices.getDisplayMedia()` - デスクトップ音声
-  - `@roamhq/electron-recorder` - アプリケーション音声キャプチャ
+  - **`navigator.mediaDevices.getDisplayMedia()` - デスクトップ音声 (実装済み)**
+    - Windows: `desktopCapturer` + WASAPI ロープバック
+    - `setDisplayMediaRequestHandler` での権限制御
+    - `audio: 'loopback'` でシステム音声録音
 - **ミキシング**: **`Web Audio API` (`AudioContext`, `MediaStreamAudioSourceNode`, `MediaStreamAudioDestinationNode`) を使用して、複数の`MediaStream`を一つのトラックに統合。**
   - **録音**: `MediaRecorder API`
   - **再生**: `HTMLAudioElement`
@@ -164,13 +173,46 @@ React Context + useReducer
 
 ### 4.4 デスクトップ音声録音ライブラリ比較
 
-| ライブラリ | 対応OS | 実装難易度 | 安定性 | 推奨度 |
-|------------|--------|------------|--------|--------|
-| **@roamhq/electron-recorder** | Win/Mac | 簡単 | 高 | ★★★★★ |
-| **electron-audio-capture** | Win/Mac/Linux | 中程度 | 中 | ★★★☆☆ |
-| **desktop-capturer** | Win/Mac/Linux | 難しい | 高 | ★★☆☆☆ |
+| ライブラリ | 対応OS | 実装難易度 | 安定性 | 追加依存関係 | 推奨度 |
+|------------|--------|------------|--------|------------|--------|
+| **desktopCapturer + getDisplayMedia** | **Windows** | 簡単 | 高 | **なし** | ★★★★★ |
+| **@roamhq/electron-recorder** | Win/Mac | 簡単 | 高 | 外部パッケージ | ★★★★☆ |
+| **electron-audio-capture** | Win/Mac/Linux | 中程度 | 中 | 外部パッケージ | ★★★☆☆ |
 
-**推奨**: `@roamhq/electron-recorder` - 最も簡単で安定
+**実装済み**: `desktopCapturer` + `getDisplayMedia` - Windows WASAPI ロープバック使用
+**調査結果**: Windows環境ではElectron標準APIのみでシステム音声録音が実現可能
+
+#### 4.4.1 Windows デスクトップ音声録音 実装詳細
+**技術基盤**: 
+- Electron v28以降の`desktopCapturer` API
+- Windows WASAPI ロープバック機能
+- `setDisplayMediaRequestHandler`による権限制御
+
+**実装コード例**:
+```typescript
+// メインプロセス (main.ts)
+import { desktopCapturer } from 'electron';
+
+mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+  desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+    callback({ 
+      video: sources[0],
+      audio: 'loopback'  // Windows WASAPIロープバック
+    });
+  });
+});
+
+// レンダラープロセス (BottomPanel.tsx)
+const stream = await navigator.mediaDevices.getDisplayMedia({
+  audio: true,  // システム音声を含む
+  video: { width: { ideal: 1 }, height: { ideal: 1 } }
+});
+```
+
+**対応状況**:
+- ✅ Windows 10/11 - 完全対応
+- ❓ macOS - 要調査（Screen Recording権限必要）
+- ❓ Linux - 要調査（PulseAudio/ALSA依存）
 
 ### 4.5 音声可視化ライブラリ比較
 
