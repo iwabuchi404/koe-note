@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useAppContext } from '../../App'
 import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor'
-import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor' 
+import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor'
+import { AudioMixingService, MixingConfig, AudioLevels } from '../../services/AudioMixingService' 
 /**
  * 下部パネル - コントロールパネル
  * 録音・再生・文字起こし等の主要操作を提供
@@ -17,7 +18,7 @@ const BottomPanel: React.FC = () => {
   // デバイス関連状態
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDevice, setSelectedDevice] = useState<string>('')
-  const [inputType, setInputType] = useState<'microphone' | 'desktop' | 'stereo-mix'>('microphone')
+  const [inputType, setInputType] = useState<'microphone' | 'desktop' | 'stereo-mix' | 'mixing'>('microphone')
   
   // デスクトップキャプチャ関連状態
   const [desktopSources, setDesktopSources] = useState<any[]>([])
@@ -34,8 +35,22 @@ const BottomPanel: React.FC = () => {
   const [micStatus, setMicStatus] = useState<MicrophoneStatus | null>(null)
   const [micAlerts, setMicAlerts] = useState<MicrophoneAlert[]>([])
   
+  // ミキシング関連状態
+  const [mixingConfig, setMixingConfig] = useState<MixingConfig>({
+    enableMicrophone: true,
+    enableDesktop: true,
+    microphoneGain: 0.7,
+    desktopGain: 0.8
+  })
+  const [audioLevels, setAudioLevels] = useState<AudioLevels>({
+    microphoneLevel: 0,
+    desktopLevel: 0,
+    mixedLevel: 0
+  })
+  
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioMixingServiceRef = useRef<AudioMixingService | null>(null)
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const recordingStartTimeRef = useRef<number>(0)
   const pausedTimeRef = useRef<number>(0) // 一時停止時間の累計
@@ -184,7 +199,7 @@ const BottomPanel: React.FC = () => {
   
   // デスクトップキャプチャソース一覧を取得
   useEffect(() => {
-    if (inputType === 'desktop') {
+    if (inputType === 'desktop' || inputType === 'mixing') {
       const getDesktopSources = async () => {
         try {
           const sources = await window.electronAPI.getDesktopSources()
@@ -352,7 +367,31 @@ const BottomPanel: React.FC = () => {
     try {
       let stream: MediaStream
       
-      if (inputType === 'desktop') {
+      if (inputType === 'mixing') {
+        // ミキシングモード
+        console.log('🎛️ ミキシングモード録音開始', mixingConfig);
+        
+        if (!audioMixingServiceRef.current) {
+          audioMixingServiceRef.current = new AudioMixingService();
+        }
+        
+        // 音声レベル更新コールバック設定
+        audioMixingServiceRef.current.setLevelsUpdateCallback((levels: AudioLevels) => {
+          setAudioLevels(levels);
+        });
+        
+        // ミキシング設定更新
+        const config: MixingConfig = {
+          ...mixingConfig,
+          microphoneDeviceId: selectedDevice || undefined,
+          desktopSourceId: selectedDesktopSource || undefined
+        };
+        
+        // ミキシングストリーム作成
+        stream = await audioMixingServiceRef.current.createMixedStream(config);
+        console.log('✅ ミキシングストリーム作成完了');
+        
+      } else if (inputType === 'desktop') {
         if (!selectedDesktopSource) {
           throw new Error('デスクトップソースが選択されていません');
         }
@@ -1096,6 +1135,19 @@ const BottomPanel: React.FC = () => {
           console.error('ファイルベースリアルタイム文字起こし停止エラー:', realtimeError)
         }
       }
+      
+      // ミキシングサービス停止
+      if (audioMixingServiceRef.current) {
+        try {
+          console.log('🎛️ ミキシングサービス停止...')
+          await audioMixingServiceRef.current.cleanup()
+          audioMixingServiceRef.current = null
+          setAudioLevels({ microphoneLevel: 0, desktopLevel: 0, mixedLevel: 0 })
+          console.log('✅ ミキシングサービス停止完了')
+        } catch (mixingError) {
+          console.error('❌ ミキシングサービス停止エラー:', mixingError)
+        }
+      }
     }
   }, [isRecording, isRealtimeTranscribing])
   
@@ -1140,7 +1192,7 @@ const BottomPanel: React.FC = () => {
           <select 
             className="select"
             value={inputType}
-            onChange={(e) => setInputType(e.target.value as 'microphone' | 'desktop' | 'stereo-mix')}
+            onChange={(e) => setInputType(e.target.value as 'microphone' | 'desktop' | 'stereo-mix' | 'mixing')}
             disabled={isRecording}
             style={{ 
               width: '200px',
@@ -1150,6 +1202,7 @@ const BottomPanel: React.FC = () => {
             <option value="microphone">🎤 マイク音声</option>
             <option value="desktop">🖥️ デスクトップ音声</option>
             <option value="stereo-mix">🔊 ステレオミックス</option>
+            <option value="mixing">🎛️ ミキシング</option>
           </select>
           {inputType === 'desktop' && (
             <div className="text-secondary" style={{ fontSize: '11px' }}>
@@ -1161,6 +1214,11 @@ const BottomPanel: React.FC = () => {
           {inputType === 'stereo-mix' && (
             <div className="text-secondary" style={{ fontSize: '11px' }}>
               ※システム音声のみを録音します。マイク音声も含む場合があります。
+            </div>
+          )}
+          {inputType === 'mixing' && (
+            <div className="text-secondary" style={{ fontSize: '11px' }}>
+              ※マイク音声とデスクトップ音声を同時に録音します。
             </div>
           )}
         </div>
@@ -1320,6 +1378,147 @@ const BottomPanel: React.FC = () => {
           </div>
         )}
         
+        {/* ミキシング設定（ミキシングモードの場合のみ） */}
+        {inputType === 'mixing' && (
+          <div className="mixing-panel">
+            <h4 className="mixing-panel__title">🎛️ ミキシング設定</h4>
+            
+            {/* マイク音声設定 */}
+            <div className="mixing-panel__row">
+              <label className="mixing-panel__checkbox-group">
+                <input 
+                  type="checkbox" 
+                  checked={mixingConfig.enableMicrophone}
+                  onChange={(e) => setMixingConfig(prev => ({ ...prev, enableMicrophone: e.target.checked }))}
+                  disabled={isRecording}
+                />
+                <span className="text-secondary">🎤 マイク音声を含める</span>
+              </label>
+              {mixingConfig.enableMicrophone && (
+                <select 
+                  className="select mixing-panel__device-select"
+                  value={selectedDevice}
+                  onChange={(e) => setSelectedDevice(e.target.value)}
+                  disabled={isRecording}
+                  style={{ opacity: isRecording ? 0.5 : 1 }}
+                >
+                  {availableDevices.map(device => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `マイク ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            {/* デスクトップ音声設定 */}
+            <div className="mixing-panel__row">
+              <label className="mixing-panel__checkbox-group">
+                <input 
+                  type="checkbox" 
+                  checked={mixingConfig.enableDesktop}
+                  onChange={(e) => setMixingConfig(prev => ({ ...prev, enableDesktop: e.target.checked }))}
+                  disabled={isRecording}
+                />
+                <span className="text-secondary">🖥️ デスクトップ音声を含める</span>
+              </label>
+              {mixingConfig.enableDesktop && (
+                <select 
+                  className="select mixing-panel__device-select"
+                  value={selectedDesktopSource}
+                  onChange={(e) => setSelectedDesktopSource(e.target.value)}
+                  disabled={isRecording}
+                  style={{ opacity: isRecording ? 0.5 : 1 }}
+                >
+                  <option value="">選択してください</option>
+                  {desktopSources.map(source => (
+                    <option key={source.id} value={source.id}>
+                      {source.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            {/* 音声レベル調整 */}
+            {!isRecording && (
+              <div className="mixing-panel__gain-controls">
+                <div className="mixing-panel__gain-group">
+                  <label className="mixing-panel__gain-label">マイク:</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.1"
+                    value={mixingConfig.microphoneGain}
+                    onChange={(e) => setMixingConfig(prev => ({ ...prev, microphoneGain: parseFloat(e.target.value) }))}
+                    className="mixing-panel__gain-slider"
+                  />
+                  <span className="mixing-panel__gain-value">
+                    {Math.round(mixingConfig.microphoneGain * 100)}%
+                  </span>
+                </div>
+                <div className="mixing-panel__gain-group">
+                  <label className="mixing-panel__gain-label">デスクトップ:</label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.1"
+                    value={mixingConfig.desktopGain}
+                    onChange={(e) => setMixingConfig(prev => ({ ...prev, desktopGain: parseFloat(e.target.value) }))}
+                    className="mixing-panel__gain-slider"
+                  />
+                  <span className="mixing-panel__gain-value">
+                    {Math.round(mixingConfig.desktopGain * 100)}%
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {/* リアルタイム音声レベル表示（録音中のみ） */}
+            {isRecording && (
+              <div className="mixing-panel__levels">
+                <div className="mixing-panel__levels-title">リアルタイム音声レベル:</div>
+                <div className="mixing-panel__level-row">
+                  <div className="mixing-panel__level-group">
+                    <span className="mixing-panel__level-label">マイク:</span>
+                    <div className="mixing-panel__level-bar">
+                      <div 
+                        className={`mixing-panel__level-fill ${
+                          audioLevels.microphoneLevel > 0.8 ? 'mixing-panel__level-fill--high' : 
+                          audioLevels.microphoneLevel > 0.5 ? 'mixing-panel__level-fill--medium' : 
+                          'mixing-panel__level-fill--low'
+                        }`}
+                        style={{ width: `${audioLevels.microphoneLevel * 100}%` }}
+                      />
+                    </div>
+                    <span className="mixing-panel__level-value">
+                      {Math.round(audioLevels.microphoneLevel * 100)}%
+                    </span>
+                  </div>
+                  <div className="mixing-panel__level-group">
+                    <span className="mixing-panel__level-label">デスクトップ:</span>
+                    <div className="mixing-panel__level-bar">
+                      <div 
+                        className={`mixing-panel__level-fill ${
+                          audioLevels.desktopLevel > 0.8 ? 'mixing-panel__level-fill--high' : 
+                          audioLevels.desktopLevel > 0.5 ? 'mixing-panel__level-fill--medium' : 
+                          'mixing-panel__level-fill--low'
+                        }`}
+                        style={{ width: `${audioLevels.desktopLevel * 100}%` }}
+                      />
+                    </div>
+                    <span className="mixing-panel__level-value">
+                      {Math.round(audioLevels.desktopLevel * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
         {/* 録音コントロール */}
         <div className="flex items-center gap-md">
           <div className="flex gap-sm">
@@ -1331,7 +1530,10 @@ const BottomPanel: React.FC = () => {
                   disabled={
                     (inputType === 'microphone' && !selectedDevice) ||
                     (inputType === 'desktop' && !selectedDesktopSource) ||
-                    (inputType === 'stereo-mix' && !selectedSystemDevice)
+                    (inputType === 'stereo-mix' && !selectedSystemDevice) ||
+                    (inputType === 'mixing' && !mixingConfig.enableMicrophone && !mixingConfig.enableDesktop) ||
+                    (inputType === 'mixing' && mixingConfig.enableMicrophone && !selectedDevice) ||
+                    (inputType === 'mixing' && mixingConfig.enableDesktop && !selectedDesktopSource)
                   }
                 >
                   ● 録音・文字起こし
@@ -1342,7 +1544,10 @@ const BottomPanel: React.FC = () => {
                   disabled={
                     (inputType === 'microphone' && !selectedDevice) ||
                     (inputType === 'desktop' && !selectedDesktopSource) ||
-                    (inputType === 'stereo-mix' && !selectedSystemDevice)
+                    (inputType === 'stereo-mix' && !selectedSystemDevice) ||
+                    (inputType === 'mixing' && !mixingConfig.enableMicrophone && !mixingConfig.enableDesktop) ||
+                    (inputType === 'mixing' && mixingConfig.enableMicrophone && !selectedDevice) ||
+                    (inputType === 'mixing' && mixingConfig.enableDesktop && !selectedDesktopSource)
                   }
                 >
                   ● 録音のみ

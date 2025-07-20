@@ -240,9 +240,8 @@ html, body {
 
 /* 下部パネル（コントロール） */
 .bottom-panel {
-  height: var(--bottom-panel-height);
   min-height: var(--bottom-panel-height);
-  max-height: var(--bottom-panel-height);
+  max-height: 60vh; /* 最大でもビューポートの60%まで */
   background-color: var(--color-bg-secondary);
   border-top: var(--border-width) solid var(--color-border);
   display: flex;
@@ -270,6 +269,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+  overflow-y: auto; /* 内容がはみ出した場合はスクロール */
 }
 
 /* ボタン共通スタイル */
@@ -704,9 +704,8 @@ html, body {
 }
 
 .layout-3pane .bottom-section {
-  height: var(--bottom-panel-height);
   min-height: var(--bottom-panel-height);
-  max-height: var(--bottom-panel-height);
+  max-height: 60vh;
   overflow: hidden;
 }
 
@@ -812,4 +811,136 @@ html, body {
   flex: 1;
   overflow-y: auto;
   max-height: none !important;
+}
+
+/* ミキシング設定パネル */
+.mixing-panel {
+  background-color: var(--color-bg-tertiary);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+}
+
+.mixing-panel__title {
+  color: var(--color-accent);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.mixing-panel__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.mixing-panel__checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 180px;
+}
+
+.mixing-panel__device-select {
+  min-width: 200px;
+  flex: 1;
+}
+
+.mixing-panel__gain-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-top: var(--spacing-xs);
+}
+
+.mixing-panel__gain-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.mixing-panel__gain-label {
+  min-width: 80px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.mixing-panel__gain-slider {
+  width: 100px;
+}
+
+.mixing-panel__gain-value {
+  min-width: 30px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.mixing-panel__levels {
+  margin-top: var(--spacing-sm);
+}
+
+.mixing-panel__levels-title {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.mixing-panel__level-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.mixing-panel__level-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.mixing-panel__level-label {
+  min-width: 80px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.mixing-panel__level-bar {
+  width: 100px;
+  height: 8px;
+  background-color: var(--color-bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  border: var(--border-width) solid var(--color-border);
+}
+
+.mixing-panel__level-fill {
+  height: 100%;
+  transition: width 0.1s ease;
+  border-radius: 3px;
+}
+
+.mixing-panel__level-fill--low {
+  background-color: var(--color-success);
+}
+
+.mixing-panel__level-fill--medium {
+  background-color: var(--color-warning);
+}
+
+.mixing-panel__level-fill--high {
+  background-color: var(--color-error);
+}
+
+.mixing-panel__level-value {
+  min-width: 30px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: right;
 }
