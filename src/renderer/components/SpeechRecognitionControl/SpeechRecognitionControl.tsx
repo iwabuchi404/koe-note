@@ -150,15 +150,31 @@ const SpeechRecognitionControl: React.FC<SpeechRecognitionControlProps> = ({
 
   // 音声認識実行前の確認
   const handleTranscribe = async () => {
-    if (!selectedFile) return;
+    console.log('🎤 handleTranscribe called', {
+      selectedFile: selectedFile ? {
+        filename: selectedFile.filename,
+        size: selectedFile.size,
+        isRecording: selectedFile.isRecording
+      } : null,
+      serverRunning: serverStatus.isRunning,
+      isTranscribing,
+      isChangingModel
+    });
+    
+    if (!selectedFile) {
+      console.log('❌ selectedFile is null');
+      return;
+    }
     
     // 既に文字起こしファイルが存在する場合は警告を表示
     if (selectedFile.hasTranscriptionFile) {
+      console.log('⚠️ Transcription file already exists, showing overwrite modal');
       setShowOverwriteModal(true);
       return;
     }
     
     // 文字起こし実行
+    console.log('✅ Starting transcription');
     await executeTranscription();
   };
 
@@ -214,15 +230,18 @@ const SpeechRecognitionControl: React.FC<SpeechRecognitionControlProps> = ({
 
   // チャンク分割文字起こし開始
   const handleChunkTranscribe = async () => {
-    console.log('🔥 チャンク分割文字起こしボタンが押されました！');
-    console.log('🔥 現在の状態:', {
+    console.log('⚡ handleChunkTranscribe called');
+    console.log('⚡ Current state:', {
       selectedFile: selectedFile ? {
         filename: selectedFile.filename,
         filepath: selectedFile.filepath,
         isRecording: selectedFile.isRecording,
         size: selectedFile.size
       } : null,
-      serverRunning: serverStatus.isRunning
+      serverRunning: serverStatus.isRunning,
+      isTranscribing,
+      isChangingModel,
+      chunkTranscribing: chunkProgress.isTranscribing
     });
     
     if (!selectedFile) {
@@ -569,6 +588,32 @@ const SpeechRecognitionControl: React.FC<SpeechRecognitionControlProps> = ({
 
       {/* 音声認識実行 */}
       <div>
+        {/* デバッグ情報表示 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div style={{
+            padding: 'var(--spacing-sm)',
+            backgroundColor: 'rgba(255, 255, 0, 0.1)',
+            border: '1px solid #ffcc02',
+            borderRadius: 'var(--border-radius)',
+            marginBottom: 'var(--spacing-sm)',
+            fontSize: 'var(--font-size-sm)',
+            fontFamily: 'monospace'
+          }}>
+            <div>🔍 Debug Info:</div>
+            <div>selectedFile: {selectedFile ? selectedFile.filename : 'null'}</div>
+            <div>serverRunning: {serverStatus.isRunning ? 'Yes' : 'No'}</div>
+            <div>isTranscribing: {isTranscribing ? 'Yes' : 'No'}</div>
+            <div>isChangingModel: {isChangingModel ? 'Yes' : 'No'}</div>
+            <div>chunkTranscribing: {chunkProgress.isTranscribing ? 'Yes' : 'No'}</div>
+            {selectedFile && (
+              <>
+                <div>fileSize: {selectedFile.size}</div>
+                <div>isRecording: {selectedFile.isRecording ? 'Yes' : 'No'}</div>
+              </>
+            )}
+          </div>
+        )}
+        
         <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
           <button
             onClick={handleTranscribe}

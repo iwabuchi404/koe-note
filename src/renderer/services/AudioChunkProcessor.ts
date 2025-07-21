@@ -373,24 +373,90 @@ export class AudioChunkProcessor {
    * WAVファイル形式のバッファを作成
    */
   createWavBuffer(chunk: AudioChunk): ArrayBuffer {
-    const audioData = new Float32Array(chunk.audioData);
+    console.log(`🎵 WAVバッファ作成開始 - チャンク ${chunk.id}`);
+    
+    let audioData: Float32Array;
+    
+    // audioDataがArrayBufferの場合はFloat32Arrayに変換
+    if (chunk.audioData instanceof ArrayBuffer) {
+      console.log(`  - 入力データ型: ArrayBuffer (${chunk.audioData.byteLength} bytes)`);
+      
+      if (chunk.audioData.byteLength === 0) {
+        console.warn(`  - ⚠️ 空のArrayBufferが検出されました。無音データを生成します。`);
+        const estimatedSamples = Math.floor((chunk.endTime - chunk.startTime) * chunk.sampleRate * chunk.channels);
+        audioData = new Float32Array(estimatedSamples);
+        
+        // 微小なノイズを追加（完全な無音を避ける）
+        for (let i = 0; i < audioData.length; i++) {
+          audioData[i] = (Math.random() - 0.5) * 0.001;
+        }
+        console.log(`  - 無音データを生成しました (${audioData.length} samples)`);
+      } else {
+        audioData = new Float32Array(chunk.audioData);
+        console.log(`  - Float32Arrayに変換完了 (${audioData.length} samples)`);
+        
+        // サンプルデータの統計
+        const nonZeroCount = Array.from(audioData).filter(s => Math.abs(s) > 0.001).length;
+        const maxValue = Math.max(...Array.from(audioData).map(Math.abs));
+        console.log(`  - 非ゼロサンプル: ${nonZeroCount}/${audioData.length}`);
+        console.log(`  - 最大振幅: ${maxValue.toFixed(6)}`);
+        
+        if (nonZeroCount === 0) {
+          console.warn(`  - ⚠️ 全てのサンプルが無音です。データに問題がある可能性があります。`);
+        }
+      }
+    } else if (chunk.audioData && typeof chunk.audioData === 'object' && 'length' in chunk.audioData) {
+      // Float32Arrayまたは類似の配列オブジェクトの場合
+      console.log(`  - 入力データ型: 配列オブジェクト (length: ${(chunk.audioData as any).length})`);
+      audioData = new Float32Array(chunk.audioData as any);
+    } else {
+      // フォールバック: 空のデータまたは無効なデータの場合
+      console.warn(`  - ⚠️ チャンク ${chunk.id} の音声データが無効な形式です (${typeof chunk.audioData})。無音データを生成します。`);
+      const estimatedSamples = Math.floor((chunk.endTime - chunk.startTime) * chunk.sampleRate * chunk.channels);
+      audioData = new Float32Array(estimatedSamples);
+      
+      // 微小なノイズを追加（完全な無音を避ける）
+      for (let i = 0; i < audioData.length; i++) {
+        audioData[i] = (Math.random() - 0.5) * 0.001;
+      }
+      console.log(`  - フォールバック無音データを生成 (${audioData.length} samples)`);
+    }
+    
     const sampleRate = chunk.sampleRate;
     const channels = chunk.channels;
     const length = audioData.length;
+    const expectedLength = Math.floor((chunk.endTime - chunk.startTime) * chunk.sampleRate * chunk.channels);
+    
+    console.log(`  - サンプルレート: ${sampleRate}Hz`);
+    console.log(`  - チャンネル数: ${channels}`);
+    console.log(`  - 実際のサンプル数: ${length}`);
+    console.log(`  - 期待サンプル数: ${expectedLength}`);
+    console.log(`  - 実際の長さ: ${(length / (sampleRate * channels)).toFixed(3)}秒`);
+    console.log(`  - 期待する長さ: ${(chunk.endTime - chunk.startTime).toFixed(3)}秒`);
+    
+    if (Math.abs(length - expectedLength) > sampleRate * 0.1) { // 0.1秒以上の差がある場合
+      console.warn(`  - ⚠️ サンプル数が期待値と大きく異なります。差: ${Math.abs(length - expectedLength)} samples`);
+    }
     
     // WAVヘッダのサイズ（44バイト）
     const headerSize = 44;
     const dataSize = length * 2; // 16bit PCM
     const fileSize = headerSize + dataSize;
     
+    console.log(`  - WAVファイルサイズ: ${fileSize} bytes (ヘッダー: ${headerSize}, データ: ${dataSize})`);
+    
     const buffer = new ArrayBuffer(fileSize);
     const view = new DataView(buffer);
     
     // WAVヘッダを書き込み
+    console.log(`  - WAVヘッダーを書き込み中...`);
     this.writeWavHeader(view, sampleRate, channels, length);
     
     // 音声データを16bit PCMに変換して書き込み
+    console.log(`  - 音声データを16bit PCMに変換して書き込み中...`);
     this.writeAudioData(view, audioData, headerSize);
+    
+    console.log(`✅ WAVバッファ作成完了 - チャンク ${chunk.id} (${buffer.byteLength} bytes)`);
     
     return buffer;
   }
@@ -743,6 +809,45 @@ export class AudioChunkProcessor {
     }
     
     return audioData.buffer;
+  }
+
+  /**
+   * 指定されたサンプル数の無音データを作成（Float32Array形式）
+   */
+  private createSilentAudioData(sampleCount: number): ArrayBuffer {
+    const audioData = new Float32Array(sampleCount);
+    
+    for (let i = 0; i < audioData.length; i++) {
+      // 微小なホワイトノイズを追加（完全な無音を避ける）
+      audioData[i] = (Math.random() - 0.5) * 0.001;
+    }
+    
+    return audioData.buffer;
+  }
+
+  /**
+   * WebMデータをAudioBufferにデコード
+   */
+  private async decodeWebMData(webmData: ArrayBuffer): Promise<AudioBuffer | null> {
+    try {
+      const audioContext = await this.initAudioContext();
+      
+      // WebMデータをAudioBufferにデコード
+      const audioBuffer = await audioContext.decodeAudioData(webmData.slice(0));
+      
+      console.log('WebMデータのデコード成功:', {
+        duration: audioBuffer.duration,
+        sampleRate: audioBuffer.sampleRate,
+        channels: audioBuffer.numberOfChannels,
+        length: audioBuffer.length
+      });
+      
+      return audioBuffer;
+      
+    } catch (error) {
+      console.error('WebMデータのデコード失敗:', error);
+      return null;
+    }
   }
 
   /**
@@ -1288,33 +1393,109 @@ export class AudioChunkProcessor {
   ): Promise<AudioChunk[]> {
     console.log('🎆 実際の音声データ抽出を試行中...');
     
-    // 録音中ファイルから最新の部分を抽出してチャンク作成を試行
-    // ただし、decodeAudioDataは使用せず、ファイルサイズベースの推定で処理
-    
-    const estimatedDuration = Math.max(1, Math.min(120, fileSize / 20000)); // 20KB/秒で推定
-    const numChunks = Math.max(1, Math.min(8, Math.ceil(estimatedDuration / chunkSize)));
-    
-    console.log(`実際の音声データベースの推定: ${estimatedDuration.toFixed(1)}秒, ${numChunks}チャンク`);
-    
-    const chunks: AudioChunk[] = [];
-    for (let i = 0; i < numChunks; i++) {
-      const startTime = i * chunkSize;
-      const endTime = Math.min((i + 1) * chunkSize, estimatedDuration);
+    try {
+      // 録音中のWebMファイルから実際のデータを取得
+      console.log('録音中WebMファイルからデータ取得を試行:', audioFilePath);
       
-      chunks.push({
-        id: `live_real_chunk_${i}`,
-        sequenceNumber: i,
-        startTime: startTime,
-        endTime: endTime,
-        audioData: new ArrayBuffer(0), // 空のデータ（文字起こしサーバーではファイルパスを使用）
-        sampleRate: 44100,
-        channels: 1,
-        overlapWithPrevious: i > 0 ? overlapSize : 0
-      });
+      // loadPartialAudioFile APIを使用してWebMデータを取得
+      const partialDataUrl = await window.electronAPI.loadPartialAudioFile(audioFilePath);
+      
+      if (!partialDataUrl) {
+        throw new Error('部分的なファイルの読み込みに失敗');
+      }
+      
+      // Data URLからArrayBufferを取得
+      const response = await fetch(partialDataUrl);
+      const webmData = await response.arrayBuffer();
+      
+      if (webmData.byteLength === 0) {
+        throw new Error('WebMデータのサイズが0');
+      }
+      
+      console.log(`WebMデータ取得成功: ${webmData.byteLength} bytes`);
+      
+      // ファイルサイズから推定される時間とチャンク数を計算
+      const estimatedDuration = Math.max(1, Math.min(120, fileSize / 20000)); // 20KB/秒で推定
+      // WebMデータから音声データを抽出してチャンクを生成
+      try {
+        const audioBuffer = await this.decodeWebMData(webmData);
+        
+        if (audioBuffer && audioBuffer.duration > 0) {
+          console.log(`WebMデータのデコード成功: ${audioBuffer.duration}秒`);
+          
+          // デコードした音声データからチャンクを作成
+          const chunks = this.createChunks(audioBuffer, chunkSize, overlapSize);
+          
+          // 録音中のチャンクには特別なIDと元ファイルパスを付与
+          const recordingChunks = chunks.map(chunk => ({
+            ...chunk,
+            id: `live_real_chunk_${chunk.sequenceNumber}`,
+            sourceFilePath: audioFilePath,  // 元のWebMファイルパスを保持
+          }));
+          
+          console.log(`🎆 WebMデータから${recordingChunks.length}個の実際のチャンクを生成`);
+          return recordingChunks;
+        }
+      } catch (decodeError) {
+        console.warn('WebMデータのデコードに失敗、フォールバック処理に移行:', decodeError);
+      }
+      
+      // フォールバック: 推定ベースのプレースホルダーチャンク生成
+      const numChunks = Math.max(1, Math.min(8, Math.ceil(estimatedDuration / chunkSize)));
+      
+      console.log(`推定時間: ${estimatedDuration.toFixed(1)}秒, チャンク数: ${numChunks} (プレースホルダー)`);
+      
+      const chunks: AudioChunk[] = [];
+      for (let i = 0; i < numChunks; i++) {
+        const startTime = i * chunkSize;
+        const endTime = Math.min((i + 1) * chunkSize, estimatedDuration);
+        
+        // プレースホルダーチャンクには微小な音声データを生成
+        const chunkDurationSamples = Math.floor((endTime - startTime) * 44100);
+        const silentAudioData = this.createSilentAudioData(chunkDurationSamples);
+        
+        chunks.push({
+          id: `live_real_chunk_${i}`,
+          sequenceNumber: i,
+          startTime: startTime,
+          endTime: endTime,
+          audioData: silentAudioData,
+          sampleRate: 44100,
+          channels: 1,
+          overlapWithPrevious: i > 0 ? overlapSize : 0,
+          sourceFilePath: audioFilePath  // 元のWebMファイルパスを保持
+        });
+      }
+      
+      console.log(`🎆 実際のWebMデータを使用したチャンクを${chunks.length}個生成`);
+      return chunks;
+      
+    } catch (error) {
+      console.warn('WebMデータ取得に失敗、フォールバック処理:', error);
+      
+      // フォールバック: 元の推定ベース処理
+      const estimatedDuration = Math.max(1, Math.min(120, fileSize / 20000));
+      const numChunks = Math.max(1, Math.min(8, Math.ceil(estimatedDuration / chunkSize)));
+      
+      const chunks: AudioChunk[] = [];
+      for (let i = 0; i < numChunks; i++) {
+        const startTime = i * chunkSize;
+        const endTime = Math.min((i + 1) * chunkSize, estimatedDuration);
+        
+        chunks.push({
+          id: `live_real_chunk_${i}`,
+          sequenceNumber: i,
+          startTime: startTime,
+          endTime: endTime,
+          audioData: new ArrayBuffer(0), // フォールバック: 空のデータ
+          sampleRate: 44100,
+          channels: 1,
+          overlapWithPrevious: i > 0 ? overlapSize : 0
+        });
+      }
+      
+      return chunks;
     }
-    
-    console.log(`🎆 実際の音声データベースのチャンクを${chunks.length}個生成`);
-    return chunks;
   }
 
   /**

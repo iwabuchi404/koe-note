@@ -7,6 +7,8 @@
 import { ChunkFileInfo } from './ChunkFileWatcher';
 import { TranscriptionResult } from '../../preload/preload';
 import { AudioDiagnostics, AudioDiagnosticResult } from './AudioDiagnostics';
+import { ChunkTranscriptionQueue } from './ChunkTranscriptionQueue';
+import { AudioChunk, ChunkResult } from './ChunkTranscriptionManager';
 
 export interface TranscriptionQueueItem {
   fileInfo: ChunkFileInfo;
@@ -57,6 +59,9 @@ export class FileBasedTranscriptionEngine {
   private queueInterval: NodeJS.Timeout | null = null;
   private processingTimes: number[] = [];
   
+  // チャンク分割文字起こし用
+  private chunkTranscriptionQueue: ChunkTranscriptionQueue;
+  
   private config: TranscriptionEngineConfig = {
     maxRetryCount: 1,
     processingTimeout: 180000, // 3分
@@ -73,7 +78,50 @@ export class FileBasedTranscriptionEngine {
     if (config) {
       this.config = { ...this.config, ...config };
     }
+    
+    // チャンク分割文字起こしキューを初期化
+    this.chunkTranscriptionQueue = new ChunkTranscriptionQueue(1); // 並列数1（サーバー負荷軽減）
+    this.setupChunkTranscriptionCallbacks();
+    
     console.log('FileBasedTranscriptionEngine初期化完了', this.config);
+  }
+
+  /**
+   * チャンク分割文字起こしのコールバック設定
+   */
+  private setupChunkTranscriptionCallbacks(): void {
+    this.chunkTranscriptionQueue.onProcessingComplete((chunkResult: ChunkResult) => {
+      console.log(`🎆 チャンク分割文字起こし完了: ${chunkResult.chunkId}`);
+      
+      // ChunkResultをTranscriptionResultに変換
+      const transcriptionResult: TranscriptionResult = {
+        segments: chunkResult.segments,
+        language: 'ja',
+        duration: chunkResult.segments.length > 0 ? 
+          chunkResult.segments[chunkResult.segments.length - 1].end : 0,
+        created_at: Date.now(),
+        segment_count: chunkResult.segments.length
+      };
+      
+      // realtime_chunk.webm専用のChunkFileInfoを作成
+      const chunkFileInfo: ChunkFileInfo = {
+        filename: 'realtime_chunk.webm',
+        fullPath: '',
+        sequenceNumber: chunkResult.sequenceNumber,
+        timestamp: Date.now(),
+        size: 0,
+        isReady: true
+      };
+      
+      // 通常のコールバックを実行
+      this.onTranscriptionCompleteCallbacks.forEach(callback => {
+        try {
+          callback(transcriptionResult, chunkFileInfo);
+        } catch (error) {
+          console.error('チャンク分割TranscriptionCompleteコールバックエラー:', error);
+        }
+      });
+    });
   }
   
   /**
@@ -117,12 +165,25 @@ export class FileBasedTranscriptionEngine {
    * チャンクファイルをキューに追加
    */
   addChunkFile(fileInfo: ChunkFileInfo): void {
-    // 既に処理済みまたはキューに存在する場合はスキップ
-    if (this.processedFiles.has(fileInfo.filename) || 
-        this.processingQueue.some(item => item.fileInfo.filename === fileInfo.filename)) {
+    const isRealtimeFile = fileInfo.filename === 'realtime_chunk.webm';
+    
+    // リアルタイムファイル以外は重複チェック
+    if (!isRealtimeFile) {
+      // 既に処理済みまたはキューに存在する場合はスキップ
+      if (this.processedFiles.has(fileInfo.filename) || 
+          this.processingQueue.some(item => item.fileInfo.filename === fileInfo.filename)) {
+        return;
+      }
+    }
+    
+    // 録音中のチャンクファイルはChunkTranscriptionQueueで処理
+    if (this.isRecordingChunkFile(fileInfo.filename)) {
+      console.log(`🎆 録音中チャンクファイル検出: ${fileInfo.filename} → ChunkTranscriptionQueueで処理`);
+      this.processWithChunkQueue(fileInfo);
       return;
     }
     
+    // 通常のファイルは従来の処理
     const queueItem: TranscriptionQueueItem = {
       fileInfo,
       retryCount: 0,
@@ -142,6 +203,95 @@ export class FileBasedTranscriptionEngine {
     
     console.log(`キューに追加: ${fileInfo.filename} (シーケンス: ${fileInfo.sequenceNumber})`);
     this.updateStats();
+  }
+
+  /**
+   * 録音中のチャンクファイル判定
+   */
+  private isRecordingChunkFile(filename: string): boolean {
+    return /^chunk_\d{5}_\d+\.webm$/.test(filename) || filename === 'realtime_chunk.webm';
+  }
+
+  /**
+   * ChunkTranscriptionQueueでチャンクファイルを処理
+   */
+  private async processWithChunkQueue(fileInfo: ChunkFileInfo): Promise<void> {
+    try {
+      console.log(`📝 ChunkTranscriptionQueueでチャンク処理開始: ${fileInfo.filename}`);
+      
+      // ChunkFileInfoからAudioChunkを作成
+      const audioChunk: AudioChunk = await this.createAudioChunkFromFile(fileInfo);
+      
+      // ChunkTranscriptionQueueに追加
+      this.chunkTranscriptionQueue.enqueue(audioChunk, fileInfo.sequenceNumber);
+      
+      // キューが停止している場合は開始
+      if (!this.chunkTranscriptionQueue.getStats().processingItems) {
+        console.log(`🎆 ChunkTranscriptionQueue処理開始`);
+        this.chunkTranscriptionQueue.startProcessing();
+      }
+      
+    } catch (error) {
+      console.error(`❌ ChunkTranscriptionQueueでの処理エラー: ${fileInfo.filename}`, error);
+    }
+  }
+
+  /**
+   * ファイル情報からAudioChunkを作成
+   */
+  private async createAudioChunkFromFile(fileInfo: ChunkFileInfo): Promise<AudioChunk> {
+    try {
+      // ファイルからWebMデータを読み込み
+      const webmData = await this.loadWebMFile(fileInfo.fullPath);
+      
+      // チャンクの時間範囲を推定（10秒間隔と仮定）
+      const chunkDuration = 10; // 秒
+      const startTime = fileInfo.sequenceNumber * chunkDuration;
+      const endTime = startTime + chunkDuration;
+      
+      const audioChunk: AudioChunk = {
+        id: `live_chunk_${fileInfo.sequenceNumber}`,
+        sequenceNumber: fileInfo.sequenceNumber,
+        startTime: startTime,
+        endTime: endTime,
+        audioData: webmData,
+        sampleRate: 44100,
+        channels: 1,
+        overlapWithPrevious: fileInfo.sequenceNumber > 0 ? 1 : 0, // 1秒オーバーラップ
+        sourceFilePath: fileInfo.fullPath
+      };
+      
+      console.log(`📝 AudioChunk作成完了: ${audioChunk.id} (${webmData.byteLength} bytes)`);
+      return audioChunk;
+      
+    } catch (error) {
+      console.error(`❌ AudioChunk作成エラー: ${fileInfo.filename}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * WebMファイルをArrayBufferとして読み込み
+   */
+  private async loadWebMFile(filePath: string): Promise<ArrayBuffer> {
+    try {
+      // ElectronAPIでファイルを読み込み
+      const dataUrl = await window.electronAPI.loadAudioFile(filePath);
+      
+      if (!dataUrl) {
+        throw new Error(`ファイル読み込みでnullが返されました: ${filePath}`);
+      }
+      
+      const response = await fetch(dataUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      console.log(`📁 WebMファイル読み込み完了: ${filePath} (${arrayBuffer.byteLength} bytes)`);
+      return arrayBuffer;
+      
+    } catch (error) {
+      console.error(`❌ WebMファイル読み込みエラー: ${filePath}`, error);
+      throw error;
+    }
   }
   
   /**

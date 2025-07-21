@@ -22,6 +22,7 @@ export interface AudioChunk {
   sampleRate: number;
   channels: number;
   overlapWithPrevious: number;  // 前チャンクとの重複時間
+  sourceFilePath?: string;  // 元のファイルパス（WebMチャンク抽出用）
 }
 
 export interface ChunkResult {

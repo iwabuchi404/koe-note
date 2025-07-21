@@ -1159,7 +1159,12 @@ ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any
         
         if (!isResolved) {
           isResolved = true;
-          reject(new Error('音声認識サーバーとの通信に失敗しました'));
+          // より詳細なエラーメッセージを提供
+          if (error.message.includes('ECONNREFUSED') || error.message.includes('connect')) {
+            reject(new Error('音声認識サーバーが起動していません。「サーバー起動」ボタンを押してサーバーを起動してください。'));
+          } else {
+            reject(new Error(`音声認識サーバーとの通信に失敗しました: ${error.message}`));
+          }
         }
       });
 

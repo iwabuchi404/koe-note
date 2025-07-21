@@ -3,7 +3,6 @@ import { useAppContext } from '../../App'
 import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor'
 import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor'
 import { AudioMixingService, MixingConfig, AudioLevels } from '../../services/AudioMixingService' 
-import { SimpleChunkedWebmFixer } from '../../services/SimpleChunkedWebmFixer';
 /**
  * 下部パネル - コントロールパネル
  * 録音・再生・文字起こし等の主要操作を提供
@@ -57,12 +56,8 @@ const BottomPanel: React.FC = () => {
   const pausedTimeRef = useRef<number>(0) // 一時停止時間の累計
   const realtimeProcessorRef = useRef<FileBasedRealtimeProcessor | null>(null)
   const micMonitorRef = useRef<MicrophoneMonitor | null>(null)
+  const realtimeProcessingIntervalRef = useRef<number | null>(null)
   
-  // ライブラリなしでのWebMチャンク修正クラス
-
-    
-  // WebMチャンク修正クラスのインスタンスはuseRefで管理
-  const webmFixerRef = useRef<SimpleChunkedWebmFixer>(new SimpleChunkedWebmFixer());
 
   
   // HTMLAudioElementを使って正確なdurationを取得する関数
@@ -330,7 +325,6 @@ const BottomPanel: React.FC = () => {
         // ミキシングストリーム作成
         stream = await audioMixingServiceRef.current.createMixedStream(config);
         console.log('✅ ミキシングストリーム作成完了');
-        
       } else if (inputType === 'desktop') {
         if (!selectedDesktopSource) {
           throw new Error('デスクトップソースが選択されていません');
@@ -576,7 +570,6 @@ const BottomPanel: React.FC = () => {
       
       let mediaRecorder: MediaRecorder
       let selectedMimeType: string
-      const chunkSizeMs = 20 * 1000;
       
       const recorderOptions: MediaRecorderOptions = {
         audioBitsPerSecond: 128000
@@ -635,93 +628,35 @@ const BottomPanel: React.FC = () => {
         }
       }
       
-      const chunks: Blob[] = []
+      // 新しいアプローチ：単一ファイル成長モデル用の変数
+      const allChunks: Blob[] = []
       let recordingFilePath: string | null = null
       let recordingFilename: string | null = null
-      let chunkSequence = 0
       let tempFolderPath: string | null = null
-      const chunkFiles: string[] = []
-      const periodChunks: Blob[] = []
-      let lastChunkSaveTime = Date.now()
-            
-
-      mediaRecorder.ondataavailable = async (event: BlobEvent) => {
-        if (event.data.size === 0) return;
-
-        // 1. まずはデータを配列に蓄積するだけ
-        chunks.push(event.data);
-        periodChunks.push(event.data);
-
-        const currentTime = Date.now();
-        const timeSinceLastSave = currentTime - lastChunkSaveTime;
-
-        // 2. 20秒経過した場合にのみ、ファイル処理をまとめて実行
-        if (timeSinceLastSave >= chunkSizeMs) {
-          try {
-            chunkSequence++;
-
-            if (!tempFolderPath && recordingFilename) {
-              tempFolderPath = `temp_${recordingFilename.replace('.webm', '')}`;
-            }
-            if (!tempFolderPath) {
-              console.warn('⚠️ テンポラリフォルダ未設定。');
-              return;
-            }
-
-            // ★★★ 20秒間蓄積したすべてのデータ片を、ここで初めて一つのBlobに結合 ★★★
-            const chunkBlob = new Blob(periodChunks, { type: selectedMimeType });
-            
-            // 次の期間のためにリセット
-            periodChunks.length = 0; 
-            lastChunkSaveTime = currentTime;
-
-            if (chunkBlob.size === 0) return;
-
-            // --- ここから、完全に結合されたBlobに対してFixerを適用する ---
-            let finalChunkBlob: Blob | null = null;
-            const chunkFilename = `chunk_${String(chunkSequence).padStart(5, '0')}.webm`;
-
-            if (chunkSequence === 1) {
-              // 最初の20秒分の完全なチャンク
-              finalChunkBlob = chunkBlob;
-              console.log(`📝 チャンク1: 完全なBlobを処理 (サイズ: ${finalChunkBlob.size} bytes)`);
-              await webmFixerRef.current.processFirstChunk(finalChunkBlob);
-            } else {
-              // 2つ目以降の20秒分の完全なチャンク
-              if (webmFixerRef.current.isHeaderReady) {
-                console.log(`📝 チャンク${chunkSequence}: ヘッダー結合処理を実行中...`);
-                // ★ createValidChunkに渡すのは、生データ(event.data)ではなく、結合済みのchunkBlob
-                finalChunkBlob = await webmFixerRef.current.createValidChunk(chunkBlob);
-                if (!finalChunkBlob) {
-                  throw new Error(`チャンク${chunkSequence}の有効なファイル作成に失敗`);
-                }
-              } else {
-                console.warn(`⚠️ チャンク${chunkSequence}: ヘッダー未準備のためスキップ。`);
-                return;
-              }
-            }
-
-            // ファイル保存
-            const chunkBuffer = await finalChunkBlob.arrayBuffer();
-            if (chunkBuffer.byteLength > 0) {
-              console.log(`💾 チャンク${chunkSequence}を保存: ${chunkFilename}`);
-              await window.electronAPI.saveFile(chunkBuffer, chunkFilename, tempFolderPath);
-              chunkFiles.push(`${tempFolderPath}/${chunkFilename}`);
-            }
-          } catch (error) {
-            console.error(`❌ チャンク${chunkSequence}の処理中にエラー:`, error);
-          }
+      
+      // 簡単なデータ蓄積のみ（ファイル修復は行わない）
+      mediaRecorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          allChunks.push(event.data)
+          console.log(`📝 チャンク受信: ${event.data.size} bytes (累計: ${allChunks.length}個)`)
         }
-      };
+      }
         
       mediaRecorder.onstop = async () => {
+        // リアルタイム処理のタイマーをクリア
+        if (realtimeProcessingIntervalRef.current) {
+          window.clearInterval(realtimeProcessingIntervalRef.current)
+          realtimeProcessingIntervalRef.current = null
+        }
+        
         // 正確な録音時間を計算（ミリ秒単位、一時停止時間を除外）
         const recordingEndTime = Date.now()
         const actualDurationMs = recordingEndTime - recordingStartTimeRef.current - pausedTimeRef.current
         const actualDurationSeconds = Math.round(actualDurationMs / 1000)
         
-        // WebM形式でBlobを作成
-        const originalBlob = new Blob(chunks, { type: selectedMimeType })
+        // WebM形式でBlobを作成（新しいアプローチではallChunksを使用）
+        const originalBlob = new Blob(allChunks, { type: selectedMimeType })
+        console.log(`📝 最終録音ファイル作成: ${originalBlob.size} bytes (${allChunks.length}個のチャンクから作成)`)
         
         try {
           // HTMLAudioElementで正確なdurationを取得
@@ -864,13 +799,18 @@ const BottomPanel: React.FC = () => {
             filepath: tempFileEntry.filepath
           })
           
+          // ファイル名を戻り値として返す
+          return { filename }
+          
         } catch (error) {
           console.error('録音中ファイルエントリ作成エラー:', error)
+          throw error
         }
       }
       
       // createInitialFileEntry を実行してからMediaRecorderを開始
-      await createInitialFileEntry()
+      const { filename } = await createInitialFileEntry()
+      recordingFilename = filename // 共有変数に設定
       
       // マイク監視を開始（マイク録音の場合のみ） - 完全に無効化してクラッシュ問題を切り分け
       const ENABLE_MIC_MONITORING = false // 完全に無効化
@@ -913,8 +853,8 @@ const BottomPanel: React.FC = () => {
         console.log('🎤 マイク監視は一時的に無効化されています（録音のトラブルシューティング中）')
       }
       
-      // チャンクファイル保存用のタイムスライス設定（20秒間隔）
-      console.log('🎬 MediaRecorder開始中...', { chunkSizeMs, state: mediaRecorder.state })
+      // 新しいアプローチ：timesliceなしで録音開始
+      console.log('🎬 MediaRecorder開始中（timesliceなし）...', { state: mediaRecorder.state })
       console.log('🔍 開始前最終チェック:', {
         streamActive: stream.active,
         audioTracks: stream.getAudioTracks().map(t => ({
@@ -927,7 +867,8 @@ const BottomPanel: React.FC = () => {
       });
       
       try {
-        mediaRecorder.start(chunkSizeMs)
+        // timesliceを指定せずに録音開始（APIが保証する完全なファイルのみを生成）
+        mediaRecorder.start()
         console.log('✅ MediaRecorder.start()呼び出し完了, 新しいstate:', mediaRecorder.state)
       } catch (startError) {
         console.error('❌ MediaRecorder.start()エラー:', startError);
@@ -950,9 +891,7 @@ const BottomPanel: React.FC = () => {
       pausedTimeRef.current = 0 // 一時停止時間をリセット
       console.log('Recording started at:', new Date(recordingStartTimeRef.current).toISOString())
       
-      // WebMチャンク修正クラスをリセット
-      webmFixerRef.current.reset()
-      console.log('📝 WebMチャンク修正システム初期化完了')
+      console.log('📝 新しい単一ファイル成長モデルを開始')
       
       // テンポラリフォルダパスを事前に設定
       if (recordingFilename && typeof recordingFilename === 'string') {
@@ -961,10 +900,17 @@ const BottomPanel: React.FC = () => {
         console.log(`ファイルベースシステム用テンポラリフォルダ: ${tempFolderPath}`)
       }
       
-      // ファイルベースリアルタイム文字起こし開始（有効化されている場合のみ）
-      if (enableTranscription && realtimeProcessorRef.current && tempFolderPath && recordingFilename) {
+      // 新しいアプローチ：リアルタイム処理のための定期実行タイマー
+      console.log('🔍 リアルタイム処理開始チェック:', {
+        enableTranscription,
+        tempFolderPath,
+        recordingFilename,
+        realtimeProcessor: !!realtimeProcessorRef.current
+      })
+      
+      if (enableTranscription && tempFolderPath && recordingFilename) {
         try {
-          console.log('ファイルベースリアルタイム文字起こし開始...')
+          console.log('📝 リアルタイム処理開始: 5秒間隔でファイル更新')
           
           // 保存フォルダから録音ファイルの絶対パスを構築
           const settings = await window.electronAPI.loadSettings()
@@ -975,21 +921,77 @@ const BottomPanel: React.FC = () => {
           console.log(`監視フォルダ: ${absoluteTempPath}`)
           console.log(`出力ファイル: ${fullRecordingPath}`)
           
-          await realtimeProcessorRef.current.start(absoluteTempPath, fullRecordingPath)
-          setIsRealtimeTranscribing(true)
-          console.log('✓ ファイルベースリアルタイム文字起こし開始完了')
+          let chunkCounter = 1
+          
+          // 5秒ごとにrequestData()を呼び出してリアルタイムファイルを更新
+          realtimeProcessingIntervalRef.current = window.setInterval(async () => {
+            if (mediaRecorderRef.current?.state === 'recording') {
+              try {
+                // requestData()を呼び出してondataavailableを能動的にトリガー
+                mediaRecorderRef.current.requestData()
+                
+                // ondataavailableが実行されるのを少し待つ
+                await new Promise(resolve => setTimeout(resolve, 100))
+                
+                // それまでに蓄積されたすべてのデータを結合して完全なファイルを作成
+                if (allChunks.length > 0) {
+                  const currentFullBlob = new Blob(allChunks, { type: selectedMimeType })
+                  const tempBuffer = await currentFullBlob.arrayBuffer()
+                  
+                  if (tempBuffer.byteLength > 0) {
+                    // 常に同じ名前のファイルに上書きする（プロセッサが監視するため）
+                    const tempFilename = `realtime_chunk.webm`
+                    await window.electronAPI.saveFile(tempBuffer, tempFilename, tempFolderPath)
+                    console.log(`📝 文字起こし用一時ファイル(No.${chunkCounter})を更新: ${tempFilename} (${tempBuffer.byteLength} bytes)`)
+                    console.log(`📝 ファイル保存先: ${tempFolderPath}/${tempFilename}`)
+                    
+                    // ファイル監視システムが正常に動作しているかチェック
+                    try {
+                      const fileSize = await window.electronAPI.getFileSize(`${tempFolderPath}/${tempFilename}`)
+                      console.log(`📝 保存確認: ファイルサイズ ${fileSize} bytes`)
+                    } catch (error) {
+                      console.error(`❌ ファイル保存確認エラー:`, error)
+                    }
+                    
+                    chunkCounter++
+                  }
+                }
+              } catch (error) {
+                console.error(`❌ リアルタイムチャンク処理エラー:`, error)
+              }
+            } else {
+              if (realtimeProcessingIntervalRef.current) {
+                window.clearInterval(realtimeProcessingIntervalRef.current)
+                realtimeProcessingIntervalRef.current = null
+              }
+            }
+          }, 5000) // 5秒ごと
+          
+          // ファイルベースリアルタイムプロセッサを開始
+          if (realtimeProcessorRef.current) {
+            console.log('📝 ファイルベースリアルタイムプロセッサ開始中...')
+            console.log(`📝 監視対象フォルダ: ${absoluteTempPath}`)
+            console.log(`📝 出力ファイル: ${fullRecordingPath}`)
+            
+            await realtimeProcessorRef.current.start(absoluteTempPath, fullRecordingPath)
+            setIsRealtimeTranscribing(true)
+            console.log('✓ ファイルベースリアルタイム文字起こし開始完了')
+          } else {
+            console.error('❌ realtimeProcessorRef.currentがnullです')
+          }
         } catch (realtimeError) {
           console.error('ファイルベースリアルタイム文字起こし開始エラー:', realtimeError)
         }
       } else {
         if (enableTranscription) {
-          console.warn('ファイルベースリアルタイム文字起こし開始条件が満たされていません:', {
-            realtimeProcessor: !!realtimeProcessorRef.current,
+          console.warn('❌ ファイルベースリアルタイム文字起こし開始条件が満たされていません:', {
+            enableTranscription,
             tempFolderPath,
-            recordingFilename: recordingFilename || 'undefined'
+            recordingFilename: recordingFilename || 'undefined',
+            realtimeProcessor: !!realtimeProcessorRef.current
           })
         } else {
-          console.log('録音のみモード: リアルタイム文字起こしをスキップ')
+          console.log('📝 録音のみモード: リアルタイム文字起こしをスキップ')
         }
       }
       
@@ -1080,6 +1082,12 @@ const BottomPanel: React.FC = () => {
         } catch (micError) {
           console.error('❌ マイク監視停止エラー:', micError)
         }
+      }
+      
+      // リアルタイム処理のタイマーをクリア
+      if (realtimeProcessingIntervalRef.current) {
+        window.clearInterval(realtimeProcessingIntervalRef.current)
+        realtimeProcessingIntervalRef.current = null
       }
       
       // ファイルベースリアルタイム文字起こし停止
@@ -1546,3 +1554,4 @@ const BottomPanel: React.FC = () => {
 }
 
 export default BottomPanel
+
