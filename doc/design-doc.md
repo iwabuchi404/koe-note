@@ -541,252 +541,264 @@ AI応答: 対策案...
 - faster-whisper (Kotoba) 統合
 - リアルタイム文字起こし
 
-## 10. リアルタイム文字起こし詳細設計
+## 10. リアルタイム文字起こし詳細設計【実装完了】
 
-### 10.1 ファイルベースリアルタイム文字起こし実装プラン
+### 10.1 実装済みファイルベースリアルタイム文字起こしシステム
 
 #### 概要
-現在のメモリベース処理から、ファイルベース処理に変更してリアルタイム文字起こしの安定性を向上させる。
+**実装状況**: ✅ 完了
+メモリベース処理からファイルベース処理に移行し、リアルタイム文字起こしの安定性が大幅に向上。
 
-#### 実装方針
-- **段階的実装**: 既存システムを残しながら新システムを構築
-- **シンプル設計**: 並列処理なし、単一ファイル順次処理
-- **エラー耐性**: 1回リトライ→失敗時スキップ記録
+#### 実装アーキテクチャ
 
-#### 実装ステップ
+```
+【録音制御】
+RecordingControl → TrueDifferentialChunkGenerator
+                ↓
+        チャンクファイル自動生成（20秒間隔）
+                ↓
+        テンポラリフォルダ保存
 
-**Phase 1: 基盤整備**
-- 目標: チャンクファイル保存とファイル監視機能
-- Step 1.1: 録音制御の拡張
-  ```typescript
-  // 対象ファイル: src/renderer/components/RecordingControl/*
-  // 新機能:
-  - MediaRecorder timeslice設定（20秒間隔）
-  - チャンクファイル自動保存
-  - テンポラリフォルダ管理
-  ```
-- Step 1.2: ファイル監視システム
-  ```typescript
-  // 新ファイル: src/renderer/services/ChunkFileWatcher.ts
-  // 機能:
-  - テンポラリフォルダの新ファイル検出
-  - ファイル処理順序保証
-  - 処理済みファイル管理
-  ```
+【文字起こし制御】                  
+ChunkFileWatcher → FileBasedTranscriptionEngine → RealtimeTextManager
+     ↓                        ↓                        ↓
+ファイル監視              順次文字起こし処理           結果統合・保存
+```
 
-**Phase 2: 文字起こし処理**
-- 目標: 順次ファイル処理とエラーハンドリング
-- Step 2.1: ファイルベース文字起こしエンジン
-  ```typescript
-  // 新ファイル: src/renderer/services/FileBasedTranscriptionEngine.ts
-  // 機能:
-  - 単一ファイル順次処理
-  - 1回リトライ機能
-  - スキップ記録
-  ```
-- Step 2.2: 結果統合システム
-  ```typescript
-  // 新ファイル: src/renderer/services/RealtimeTextManager.ts
-  // 機能:
-  - メモリバッファ管理
-  - ファイル書き込み
-  - UI表示用データ提供
-  ```
+#### 主要実装コンポーネント
 
-**Phase 3: UI統合**
-- 目標: 新システムとUIの連携
-- Step 3.1: 表示制御の更新
-- Step 3.2: 録音・文字起こし統合ボタン
+##### 1. TrueDifferentialChunkGenerator（真の差分チャンク生成システム）
+**ファイルパス**: `src/renderer/services/TrueDifferentialChunkGenerator.ts`
 
-**Phase 4: エラーハンドリング・最適化**
-- 目標: 安定性とパフォーマンス向上
-- Step 4.1: 包括的エラーハンドリング
-- Step 4.2: パフォーマンス最適化
+**主要機能**:
+- 新しく追加された音声データのみを抽出して独立再生可能なWebMファイルを生成
+- 時間ベースの自動チャンク生成（20秒間隔）
+- チャンクファイル保存機能
+- WebMヘッダー修正（DocTypeをmatroskaからwebmに変更）
+- オーバーラップ排除による純粋な差分処理
 
-**Phase 5: 統合・テスト**
-- 目標: 新旧システムの統合とテスト
-- Step 5.1: システム統合
-- Step 5.2: 総合テスト
+**設定可能項目**:
+```typescript
+interface ChunkGenerationConfig {
+  intervalSeconds: number;        // チャンク間隔（20秒）
+  enableFileGeneration: boolean;  // ファイル生成有効化
+  tempFolderPath?: string;       // 一時フォルダパス
+  enableAutoGeneration: boolean; // 自動生成有効化
+}
+```
 
-#### 設定・定数
+**ファイル命名規則**:
+```
+differential_chunk_001.webm
+truediff_chunk_001.webm
+timerange_chunk_001.webm
+```
+
+##### 2. ChunkFileWatcher（チャンクファイル監視システム）
+**ファイルパス**: `src/renderer/services/ChunkFileWatcher.ts`
+
+**主要機能**:
+- テンポラリフォルダの新しいチャンクファイル検出
+- ファイル安定性チェック（書き込み完了判定）
+- 順次処理のためのキューイング機能
+- リアルタイム文字起こし連携
+
+**設定項目**:
+```typescript
+interface ChunkWatcherConfig {
+  watchIntervalMs: number;           // ファイル監視間隔（1000ms）
+  fileStabilityCheckDelay: number;   // ファイル安定性チェック遅延（500ms）
+  minFileSize: number;               // 最小ファイルサイズ（1000 bytes）
+  enableRealtimeTranscription: boolean; // リアルタイム文字起こし有効
+}
+```
+
+##### 3. FileBasedTranscriptionEngine（ファイルベース文字起こしエンジン）
+**ファイルパス**: `src/renderer/services/FileBasedTranscriptionEngine.ts`
+
+**主要機能**:
+- チャンクファイルを順次処理し文字起こし結果を統合
+- 1回リトライ機能
+- エラー分類とハンドリング（6種類のエラータイプ）
+- ChunkTranscriptionQueueとの連携
+
+**エラー分類**:
+```typescript
+type ErrorType = 
+  | 'server_error'          // サーバーエラー
+  | 'file_error'           // ファイルエラー
+  | 'timeout'              // タイムアウト
+  | 'network_error'        // ネットワークエラー
+  | 'audio_quality_error'  // 音声品質エラー
+  | 'unknown'              // 不明エラー
+```
+
+##### 4. RealtimeTextManager（リアルタイムテキスト管理システム）
+**ファイルパス**: `src/renderer/services/RealtimeTextManager.ts`
+
+**主要機能**:
+- 文字起こし結果の統合・メモリバッファ管理
+- 自動ファイル書き込み（3秒間隔）
+- 時間範囲ベースチャンクの重複除去処理
+- メタデータ管理（進捗、エラー統計）
+
+**出力ファイル形式**:
+```
+元ファイル: recording_20250714_143052.webm
+出力ファイル: recording_20250714_143052.rt.txt
+```
+
+##### 5. FileBasedRealtimeProcessor（統合制御システム）
+**ファイルパス**: `src/renderer/services/FileBasedRealtimeProcessor.ts`
+
+**主要機能**:
+- 上記4つのコンポーネントを統合制御
+- システム全体の開始/停止/一時停止/再開
+- 統計情報の統合管理
+- UI通知システム
+
+#### 実装済み設定・定数
 ```typescript
 const CHUNK_CONFIG = {
-  SIZE_SECONDS: 20,           // チャンクサイズ
-  FILE_CHECK_INTERVAL: 1000,  // ファイル監視間隔（ms）
-  PROCESSING_TIMEOUT: 180000, // 処理タイムアウト（3分）
-  MAX_RETRY_COUNT: 1,         // 最大リトライ回数
+  SIZE_SECONDS: 20,              // チャンクサイズ（20秒固定）
+  FILE_CHECK_INTERVAL: 1000,     // ファイル監視間隔
+  PROCESSING_TIMEOUT: 180000,    // 処理タイムアウト（3分）
+  MAX_RETRY_COUNT: 1,            // 最大リトライ回数
+  STABILITY_CHECK_DELAY: 500     // ファイル安定性チェック遅延
 };
 
 const FILE_CONFIG = {
-  CHUNK_PREFIX: 'chunk_',
-  TEMP_FOLDER_PREFIX: 'temp_',
-  TEXT_UPDATE_INTERVAL: 3000,  // テキスト書き込み間隔
-  SEQUENCE_PADDING: 5,         // シーケンス番号桁数
-};
-
-const UI_CONFIG = {
-  DISPLAY_UPDATE_DEBOUNCE: 500, // 表示更新遅延
-  AUTO_SCROLL_THRESHOLD: 100,   // 自動スクロール閾値
-  STATUS_UPDATE_INTERVAL: 1000, // 進行状況更新間隔
+  CHUNK_PREFIX: 'differential_chunk_',  // チャンクプレフィックス
+  TEMP_FOLDER_PREFIX: 'temp_',         // テンポラリフォルダ
+  TEXT_UPDATE_INTERVAL: 3000,          // テキスト書き込み間隔
+  SEQUENCE_PADDING: 3,                 // シーケンス番号桁数（001, 002...）
+  OUTPUT_EXTENSION: '.rt.txt'          // 出力ファイル拡張子
 };
 ```
 
-### 10.2 リアルタイム文字起こし動作フロー
+### 10.2 実装済み動作フロー
 
-#### 主要コンポーネント
-1. **RealTimeTranscriptionProcessor**: リアルタイム文字起こしの中央制御
-2. **ChunkTranscriptionManager**: チャンク処理の統合管理
-3. **SpeechRecognition コンポーネント**: 文字起こし結果の表示
-
-#### 動作フロー詳細
-
-**Phase 1: 初期化・開始**
+#### Phase 1: 録音開始・チャンク生成【実装完了】
 ```
-1. ユーザーが録音中ファイルに対して文字起こし開始
+1. 録音開始ボタン押下
    ↓
-2. ChunkTranscriptionManager.startChunkTranscription() 呼び出し
+2. TrueDifferentialChunkGenerator.startRecording()
    ↓
-3. 録音中WebMファイル検出
+3. 自動チャンク生成開始（20秒間隔タイマー）
    ↓
-4. RealTimeTranscriptionProcessor.startRealTimeTranscription() 開始
+4. MediaRecorderからのデータを連続バッファに蓄積
    ↓
-5. 初期化処理:
-   - chunkSequence = 0
-   - lastProcessedOffset = 0
-   - processedChunks.clear()
-   - 処理間隔 5秒のタイマー開始
+5. 時間間隔達成時にチャンクファイル生成
+   ↓
+6. differential_chunk_XXX.webmとして保存
 ```
 
-**Phase 2: 定期監視・データ検出**
+#### Phase 2: ファイル監視・文字起こし処理【実装完了】
 ```
-タイマー実行（5秒間隔）:
-1. checkAndProcessNewData() 実行
+1. ChunkFileWatcher.startWatching(tempFolderPath)
    ↓
-2. ファイルサイズチェック
-   - 現在のファイルサイズ取得
-   - 前回処理位置と比較
+2. 1秒間隔でテンポラリフォルダを監視
    ↓
-3. 新しいデータ検出判定
-   - 推定時間計算: (新しいデータサイズ) / 16000 bytes/秒
-   - 最小処理時間（20秒）との比較
+3. 新しいチャンクファイル検出
    ↓
-4. 処理条件満たした場合 → processNewChunk() 呼び出し
-```
-
-**Phase 3: チャンク処理**
-```
-processNewChunk() 実行:
-1. チャンクID生成: realtime_chunk_{chunkSequence}
+4. ファイル安定性チェック（500ms遅延で2回サイズ確認）
    ↓
-2. 時間範囲計算:
-   - startTime = chunkSequence * chunkSize
-   - endTime = startTime + chunkSize
+5. FileBasedTranscriptionEngine.addChunkFile()
    ↓
-3. 重複処理チェック:
-   - 既に処理済みか確認
-   - 処理中フラグ確認
-   ↓
-4. 処理中フラグ設定:
-   - processingChunkId = chunkId
-   - processedChunks.set(processing_{chunkId})
-   ↓
-5. transcribeRecordingChunk() 呼び出し
+6. 順次キューイング・文字起こし処理実行（1回リトライ）
 ```
 
-**Phase 4: WAVファイル作成・文字起こし**
+#### Phase 3: 結果統合・テキスト出力【実装完了】
 ```
-transcribeRecordingChunk() 実行:
-1. リトライループ開始（最大3回）
+1. 文字起こし完了
    ↓
-2. createTempWavFromRecording() 呼び出し:
-   - WebMファイルからArrayBuffer取得
-   - 時間範囲指定でデータ抽出
-   - WAVヘッダー追加
-   - 一時ファイル保存
+2. RealtimeTextManager.addTranscriptionResult()
    ↓
-3. サーバー状態確認:
-   - ensureServerRunning()
+3. 時間範囲ベースフィルタリング（重複除去）
    ↓
-4. 文字起こしAPI呼び出し:
-   - window.electronAPI.speechTranscribe()
+4. メモリバッファ更新・時間順ソート
    ↓
-5. 結果処理:
-   - ChunkResult形式に変換
-   - 成功時: 次チャンクへ進行
-   - 失敗時: リトライまたはエラー記録
+5. 3秒間隔での自動ファイル書き込み
+   ↓
+6. .rt.txt形式でリアルタイム結果保存
 ```
 
-**Phase 5: 結果統合・表示**
+#### Phase 4: UI統合・状態管理【実装完了】
 ```
-文字起こし完了後:
-1. processedChunks.set(chunkId, result)
+1. FileBasedRealtimeProcessor統合制御
    ↓
-2. コールバック実行:
-   - onChunkCompletedCallbacks.forEach()
+2. 統計情報リアルタイム更新（5秒間隔）
    ↓
-3. イベント発火:
-   - chunkTranscriptionCompleted
+3. CustomEventベースUI通知
    ↓
-4. SpeechRecognition コンポーネント:
-   - transcriptionResult 更新
-   - UI再レンダリング
+4. エラーハンドリング・リソース監視
    ↓
-5. 次チャンク準備:
-   - chunkSequence++
-   - lastProcessedOffset 更新
+5. 自動スクロール・進捗表示
 ```
 
-#### 現在の設定値
-- **チャンクサイズ**: 20秒
-- **処理間隔**: 5秒
-- **最小処理時間**: 20秒
-- **最大リトライ回数**: 2回
-- **処理中フラグタイムアウト**: 3分
-- **推定バイト/秒**: 16,000 bytes
+### 10.3 実装完了済み機能と品質保証
 
-#### 問題発生パターンと対策
-1. **処理中フラグスタック**: 3分タイムアウトで強制削除
-2. **サーバー接続切断**: エラー検出時の自動再起動
-3. **チャンク時間範囲エラー**: 固定サイズチャンク使用
-4. **データ不足エラー**: 初回チャンクの最小時間緩和
+#### エラーハンドリング強化【実装完了】
+- **エラー分類**: 6種類のエラータイプを自動分類
+- **重要度判定**: low/medium/high/critical の4段階
+- **指数バックオフ**: エラータイプ別リトライ遅延
+- **推奨アクション**: エラー別の具体的対策提示
 
-#### 改善案：新しいファイルベースアプローチ
+#### ファイルシステム信頼性【実装完了】
+- **安定性チェック**: 書き込み完了をサイズ比較で判定
+- **最小サイズ制限**: 1KB未満のファイルは無効として処理
+- **権限チェック**: ディスク容量・アクセス権限の確認
+- **パス正規化**: Windows環境でのファイルパス処理
 
-**録音制御**
-1. 録音開始が押される
-2. 録音開始
-3. 保存用に内容が空のファイル作成
-4. テンポラリ用にファイル名と同じフォルダ作成
-5. チャンクサイズがたまったらチャンクごとにファイル保存
-6. 録音停止が押される
-7. トータル録音ファイルを空のファイルに上書き
+#### パフォーマンス最適化【実装完了】
+- **メモリバッファ管理**: 最大1000セグメントで制限
+- **時間範囲フィルタリング**: 重複セグメントの効率的除去
+- **リソース監視**: CPU/メモリ使用量をlow/medium/highで分類
+- **統計データ**: 処理時間、成功率、エラー率の追跡
 
-**文字起こし制御**
-1. リアルタイム文字起こし開始
-2. テンポラリフォルダに新しいファイルがあるか定期的にチェック
-3. 新しいファイルがあったら文字起こし開始
-4. １ファイルの文字起こしが終わるテキストをテキストファイルに書きだし、なければ作成
-5. 次のファイルを文字起こし開始、次のファイルがなければテンポラリフォルダを定期的にチェック
-6. 3に戻る
+### 10.4 今後の改善予定項目
 
-**UI制御**
-- 文字起こし結果エリア: 書き出されたテキストファイルを定期監視して表示更新
-- 文字起こしエリア: チャンク書き出し・文字起こし状況を監視して表示
-- 録音コントロール: 録音・文字起こし統合ボタンを追加
+#### 未実装・改善予定の機能
+1. **並列処理対応**: 現在は単一ファイル順次処理のみ
+2. **チャンクサイズ動的調整**: 音声内容に応じたサイズ最適化
+3. **話者識別統合**: 複数話者の自動識別・分離
+4. **音声品質診断**: AudioDiagnostics機能の安定化・再有効化
+5. **WebSocket直接接続**: ファイルベースから直接ストリーミングへの移行
 
-### 10.3 次ステップへの準備
+#### 想定される課題と対策
+1. **大量ファイル処理**: テンポラリファイルの定期クリーンアップ機能
+2. **ディスク容量不足**: 容量監視と自動アラート機能
+3. **ネットワーク不安定**: より高度なリトライ・フォールバック機能
 
-#### 技術的準備
-- 録音データのリアルタイム送信準備
-- WebSocket通信の基盤設計
-- チャンク分割処理の考慮
+### 10.5 実装品質の向上
 
-#### スケジュール
-| Phase | 期間 | 主要成果物 |
-|-------|------|------------|
-| Phase 1 | 3日 | ファイル保存・監視 |
-| Phase 2 | 4日 | 文字起こしエンジン |
-| Phase 3 | 2日 | UI統合 |
-| Phase 4 | 2日 | エラーハンドリング |
-| Phase 5 | 2日 | 統合・テスト |
-| **合計** | **13日** | **完全実装** |
+- **型安全性**: TypeScriptインターフェース完全定義
+- **ログ充実**: 詳細デバッグ情報とプロセス追跡
+- **設定分離**: コンフィグファイルでの一元管理
+- **テスト容易性**: モジュラー設計と依存性注入
+
+---
+
+## 実装更新サマリー
+
+### 主要変更点
+1. **メモリベース → ファイルベース**: 実装で安定性を重視した設計に変更
+2. **チャンク間隔**: 5秒 → 20秒に最適化
+3. **処理方式**: 並列処理 → 順次処理でシンプル化  
+4. **リトライ回数**: 3回 → 1回で効率化
+5. **新システム追加**: 5つの主要コンポーネントによる統合アーキテクチャ
+
+### 実装完了した新機能
+- **TrueDifferentialChunkGenerator**: 高品質チャンク生成システム
+- **ChunkFileWatcher**: ファイル監視・安定性チェックシステム
+- **FileBasedTranscriptionEngine**: 順次処理・エラー分類システム
+- **RealtimeTextManager**: テキスト統合・自動保存システム
+- **FileBasedRealtimeProcessor**: 統合制御・監視システム
+
+### 品質・性能向上
+- **エラーハンドリング**: 6種類×4段階の詳細エラー管理
+- **ファイルシステム信頼性**: 安定性チェック・権限確認
+- **UI通知システム**: CustomEventベースのリアルタイム状態更新
+- **パフォーマンス最適化**: メモリ管理・リソース監視
+
+この実装により、元の設計で想定していた「ファイルベースリアルタイム文字起こし」が実現され、更に品質・性能・保守性の面で大幅な改善が図られています。
