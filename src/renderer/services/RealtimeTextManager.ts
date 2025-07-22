@@ -100,8 +100,10 @@ export class RealtimeTextManager {
     this.metadata.status = 'transcribing';
     this.metadata.startTime = Date.now();
     this.textBuffer = []; // バッファをクリア
+    this.isModified = false; // 初期状態をfalseに設定
     
-    console.log(`RealtimeTextManager開始: ${outputFilePath}`);
+    console.log(`📝 RealtimeTextManager開始: ${outputFilePath}`);
+    console.log(`📝 設定: enableAutoSave=${this.config.enableAutoSave}, writeInterval=${this.config.writeInterval}ms`);
     
     if (this.config.enableAutoSave) {
       this.startAutoSave();
@@ -117,12 +119,17 @@ export class RealtimeTextManager {
     this.metadata.status = 'completed';
     this.stopAutoSave();
     
-    // 最終書き込み
-    if (this.currentTextFilePath && this.isModified) {
+    console.log(`📝 RealtimeTextManager停止開始: isModified=${this.isModified}, currentTextFilePath=${this.currentTextFilePath}, textBuffer.length=${this.textBuffer.length}`);
+    
+    // 最終書き込み（データがある場合は必ず実行）
+    if (this.currentTextFilePath && (this.isModified || this.textBuffer.length > 0)) {
+      console.log(`📝 最終書き込み実行中...`);
       this.writeToFile();
+    } else {
+      console.log(`📝 最終書き込みスキップ: currentTextFilePath=${!!this.currentTextFilePath}, isModified=${this.isModified}, textBuffer.length=${this.textBuffer.length}`);
     }
     
-    console.log('RealtimeTextManager停止');
+    console.log('📝 RealtimeTextManager停止完了');
     this.notifyTextUpdate();
   }
   
@@ -175,7 +182,10 @@ export class RealtimeTextManager {
     // メタデータ更新（全て通常のチャンクファイルとして処理）
     this.metadata.processedChunks = Math.max(this.metadata.processedChunks, chunkInfo.sequenceNumber);
     this.metadata.lastUpdateTime = Date.now();
+    const wasModified = this.isModified;
     this.isModified = true;
+    
+    console.log(`📝 isModifiedをtrueに設定: ${realtimeSegments.length}セグメント追加 (前の状態: ${wasModified})`);
     
     // 推定残り時間計算
     this.updateEstimatedDuration();
@@ -237,6 +247,19 @@ export class RealtimeTextManager {
       this.textBuffer.sort((a, b) => a.start - b.start); // 開始時間順にソート
       
       console.log(`📝 時間範囲ベース追加完了: ${realtimeSegments.length}セグメント`);
+      
+      // メタデータ更新
+      this.metadata.processedChunks = Math.max(this.metadata.processedChunks, chunkInfo.sequenceNumber);
+      this.metadata.lastUpdateTime = Date.now();
+      const wasModified = this.isModified;
+      this.isModified = true;
+      
+      console.log(`📝 時間範囲ベース: isModifiedをtrueに設定: ${realtimeSegments.length}セグメント追加 (前の状態: ${wasModified})`);
+      
+      // 推定残り時間計算
+      this.updateEstimatedDuration();
+      
+      this.notifyTextUpdate();
     } else {
       console.log(`📝 この時間範囲に新しいセグメントなし`);
     }
@@ -282,7 +305,10 @@ export class RealtimeTextManager {
    * フルテキスト生成
    */
   private generateFullText(): string {
+    console.log(`📝 generateFullText開始: textBuffer.length=${this.textBuffer.length}`);
+    
     if (this.textBuffer.length === 0) {
+      console.log(`📝 generateFullText: バッファが空のため空文字列を返す`);
       return '';
     }
     
@@ -320,7 +346,9 @@ export class RealtimeTextManager {
       }
     }
     
-    return fullText.trim();
+    const finalText = fullText.trim();
+    console.log(`📝 generateFullText完了: ${finalText.length}文字, プレビュー: "${finalText.substring(0, 100)}..."`);
+    return finalText;
   }
   
   /**
@@ -330,12 +358,16 @@ export class RealtimeTextManager {
     if (this.writeInterval) return;
     
     this.writeInterval = setInterval(() => {
+      console.log(`🔄 自動保存チェック: isModified=${this.isModified}, currentTextFilePath=${this.currentTextFilePath}`);
       if (this.isModified && this.currentTextFilePath) {
+        console.log(`📝 自動保存実行中...`);
         this.writeToFile();
+      } else {
+        console.log(`📝 自動保存スキップ (変更なしまたはパスなし)`);
       }
     }, this.config.writeInterval);
     
-    console.log(`自動保存開始: ${this.config.writeInterval}ms間隔`);
+    console.log(`🔄 自動保存開始: ${this.config.writeInterval}ms間隔`);
   }
   
   /**
@@ -353,24 +385,43 @@ export class RealtimeTextManager {
    * ファイル書き込み（エラーハンドリング強化版）
    */
   private async writeToFile(): Promise<void> {
-    if (!this.currentTextFilePath) return;
+    console.log(`📝 writeToFile呼び出し: currentTextFilePath=${this.currentTextFilePath}, isModified=${this.isModified}`);
+    
+    if (!this.currentTextFilePath) {
+      console.log(`❌ currentTextFilePathがnullのため書き込みスキップ`);
+      return;
+    }
     
     try {
       const fileContent = this.generateFileContent();
       const buffer = new TextEncoder().encode(fileContent);
       
       // ファイル名のみを抽出して拡張子を.rt.txtに変更
-      const fileName = this.currentTextFilePath.split('\\').pop() || this.currentTextFilePath.split('/').pop() || this.currentTextFilePath;
-      const rtFileName = fileName.replace(/\.webm$/, '.rt.txt');
+      const fullPath = this.currentTextFilePath;
+      const fileName = fullPath.split('\\').pop() || fullPath.split('/').pop() || fullPath;
       
-      console.log(`リアルタイムテキストファイル書き込み: ${rtFileName}`);
+      // ファイル名にパスが含まれている場合は、ファイル名部分のみを抽出
+      const baseFileName = fileName.includes('/') ? fileName.split('/').pop() : fileName;
+      const rtFileName = (baseFileName || fileName).replace(/\.txt$/, '').replace(/\.webm$/, '') + '.rt.txt';
       
-      // 従来のsaveFile APIを使用（FileSystemErrorHandlerを一時的に無効化）
-      await window.electronAPI.saveFile(buffer.buffer, rtFileName);
+      console.log(`📝 ファイル名抽出: fullPath="${fullPath}", fileName="${fileName}", baseFileName="${baseFileName}", rtFileName="${rtFileName}"`);
+      
+      console.log(`📝 リアルタイムテキストファイル書き込み開始: ${rtFileName}`);
+      console.log(`📝 元ファイルパス: ${this.currentTextFilePath}`);
+      console.log(`📝 ファイル内容サイズ: ${fileContent.length}文字, ${buffer.byteLength}バイト`);
+      console.log(`📝 ファイル内容プレビュー:`, fileContent.substring(0, 200) + '...');
+      
+      // ElectronAPI saveFileにファイル名のみを指定（サブフォルダなし）
+      // saveFileは既に設定フォルダに保存するため、パスの重複を避ける
+      console.log(`📝 ElectronAPI saveFile呼び出し開始: buffer=${buffer.byteLength}bytes, filename="${rtFileName}"`);
+      
+      const saveResult = await window.electronAPI.saveFile(buffer.buffer, rtFileName);
+      console.log(`📝 ElectronAPI saveFile結果:`, saveResult);
       
       this.isModified = false;
+      console.log(`📝 isModifiedをfalseに設定 (書き込み完了後)`);
       
-      console.log(`✓ リアルタイムテキストファイル書き込み完了: ${rtFileName}`);
+      console.log(`✅ リアルタイムテキストファイル書き込み完了: ${rtFileName}`);
       
       this.onFileWriteCallbacks.forEach(callback => {
         try {
@@ -384,15 +435,15 @@ export class RealtimeTextManager {
       // エラーが発生してもループしないように、エラー報告は1回だけ
       if (this.metadata.errorCount < 5) { // 最大5回までエラー報告
         if (error instanceof Error) {
-          console.error('ファイル書き込みエラー:', error.message);
+          console.error('📝 ファイル書き込みエラー:', error.message);
           this.reportError(error);
         } else {
-          console.error('ファイル書き込みエラー:', error);
+          console.error('📝 ファイル書き込みエラー:', error);
           this.reportError(new Error(String(error)));
         }
       } else {
         // エラーが多すぎる場合は自動保存を停止
-        console.error('エラーが多すぎるため自動保存を停止します');
+        console.error('📝 エラーが多すぎるため自動保存を停止します');
         this.stopAutoSave();
       }
     }

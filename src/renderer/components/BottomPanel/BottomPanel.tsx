@@ -1238,6 +1238,12 @@ const BottomPanel: React.FC = () => {
       if (realtimeProcessorRef.current) {
         try {
           console.log('🎬 FileBasedRealtimeProcessor停止中...')
+          
+          // 停止前に最終ファイル保存を実行
+          console.log('💾 最終リアルタイムテキスト保存中...')
+          await realtimeProcessorRef.current.saveToFile()
+          console.log('✅ 最終リアルタイムテキスト保存完了')
+          
           await realtimeProcessorRef.current.stop()
           console.log('✅ FileBasedRealtimeProcessor停止完了')
         } catch (realtimeError) {
