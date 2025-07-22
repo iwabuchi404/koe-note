@@ -2,6 +2,7 @@ import React, { useState, createContext, useContext } from 'react'
 import './styles/global.css'
 import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
+import { SettingsProvider } from './contexts/SettingsContext'
 
 export interface AudioFile {
   id: string
@@ -94,12 +95,14 @@ const App: React.FC = () => {
   }
 
   return (
-    <AppContext.Provider value={contextValue}>
-      <div className="app">
-        <TitleBar />
-        <MainLayout />
-      </div>
-    </AppContext.Provider>
+    <SettingsProvider>
+      <AppContext.Provider value={contextValue}>
+        <div className="app">
+          <TitleBar />
+          <MainLayout />
+        </div>
+      </AppContext.Provider>
+    </SettingsProvider>
   )
 }
 

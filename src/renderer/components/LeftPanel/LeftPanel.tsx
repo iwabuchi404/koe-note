@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useAppContext, AudioFile } from '../../App'
+import SettingsModal from '../SettingsModal/SettingsModal'
 
 // 時間フォーマット関数
 const formatDuration = (seconds: number): string => {
@@ -20,6 +21,7 @@ const LeftPanel: React.FC = () => {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [loadedTranscriptions, setLoadedTranscriptions] = useState<Map<string, any>>(new Map())
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
 
   // ファイル一覧を読み込む
   const loadFileList = useCallback(async (folderPath: string) => {
@@ -614,6 +616,21 @@ const LeftPanel: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* 画面固定設定ボタン */}
+      <button
+        className="settings-button-fixed"
+        onClick={() => setIsSettingsOpen(true)}
+        title="設定を開く"
+      >
+        ⚙️
+      </button>
+
+      {/* 設定モーダル */}
+      <SettingsModal 
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   )
 }
