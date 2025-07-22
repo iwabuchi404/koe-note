@@ -172,15 +172,15 @@ export class ChunkFileWatcher {
    * チャンクファイル判定
    */
   private isChunkFile(filename: string): boolean {
-    // timerange_chunk_とtruediff_chunk_に対応
-    return /^(timerange_chunk_|truediff_chunk_)\d{3}\.webm$/.test(filename);
+    // timerange_chunk_、truediff_chunk_、differential_chunk_に対応
+    return /^(timerange_chunk_|truediff_chunk_|differential_chunk_)\d{3}\.webm$/.test(filename);
   }
 
   /**
    * チャンクファイル名をパース
    */
   private parseChunkFilename(filename: string, fullPath: string): ChunkFileInfo | null {
-    // timerange_chunk_XXX.webmとtruediff_chunk_XXX.webmに対応
+    // timerange_chunk_XXX.webm、truediff_chunk_XXX.webm、differential_chunk_XXX.webmに対応
     const timerangeMatch = filename.match(/^timerange_chunk_(\d{3})\.webm$/);
     if (timerangeMatch) {
       return {
@@ -199,6 +199,18 @@ export class ChunkFileWatcher {
         filename,
         fullPath,
         sequenceNumber: parseInt(truediffMatch[1], 10),
+        timestamp: Date.now(),
+        size: 0, // 後で設定
+        isReady: false
+      };
+    }
+    
+    const differentialMatch = filename.match(/^differential_chunk_(\d{3})\.webm$/);
+    if (differentialMatch) {
+      return {
+        filename,
+        fullPath,
+        sequenceNumber: parseInt(differentialMatch[1], 10),
         timestamp: Date.now(),
         size: 0, // 後で設定
         isReady: false

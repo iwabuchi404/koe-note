@@ -890,6 +890,21 @@ const BottomPanel: React.FC = () => {
       // FileBasedRealtimeProcessorを開始（リアルタイム文字起こし有効時）
       if ((enableTranscription || FORCE_ENABLE_REALTIME_TRANSCRIPTION) && realtimeProcessorRef.current && tempFolderPath && recordingFilename) {
         try {
+          // Kotoba-Whisperサーバー状態確認
+          const serverStatus = await window.electronAPI.speechGetServerStatus()
+          console.log(`🔍 Kotoba-Whisperサーバー状態:`, serverStatus)
+          
+          if (!serverStatus.isRunning) {
+            console.log(`🚀 Kotoba-Whisperサーバー起動中...`)
+            const startResult = await window.electronAPI.speechStartServer()
+            console.log(`🚀 サーバー起動結果:`, startResult)
+            
+            if (!startResult) {
+              console.error(`❌ Kotoba-Whisperサーバー起動失敗`)
+              throw new Error('文字起こしサーバーの起動に失敗しました')
+            }
+          }
+          
           // 出力ファイルパス設定（録音ファイル名ベース）
           const settings = await window.electronAPI.loadSettings()
           const outputFilePath = `${settings.saveFolder}/${baseFilename}_realtime.txt`
@@ -967,10 +982,10 @@ const BottomPanel: React.FC = () => {
       console.log(`🎬🎬🎬 MediaRecorder.start()を呼び出し直前 🎬🎬🎬`)
       
       try {
-        mediaRecorder.start(1000) // 1秒間隔でデータを供給（自動生成は20秒間隔）
-        console.log('✅ MediaRecorder.start(1000)呼び出し完了, 新しいstate:', mediaRecorder.state)
-        if (false && enableTranscription && tempFolderPath && recordingFilename) { // 手動処理無効化（自動生成使用）
-          console.log('📝 リアルタイム処理ループを開始します (20秒間隔)');
+        mediaRecorder.start() // timesliceなしで連続録音（手動チャンク分割を使用）
+        console.log('✅ MediaRecorder.start()呼び出し完了, 新しいstate:', mediaRecorder.state)
+        if (true) { // 手動requestData()処理を有効化
+          console.log('📝 手動データ要求ループを開始します (20秒間隔)');
           
           const generator = trueDiffGeneratorRef.current!;
           const recorder = mediaRecorderRef.current!;
@@ -985,39 +1000,26 @@ const BottomPanel: React.FC = () => {
               }
 
               // 1. requestData()で最新のデータを要求
+              console.log('📡 requestData()でデータ要求中...')
               recorder.requestData();
               
               // 2. ondataavailableが実行され、データがジェネレータに追加されるのを少し待つ
-              await new Promise(resolve => setTimeout(resolve, 300));
+              await new Promise(resolve => setTimeout(resolve, 500));
               
-              // 3. ジェネレータが準備完了かチェック
-              if (generator.isReady()) {
-                const chunkResult = await generator.generateTrueDifferentialChunk();
-                
-                if (chunkResult && chunkResult.isNewData) {
-                  console.log(`✅ チャンク生成完了: ${chunkResult.chunkNumber} (${chunkResult.dataSize} bytes)`);
-                  if (chunkResult.filePath) {
-                    console.log(`📁 自動保存済み: ${chunkResult.filePath}`);
-                  }
-                } else {
-                  console.log(`📝 新しい差分データなし - スキップ`);
-                }
-              } else {
-                console.log(`📝 ジェネレータが未初期化 - スキップ`);
-              }
+              console.log('📡 requestData()完了、自動チャンク生成開始をトリガー')
 
             } catch (error) {
               console.error(`❌ リアルタイム処理ループ内でエラーが発生しました:`, error);
             } finally {
-              // 4. 次のループを5秒後にスケジュールする
+              // 4. 次のループを20秒後にスケジュールする
               if (mediaRecorderRef.current?.state === 'recording') {
-                realtimeProcessingIntervalRef.current = window.setTimeout(processingLoop, 5000);
+                realtimeProcessingIntervalRef.current = window.setTimeout(processingLoop, 20000);
               }
             }
           };
 
-          // 最初のループを5秒後に開始
-          realtimeProcessingIntervalRef.current = window.setTimeout(processingLoop, 5000);
+          // 最初のループを20秒後に開始
+          realtimeProcessingIntervalRef.current = window.setTimeout(processingLoop, 20000);
         }
       } catch (startError) {
         console.error('❌ MediaRecorder.start()エラー:', startError);
