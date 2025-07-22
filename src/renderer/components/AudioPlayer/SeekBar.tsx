@@ -39,19 +39,7 @@ const SeekBar: React.FC<SeekBarProps> = ({
     ? (dragPosition / 100) * (duration || 0)
     : currentTime
     
-  // 重要な値をより詳細にログ出力
-  console.log('SeekBar render DEBUG:', JSON.stringify({
-    currentTime,
-    duration,
-    progress,
-    isDragging,
-    dragPosition,
-    displayProgress,
-    displayTime,
-    formatTimeResult: formatTime(displayTime),
-    isCurrentTimeFinite: isFinite(currentTime),
-    isDurationFinite: isFinite(duration)
-  }, null, 2))
+  // SeekBarレンダリング (デバッグログ削除済み)
   
   // マウス位置から進捗率を計算
   const getProgressFromEvent = useCallback((event: MouseEvent | React.MouseEvent) => {

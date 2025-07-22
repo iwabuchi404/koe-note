@@ -117,7 +117,9 @@ export class ChunkFileWatcher {
     try {
       // フォルダ内のファイル一覧を取得
       const files = await window.electronAPI.getFileList(this.watchFolder);
-      console.log(`📁 ファイル監視チェック: ${this.watchFolder} - ${files.length}個のファイル検出`);
+      if (files.length > 0) {
+        console.log(`📁 ファイル監視チェック: ${files.length}個のファイル検出`);
+      }
       
       for (const file of files) {
         // チャンクファイルかチェック

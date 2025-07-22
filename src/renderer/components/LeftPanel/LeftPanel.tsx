@@ -242,42 +242,83 @@ const LeftPanel: React.FC = () => {
           const parseRealtimeTranscriptionFile = (content: string) => {
             const segments = [];
             const lines = content.split('\n');
-            let currentSegment = '';
-            let segmentIndex = 0;
+            let isInMainText = false;
+            let isInChunkDetails = false;
             
             for (const line of lines) {
-              // タイムスタンプ付きの行を検出 [時間s-時間s]
-              const timeMatch = line.match(/\[(\d+)s-(\d+)s\]\s*(.+)/);
-              if (timeMatch) {
-                const start = parseInt(timeMatch[1]);
-                const end = parseInt(timeMatch[2]);
-                const text = timeMatch[3];
-                
-                if (text.trim()) {
-                  segments.push({
-                    start,
-                    end,
-                    text: text.trim(),
-                    speaker: undefined
-                  });
-                }
-              } else if (line.includes('## 本文')) {
-                // 本文セクションの開始
+              const trimmedLine = line.trim();
+              
+              // セクション判定
+              if (trimmedLine === '## 本文') {
+                isInMainText = true;
+                isInChunkDetails = false;
                 continue;
-              } else if (line.trim() && !line.startsWith('#') && !line.includes('status:') && !line.includes('processed_chunks:')) {
-                // 通常のテキスト行
-                currentSegment += line + ' ';
+              } else if (trimmedLine === '## チャンク詳細') {
+                isInMainText = false;
+                isInChunkDetails = true;
+                continue;
+              } else if (trimmedLine.startsWith('##') || trimmedLine.startsWith('#')) {
+                isInMainText = false;
+                isInChunkDetails = false;
+                continue;
+              }
+              
+              // チャンク詳細セクションからセグメントを抽出
+              if (isInChunkDetails) {
+                // [開始秒s-終了秒s] テキスト 形式のセグメントを検出
+                const timeMatch = trimmedLine.match(/^\[(\d+(?:\.\d+)?)s-(\d+(?:\.\d+)?)s\]\s*(.+)$/);
+                if (timeMatch) {
+                  const start = parseFloat(timeMatch[1]);
+                  const end = parseFloat(timeMatch[2]);
+                  const text = timeMatch[3];
+                  
+                  if (text.trim()) {
+                    segments.push({
+                      start,
+                      end,
+                      text: text.trim(),
+                      speaker: undefined
+                    });
+                  }
+                }
               }
             }
             
-            // 構造化されたセグメントがない場合は、本文部分を1つのセグメントとして追加
-            if (segments.length === 0 && currentSegment.trim()) {
-              segments.push({
-                start: 0,
-                end: 0,
-                text: currentSegment.trim(),
-                speaker: undefined
-              });
+            // チャンク詳細が見つからない場合は、本文を文で分割してセグメントを作成
+            if (segments.length === 0) {
+              const mainTextLines = content.split('\n');
+              let mainText = '';
+              let foundMainText = false;
+              
+              for (const line of mainTextLines) {
+                if (line.trim() === '## 本文') {
+                  foundMainText = true;
+                  continue;
+                } else if (line.trim().startsWith('##') && foundMainText) {
+                  break;
+                } else if (foundMainText && line.trim() && !line.trim().startsWith('※')) {
+                  mainText += line.trim() + ' ';
+                }
+              }
+              
+              if (mainText.trim()) {
+                // 文を句読点で分割してセグメントを作成
+                const sentences = mainText
+                  .split(/[。．！？\n]/)
+                  .map(s => s.trim())
+                  .filter(s => s.length > 0);
+                
+                sentences.forEach((sentence, index) => {
+                  if (sentence) {
+                    segments.push({
+                      start: index * 5, // 仮の開始時間（5秒間隔）
+                      end: (index + 1) * 5, // 仮の終了時間
+                      text: sentence + (sentence.match(/[。．！？]$/) ? '' : '。'),
+                      speaker: undefined
+                    });
+                  }
+                });
+              }
             }
             
             return segments;

@@ -310,10 +310,7 @@ export class RealtimeTextManager {
    * フルテキスト生成
    */
   private generateFullText(): string {
-    console.log(`📝 generateFullText開始: textBuffer.length=${this.textBuffer.length}`);
-    
     if (this.textBuffer.length === 0) {
-      console.log(`📝 generateFullText: バッファが空のため空文字列を返す`);
       return '';
     }
     
@@ -352,7 +349,9 @@ export class RealtimeTextManager {
     }
     
     const finalText = fullText.trim();
-    console.log(`📝 generateFullText完了: ${finalText.length}文字, プレビュー: "${finalText.substring(0, 100)}..."`);
+    if (finalText.length > 0) {
+      console.log(`📝 generateFullText完了: ${finalText.length}文字`);
+    }
     return finalText;
   }
   
@@ -363,12 +362,9 @@ export class RealtimeTextManager {
     if (this.writeInterval) return;
     
     this.writeInterval = setInterval(() => {
-      console.log(`🔄 自動保存チェック: isModified=${this.isModified}, currentTextFilePath=${this.currentTextFilePath}`);
       if (this.isModified && this.currentTextFilePath) {
-        console.log(`📝 自動保存実行中...`);
+        console.log(`📝 自動保存実行`);
         this.writeToFile();
-      } else {
-        console.log(`📝 自動保存スキップ (変更なしまたはパスなし)`);
       }
     }, this.config.writeInterval);
     

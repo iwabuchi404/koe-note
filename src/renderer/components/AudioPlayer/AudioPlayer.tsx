@@ -41,19 +41,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   // ファイルが選択されているかチェック
   const hasFile = Boolean(filePath)
   
-  // デバッグ用ログ
-  console.log('AudioPlayer render DEBUG:', JSON.stringify({
-    filePath,
-    fileName,
-    hasFile,
-    audioState: {
-      isPlaying: audioState.isPlaying,
-      currentTime: audioState.currentTime,
-      duration: audioState.duration,
-      loading: audioState.loading,
-      error: audioState.error
-    }
-  }, null, 2))
+  // AudioPlayerレンダリング (デバッグログ削除済み)
   
   return (
     <div className={`audio-player ${className}`}>

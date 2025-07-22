@@ -26,11 +26,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
   // UI要素の参照
   const transcriptionContainerRef = React.useRef<HTMLDivElement>(null);
   
-  console.log('🔥 URGENT: SpeechRecognition コンポーネントレンダリング:', {
-    selectedFile: selectedFile?.filename,
-    hasTranscriptionResult: !!transcriptionResult,
-    hasTranscriptionDisplayData: !!transcriptionDisplayData
-  });
+  // SpeechRecognition レンダリング (デバッグログ削除済み)
   const [editingSegmentId, setEditingSegmentId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   const [modifiedSegments, setModifiedSegments] = useState<Set<number>>(new Set());
@@ -156,20 +152,10 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     // FileBasedRealtimeProcessorからの統計更新を監視
     const handleRealtimeUpdate = (event: CustomEvent) => {
       const data = event.detail;
-      console.log('🔥 CustomEvent受信:', {
-        eventType: data?.type,
-        hasTextData: !!data?.textData,
-        segmentCount: data?.textData?.segments?.length || 0,
-        selectedFile: selectedFile?.filename,
-        isRecording: selectedFile?.isRecording
-      });
+      // CustomEvent受信 (デバッグログ削除済み)
       
       if (data && data.textData) {
-        console.log('🔥 ファイルベースリアルタイム文字起こし更新:', {
-          segmentCount: data.textData.segments.length,
-          metadata: data.textData.metadata,
-          segments: data.textData.segments.slice(0, 3) // 最初の3セグメントを表示
-        });
+        // ファイルベースリアルタイム文字起こし更新 (デバッグログ削除済み)
         
         // リアルタイム結果をTranscriptionResult形式に変換
         // duration計算を修正（ミリ秒を秒に変換し、負の値を防ぐ）
@@ -189,7 +175,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
           segment_count: data.textData.segments.length
         };
         
-        console.log('🔥 transcriptionResult更新:', realtimeResult);
+        // transcriptionResult更新 (デバッグログ削除済み)
         setTranscriptionResult(realtimeResult);
         
         // 新しいテキストが追加された場合、自動スクロール
@@ -199,7 +185,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
           }
         }, 100);
       } else {
-        console.log('🔥 CustomEvent受信したがtextDataなし:', data);
+        // CustomEvent受信（textDataなし） (デバッグログ削除済み)
       }
     };
     
@@ -272,12 +258,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
               latestSegment: newResult.segments[newResult.segments.length - 1]?.text?.substring(0, 50) + '...'
             });
             
-            console.log('🔥 URGENT: setTranscriptionResult実行 - 新しい結果を設定');
-            
-            // 次のレンダリングサイクルで状態を確認
-            setTimeout(() => {
-              console.log('🔥 URGENT: setTranscriptionResult実行後の状態確認 - クロージャーでの確認');
-            }, 0);
+            // 文字起こし結果を設定
             
             return newResult;
           });
@@ -302,31 +283,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
 
   // transcriptionResultの状態変化を監視
   useEffect(() => {
-    console.log('🔥 URGENT: transcriptionResult状態変化:', {
-      hasResult: !!transcriptionResult,
-      segmentCount: transcriptionResult?.segments?.length || 0,
-      duration: transcriptionResult?.duration || 0,
-      latestSegment: transcriptionResult?.segments?.[transcriptionResult.segments.length - 1]?.text?.substring(0, 50) + '...',
-      selectedFile: selectedFile?.filename || 'null',
-      fullResult: transcriptionResult
-    });
-    
-    // 結果がある場合の詳細情報
-    if (transcriptionResult && transcriptionResult.segments) {
-      console.log('🔥 URGENT: transcriptionResult詳細:', {
-        segments: transcriptionResult.segments.slice(0, 3), // 最初の3つのセグメントを表示
-        totalSegments: transcriptionResult.segments.length,
-        firstSegmentText: transcriptionResult.segments[0]?.text,
-        lastSegmentText: transcriptionResult.segments[transcriptionResult.segments.length - 1]?.text
-      });
-    }
-    
-    // null になった場合のスタックトレースを出力
-    if (transcriptionResult === null) {
-      console.log('🔥 URGENT: transcriptionResult が null になりました！');
-      console.log('🔥 URGENT: selectedFile:', selectedFile?.filename || 'null');
-      console.trace('transcriptionResult null 設定時のスタックトレース');
-    }
+    // transcriptionResult状態変化の監視 (デバッグログ削除済み)
   }, [transcriptionResult, selectedFile]);
 
   // 再文字起こし時のリフレッシュイベントリスナー
@@ -661,56 +618,22 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
       if (transcriptionResult && 
           (selectedFile?.filepath.includes('recording_') || selectedFile?.isRecording || 
            transcriptionResult.created_at > Date.now() - 300000)) { // 5分以内の結果
-        console.log('🔥 データ選択: 録音中のファイル - transcriptionResult使用 (セグメント数:', transcriptionResult.segments?.length || 0, ')');
         return transcriptionResult;
       }
       
       // 通常の文字起こしファイルから読み込んだ場合
       if (transcriptionDisplayData && transcriptionDisplayData.segments?.length > 0) {
-        console.log('🔥 データ選択: 文字起こしファイル - transcriptionDisplayData使用');
         return transcriptionDisplayData;
       }
       
       // フォールバック（新しい文字起こし結果）
       if (transcriptionResult && transcriptionResult.segments?.length > 0) {
-        console.log('🔥 データ選択: フォールバック - transcriptionResult使用');
         return transcriptionResult;
       }
-      
-      console.log('🔥 データ選択: データなし');
       return null;
     })();
     
-    console.log('🔥 URGENT: renderTranscriptionData - データ選択:', {
-      selectedFile: selectedFile?.filename,
-      isRecording: selectedFile?.filepath.includes('recording_'),
-      isRecordingFlag: selectedFile?.isRecording,
-      hasTranscriptionResult: !!transcriptionResult,
-      hasTranscriptionDisplayData: !!transcriptionDisplayData,
-      selectedData: data ? 'data exists' : 'data is null',
-      transcriptionResultSegments: transcriptionResult?.segments?.length || 0,
-      transcriptionDisplayDataSegments: transcriptionDisplayData?.segments?.length || 0,
-      selectedDataSource: data === transcriptionResult ? 'transcriptionResult' : 
-                         data === transcriptionDisplayData ? 'transcriptionDisplayData' : 'null',
-      dataStructure: data ? Object.keys(data) : 'no data',
-      // 判定条件の詳細
-      condition1: !!(transcriptionResult && 
-                     (selectedFile?.filepath.includes('recording_') || selectedFile?.isRecording) &&
-                     transcriptionResult.segments?.length > 0),
-      condition2: !!(transcriptionDisplayData && transcriptionDisplayData.segments?.length > 0),
-      condition3: !!(transcriptionResult && transcriptionResult.segments?.length > 0)
-    });
-    
-    // データの構造を詳しく確認
-    if (data) {
-      console.log('🔥 URGENT: 選択されたデータの詳細:', {
-        hasSegments: !!data.segments,
-        segmentsLength: data.segments?.length || 0,
-        firstSegment: data.segments?.[0],
-        metadata: data.metadata,
-        structure: data
-      });
-    }
+    // データ選択ロジック (デバッグログ削除済み)
     if (!data) return (
       <>
         {/* ファイル名表示 */}
@@ -1202,12 +1125,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     );
   };
 
-  console.log('🔥 URGENT: SpeechRecognition return:', {
-    showChunkDisplay,
-    selectedFile: selectedFile?.filename,
-    isRecording: selectedFile?.filepath.includes('recording_'),
-    hasTranscriptionResult: !!transcriptionResult
-  });
+  // コンポーネントレンダリング (デバッグログ削除済み)
   
   return (
     <div style={{ 

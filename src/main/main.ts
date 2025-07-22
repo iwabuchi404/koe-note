@@ -1501,7 +1501,7 @@ function parseTranscriptionFileContent(content: string): any {
   
   // セグメントの解析
   const segmentContent = parts[2];
-  const segments = segmentContent.split('\n')
+  const tempSegments = segmentContent.split('\n')
     .filter(line => line.trim())
     .map(line => {
       const match = line.match(/^\[(\d{2}:\d{2}:\d{2}\.\d)\]\s*(?:([^:]+):\s*)?(.+)$/);
@@ -1509,7 +1509,7 @@ function parseTranscriptionFileContent(content: string): any {
         const [, timestamp, speaker, text] = match;
         return {
           start: parseTimestamp(timestamp),
-          end: parseTimestamp(timestamp) + 5, // 仮の終了時刻
+          end: 0, // 後で計算
           text: text.trim(),
           speaker: speaker || undefined
         };
@@ -1517,6 +1517,22 @@ function parseTranscriptionFileContent(content: string): any {
       return null;
     })
     .filter(Boolean);
+
+  // 終了時刻を次のセグメントの開始時刻または適切な推定値で設定
+  const segments = tempSegments.map((segment, index) => {
+    if (!segment) return null;
+    
+    if (index < tempSegments.length - 1) {
+      // 次のセグメントの開始時刻を終了時刻として設定
+      const nextSegment = tempSegments[index + 1];
+      segment.end = nextSegment ? nextSegment.start : segment.start + 5;
+    } else {
+      // 最後のセグメントの場合、テキストの長さから推定（1文字あたり0.2秒程度）
+      const estimatedDuration = Math.max(3, segment.text.length * 0.2);
+      segment.end = segment.start + estimatedDuration;
+    }
+    return segment;
+  }).filter(Boolean);
   
   return {
     metadata: {
