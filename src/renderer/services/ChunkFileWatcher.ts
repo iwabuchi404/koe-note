@@ -21,6 +21,7 @@ export interface ChunkFileInfo {
   timestamp: number;
   size: number;
   isReady: boolean; // ファイル書き込み完了フラグ
+  startTimeSeconds?: number; // 録音開始からの絶対秒数
 }
 
 export interface ChunkWatcherStats {
@@ -183,37 +184,43 @@ export class ChunkFileWatcher {
     // timerange_chunk_XXX.webm、truediff_chunk_XXX.webm、differential_chunk_XXX.webmに対応
     const timerangeMatch = filename.match(/^timerange_chunk_(\d{3})\.webm$/);
     if (timerangeMatch) {
+      const sequenceNumber = parseInt(timerangeMatch[1], 10);
       return {
         filename,
         fullPath,
-        sequenceNumber: parseInt(timerangeMatch[1], 10),
+        sequenceNumber,
         timestamp: Date.now(),
         size: 0, // 後で設定
-        isReady: false
+        isReady: false,
+        startTimeSeconds: (sequenceNumber - 1) * 20 // 20秒間隔想定
       };
     }
     
     const truediffMatch = filename.match(/^truediff_chunk_(\d{3})\.webm$/);
     if (truediffMatch) {
+      const sequenceNumber = parseInt(truediffMatch[1], 10);
       return {
         filename,
         fullPath,
-        sequenceNumber: parseInt(truediffMatch[1], 10),
+        sequenceNumber,
         timestamp: Date.now(),
         size: 0, // 後で設定
-        isReady: false
+        isReady: false,
+        startTimeSeconds: (sequenceNumber - 1) * 20 // 20秒間隔想定
       };
     }
     
     const differentialMatch = filename.match(/^differential_chunk_(\d{3})\.webm$/);
     if (differentialMatch) {
+      const sequenceNumber = parseInt(differentialMatch[1], 10);
       return {
         filename,
         fullPath,
-        sequenceNumber: parseInt(differentialMatch[1], 10),
+        sequenceNumber,
         timestamp: Date.now(),
         size: 0, // 後で設定
-        isReady: false
+        isReady: false,
+        startTimeSeconds: (sequenceNumber - 1) * 20 // 20秒間隔想定
       };
     }
     

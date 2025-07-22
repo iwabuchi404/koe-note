@@ -150,18 +150,21 @@ export class RealtimeTextManager {
     // 該当チャンクのみクリア
     this.textBuffer = this.textBuffer.filter(segment => segment.chunkSequence !== chunkInfo.sequenceNumber);
     
-    // セグメントをRealtimeTextSegmentに変換
+    // セグメントをRealtimeTextSegmentに変換（絶対タイムスタンプ計算）
+    const chunkStartTime = chunkInfo.startTimeSeconds || ((chunkInfo.sequenceNumber - 1) * 20); // フォールバック：20秒間隔
     const realtimeSegments: RealtimeTextSegment[] = result.segments.map((segment: TranscriptionSegment, index: number) => ({
       chunkSequence: chunkInfo.sequenceNumber,
       chunkFilename: chunkInfo.filename,
       segmentIndex: index,
-      start: segment.start,
-      end: segment.end,
+      start: segment.start + chunkStartTime, // 絶対タイムスタンプに変換
+      end: segment.end + chunkStartTime,     // 絶対タイムスタンプに変換
       text: segment.text,
       confidence: segment.words?.[0]?.word ? 0.9 : 0.8, // 仮の信頼度
       isProcessed: true,
       addedAt: Date.now()
     }));
+    
+    console.log(`📝 タイムスタンプ変換: チャンク${chunkInfo.sequenceNumber}, 開始時間=${chunkStartTime}秒, セグメント数=${realtimeSegments.length}`);
     
     // バッファに追加（時間順にソート）
     this.textBuffer.push(...realtimeSegments);
@@ -229,18 +232,20 @@ export class RealtimeTextManager {
         return !segmentInTimeRange; // この時間範囲外のセグメントのみ保持
       });
       
-      // 新しいセグメントをRealtimeTextSegmentに変換
+      // 新しいセグメントをRealtimeTextSegmentに変換（時間範囲ベースでは既に絶対時間）
       const realtimeSegments: RealtimeTextSegment[] = filteredSegments.map((segment: TranscriptionSegment, index: number) => ({
         chunkSequence: chunkInfo.sequenceNumber,
         chunkFilename: chunkInfo.filename,
         segmentIndex: index,
-        start: segment.start,
-        end: segment.end,
+        start: segment.start, // 時間範囲ベースでは既に絶対タイムスタンプ
+        end: segment.end,     // 時間範囲ベースでは既に絶対タイムスタンプ
         text: segment.text,
         confidence: segment.words?.[0]?.word ? 0.9 : 0.8, // 仮の信頼度
         isProcessed: true,
         addedAt: Date.now()
       }));
+      
+      console.log(`📝 時間範囲ベース: セグメント数=${realtimeSegments.length}, 既に絶対タイムスタンプ使用`);
       
       // バッファに追加（時間順にソート）
       this.textBuffer.push(...realtimeSegments);

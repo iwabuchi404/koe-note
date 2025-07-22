@@ -37,6 +37,7 @@ export interface ChunkFileInfo {
   sizeBytes: number;
   duration: number;
   createdAt: number;
+  startTimeSeconds?: number; // 録音開始からの絶対秒数
 }
 
 export interface TrueDifferentialStats {
@@ -918,14 +919,18 @@ export class TrueDifferentialChunkGenerator {
         const savedPath = await window.electronAPI.saveFile(arrayBuffer, filename, this.config.tempFolderPath);
         
         // ファイル情報を記録
+        const startTimeSeconds = (chunkNumber - 1) * (this.chunkIntervalMs / 1000);
         const fileInfo: ChunkFileInfo = {
           filename,
           filepath: savedPath,
           sequenceNumber: chunkNumber,
           sizeBytes: chunkBlob.size,
           duration,
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          startTimeSeconds
         };
+        
+        console.log(`📊 チャンクファイル情報: ${filename}, 開始時間=${startTimeSeconds}秒, 長さ=${duration}秒`);
         
         this.savedChunkFiles.push(fileInfo);
         
