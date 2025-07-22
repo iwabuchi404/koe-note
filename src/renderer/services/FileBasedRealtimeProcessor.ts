@@ -94,19 +94,21 @@ export class FileBasedRealtimeProcessor {
     
     this.setupEventHandlers();
     
-    console.log('FileBasedRealtimeProcessor初期化完了', this.config);
+    console.log('🎯 FileBasedRealtimeProcessor初期化完了', this.config);
   }
   
   /**
    * イベントハンドラー設定
    */
   private setupEventHandlers(): void {
+    
     // ファイル監視 → 文字起こしエンジン
     this.chunkWatcher.onNewFile((fileInfo: ChunkFileInfo) => {
       console.log(`新しいチャンクファイル検出: ${fileInfo.filename}`);
       this.transcriptionEngine.addChunkFile(fileInfo);
       this.updateStats();
     });
+    
     
     // 文字起こしエンジン → テキスト管理
     this.transcriptionEngine.onTranscriptionComplete((result: TranscriptionResult, chunkInfo: ChunkFileInfo) => {
@@ -155,8 +157,11 @@ export class FileBasedRealtimeProcessor {
     }, 5000); // 5秒間隔
   }
   
+  
+  
+
   /**
-   * リアルタイム文字起こし開始
+   * リアルタイム文字起こし開始（従来互換）
    */
   async start(watchFolderPath: string, outputFilePath: string): Promise<void> {
     if (this.isRunning) {
@@ -456,13 +461,16 @@ export class FileBasedRealtimeProcessor {
     this.notifyUI('progress', progress);
   }
   
+  
+
   /**
    * クリーンアップ
    */
   cleanup(): void {
-    console.log('FileBasedRealtimeProcessor クリーンアップ開始');
+    console.log('🧹 FileBasedRealtimeProcessor クリーンアップ開始');
     
     try {
+      
       // 実行中の場合は停止
       if (this.isRunning) {
         this.stop();
@@ -481,9 +489,9 @@ export class FileBasedRealtimeProcessor {
       this.onErrorCallbacks = [];
       this.onTranscriptionCompleteCallbacks = [];
       
-      console.log('✓ FileBasedRealtimeProcessor クリーンアップ完了');
+      console.log('✅ FileBasedRealtimeProcessor クリーンアップ完了');
     } catch (error) {
-      console.error('クリーンアップエラー:', error);
+      console.error('❌ クリーンアップエラー:', error);
     }
   }
 }

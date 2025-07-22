@@ -103,9 +103,9 @@ export class FileBasedTranscriptionEngine {
         segment_count: chunkResult.segments.length
       };
       
-      // realtime_chunk.webm専用のChunkFileInfoを作成
+      // 実際のファイル名を使用（timerange_chunk_XXXまたはtruediff_chunk_XXX.webm）
       const chunkFileInfo: ChunkFileInfo = {
-        filename: 'realtime_chunk.webm',
+        filename: `timerange_chunk_${chunkResult.sequenceNumber.toString().padStart(3, '0')}.webm`,
         fullPath: '',
         sequenceNumber: chunkResult.sequenceNumber,
         timestamp: Date.now(),
@@ -209,7 +209,7 @@ export class FileBasedTranscriptionEngine {
    * 録音中のチャンクファイル判定
    */
   private isRecordingChunkFile(filename: string): boolean {
-    return /^chunk_\d{5}_\d+\.webm$/.test(filename) || filename === 'realtime_chunk.webm';
+    return /^(timerange_chunk_|truediff_chunk_)\d{3}\.webm$/.test(filename);
   }
 
   /**

@@ -30,6 +30,13 @@ export interface ChunkWatcherStats {
   isWatching: boolean;
 }
 
+export interface ChunkWatcherConfig {
+  watchIntervalMs: number // ファイル監視間隔
+  fileStabilityCheckDelay: number // ファイル安定性チェック遅延
+  minFileSize: number // 最小ファイルサイズ（バイト）
+  enableRealtimeTranscription: boolean // リアルタイム文字起こし有効
+}
+
 export class ChunkFileWatcher {
   private watchFolder: string | null = null;
   private isWatching: boolean = false;
@@ -37,10 +44,22 @@ export class ChunkFileWatcher {
   private processedFiles: Set<string> = new Set();
   private watchInterval: NodeJS.Timeout | null = null;
   private onNewFileCallbacks: ((fileInfo: ChunkFileInfo) => void)[] = [];
-  private realtimeChunkCounter: number = 0; // リアルタイムチャンクのカウンター
+  private realtimeChunkCounter: number = 0;
+  private config: ChunkWatcherConfig
   
-  constructor() {
-    // Constructor
+  // 文字起こし統合用コールバック
+  private onRealtimeTranscriptionCallbacks: ((fileInfo: ChunkFileInfo) => void)[] = []
+  
+  constructor(config: Partial<ChunkWatcherConfig> = {}) {
+    this.config = {
+      watchIntervalMs: 1000, // 1秒間隔
+      fileStabilityCheckDelay: 500, // 500ms遅延
+      minFileSize: 1000, // 1KB最小サイズ
+      enableRealtimeTranscription: true,
+      ...config
+    }
+    
+    console.log('🎯 ChunkFileWatcher初期化:', this.config)
   }
 
   /**
@@ -60,14 +79,14 @@ export class ChunkFileWatcher {
 
     console.log(`チャンクファイル監視開始: ${folderPath}`);
 
-    // 1秒間隔でフォルダをチェック
+    // 設定された間隔でフォルダをチェック
     this.watchInterval = setInterval(async () => {
       try {
         await this.checkForNewFiles();
       } catch (error) {
         console.error('ファイル監視エラー:', error);
       }
-    }, 1000);
+    }, this.config.watchIntervalMs);
   }
 
   /**
@@ -120,8 +139,25 @@ export class ChunkFileWatcher {
                 const actionType = existingFile ? '更新' : '検出';
                 console.log(`チャンクファイル${actionType}: ${file.filename} (${fileInfo.size} bytes)`);
                 
-                // コールバック実行
-                this.onNewFileCallbacks.forEach(callback => callback(fileInfo));
+                // 通常のコールバック実行
+                this.onNewFileCallbacks.forEach(callback => {
+                  try {
+                    callback(fileInfo)
+                  } catch (error) {
+                    console.error('新ファイルコールバックエラー:', error)
+                  }
+                });
+                
+                // リアルタイム文字起こしが有効な場合のコールバック実行
+                if (this.config.enableRealtimeTranscription) {
+                  this.onRealtimeTranscriptionCallbacks.forEach(callback => {
+                    try {
+                      callback(fileInfo)
+                    } catch (error) {
+                      console.error('リアルタイム文字起こしコールバックエラー:', error)
+                    }
+                  });
+                }
               }
             }
           }
@@ -136,35 +172,33 @@ export class ChunkFileWatcher {
    * チャンクファイル判定
    */
   private isChunkFile(filename: string): boolean {
-    // 従来のchunk_形式に加えて、realtime_chunk.webmも対応
-    return /^chunk_\d{5}_\d+\.webm$/.test(filename) || filename === 'realtime_chunk.webm';
+    // timerange_chunk_とtruediff_chunk_に対応
+    return /^(timerange_chunk_|truediff_chunk_)\d{3}\.webm$/.test(filename);
   }
 
   /**
    * チャンクファイル名をパース
    */
   private parseChunkFilename(filename: string, fullPath: string): ChunkFileInfo | null {
-    const match = filename.match(/^chunk_(\d{5})_(\d+)\.webm$/);
-    
-    if (match) {
+    // timerange_chunk_XXX.webmとtruediff_chunk_XXX.webmに対応
+    const timerangeMatch = filename.match(/^timerange_chunk_(\d{3})\.webm$/);
+    if (timerangeMatch) {
       return {
         filename,
         fullPath,
-        sequenceNumber: parseInt(match[1], 10),
-        timestamp: parseInt(match[2], 10),
+        sequenceNumber: parseInt(timerangeMatch[1], 10),
+        timestamp: Date.now(),
         size: 0, // 後で設定
         isReady: false
       };
     }
     
-    // realtime_chunk.webmの場合
-    if (filename === 'realtime_chunk.webm') {
-      // リアルタイムチャンクは1から始まる連番を使用
-      this.realtimeChunkCounter++;
+    const truediffMatch = filename.match(/^truediff_chunk_(\d{3})\.webm$/);
+    if (truediffMatch) {
       return {
         filename,
         fullPath,
-        sequenceNumber: this.realtimeChunkCounter,
+        sequenceNumber: parseInt(truediffMatch[1], 10),
         timestamp: Date.now(),
         size: 0, // 後で設定
         isReady: false
@@ -181,10 +215,10 @@ export class ChunkFileWatcher {
     try {
       // 簡易的な安定性チェック：ファイルサイズを2回チェック
       const size1 = await this.getFileSize(filePath);
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
+      await new Promise(resolve => setTimeout(resolve, this.config.fileStabilityCheckDelay));
       const size2 = await this.getFileSize(filePath);
       
-      const isStable = size1 === size2 && size1 > 1000; // サイズが安定し、1KB以上
+      const isStable = size1 === size2 && size1 > this.config.minFileSize;
       
       console.log(`ファイル安定性チェック: ${filePath}`);
       console.log(`  - 1回目サイズ: ${size1} bytes`);
@@ -222,6 +256,14 @@ export class ChunkFileWatcher {
   onNewFile(callback: (fileInfo: ChunkFileInfo) => void): void {
     this.onNewFileCallbacks.push(callback);
   }
+  
+  /**
+   * リアルタイム文字起こし用コールバック追加（新機能）
+   */
+  onRealtimeTranscription(callback: (fileInfo: ChunkFileInfo) => void): void {
+    this.onRealtimeTranscriptionCallbacks.push(callback)
+    console.log('🎆 リアルタイム文字起こしコールバック登録')
+  }
 
   /**
    * ファイルを処理済みとしてマーク
@@ -255,6 +297,26 @@ export class ChunkFileWatcher {
   }
 
   /**
+   * 設定更新（新機能）
+   */
+  updateConfig(newConfig: Partial<ChunkWatcherConfig>): void {
+    this.config = { ...this.config, ...newConfig }
+    console.log('🔧 ChunkFileWatcher設定更新:', this.config)
+  }
+  
+  /**
+   * 強制リセット（新機能）
+   */
+  reset(): void {
+    this.stopWatching()
+    this.detectedFiles.clear()
+    this.processedFiles.clear()
+    this.realtimeChunkCounter = 0
+    
+    console.log('🔄 ChunkFileWatcher リセット完了')
+  }
+
+  /**
    * クリーンアップ
    */
   cleanup(): void {
@@ -262,5 +324,8 @@ export class ChunkFileWatcher {
     this.detectedFiles.clear();
     this.processedFiles.clear();
     this.onNewFileCallbacks = [];
+    this.onRealtimeTranscriptionCallbacks = [];
+    
+    console.log('🧹 ChunkFileWatcher クリーンアップ完了')
   }
 }

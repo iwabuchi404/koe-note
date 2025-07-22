@@ -7,6 +7,7 @@
 import { TranscriptionResult, TranscriptionSegment } from '../../preload/preload';
 import { ChunkFileInfo } from './ChunkFileWatcher';
 import { FileSystemErrorHandler, FileSystemError } from './FileSystemErrorHandler';
+import { TRANSCRIPTION_CONFIG } from '../config/transcriptionConfig';
 
 export interface RealtimeTextSegment {
   chunkSequence: number;
@@ -48,7 +49,6 @@ export interface TextFileConfig {
 export class RealtimeTextManager {
   private textBuffer: RealtimeTextSegment[] = [];
   private metadata: RealtimeTextMetadata;
-  private lastRealtimeResult: TranscriptionResult | null = null; // 前回のリアルタイム結果
   private isModified: boolean = false;
   private writeInterval: NodeJS.Timeout | null = null;
   private currentTextFilePath: string | null = null;
@@ -99,7 +99,6 @@ export class RealtimeTextManager {
     this.currentTextFilePath = outputFilePath;
     this.metadata.status = 'transcribing';
     this.metadata.startTime = Date.now();
-    this.lastRealtimeResult = null; // リアルタイム結果をリセット
     this.textBuffer = []; // バッファをクリア
     
     console.log(`RealtimeTextManager開始: ${outputFilePath}`);
@@ -133,45 +132,95 @@ export class RealtimeTextManager {
   addTranscriptionResult(result: TranscriptionResult, chunkInfo: ChunkFileInfo): void {
     console.log(`文字起こし結果追加: ${chunkInfo.filename} (${result.segments.length}セグメント)`);
     
-    // realtime_chunk.webmの場合は差分処理（累積データから新しいセグメントのみ抽出）
-    if (chunkInfo.filename === 'realtime_chunk.webm') {
-      console.log(`📝 リアルタイムファイル処理: 前回結果との差分を抽出 (チャンク${chunkInfo.sequenceNumber})`);
-      console.log(`📝 現在の結果詳細: ${result.segments.length}セグメント, 時間範囲: ${result.segments.length > 0 ? result.segments[0].start.toFixed(1) : 0}s～${result.segments.length > 0 ? result.segments[result.segments.length - 1].end.toFixed(1) : 0}s`);
+    // timerange_chunk_ファイルの場合は時間範囲ベースのフィルタリングを実行
+    if (chunkInfo.filename.startsWith('timerange_chunk_')) {
+      console.log(`📝 時間範囲ベースチャンク処理: ${chunkInfo.filename}`);
+      this.processTimeRangeBasedChunk(result, chunkInfo);
+      return;
+    }
+    
+    // 従来のチャンクファイル処理
+    // 該当チャンクのみクリア
+    this.textBuffer = this.textBuffer.filter(segment => segment.chunkSequence !== chunkInfo.sequenceNumber);
+    
+    // セグメントをRealtimeTextSegmentに変換
+    const realtimeSegments: RealtimeTextSegment[] = result.segments.map((segment: TranscriptionSegment, index: number) => ({
+      chunkSequence: chunkInfo.sequenceNumber,
+      chunkFilename: chunkInfo.filename,
+      segmentIndex: index,
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      confidence: segment.words?.[0]?.word ? 0.9 : 0.8, // 仮の信頼度
+      isProcessed: true,
+      addedAt: Date.now()
+    }));
+    
+    // バッファに追加（時間順にソート）
+    this.textBuffer.push(...realtimeSegments);
+    this.textBuffer.sort((a, b) => {
+      if (a.chunkSequence !== b.chunkSequence) {
+        return a.chunkSequence - b.chunkSequence;
+      }
+      return a.segmentIndex - b.segmentIndex;
+    });
+    
+    // バッファサイズ制限
+    if (this.textBuffer.length > this.config.bufferSize) {
+      const excess = this.textBuffer.length - this.config.bufferSize;
+      this.textBuffer.splice(0, excess);
+      console.log(`バッファサイズ制限により${excess}セグメントを削除`);
+    }
+    
+    // メタデータ更新（全て通常のチャンクファイルとして処理）
+    this.metadata.processedChunks = Math.max(this.metadata.processedChunks, chunkInfo.sequenceNumber);
+    this.metadata.lastUpdateTime = Date.now();
+    this.isModified = true;
+    
+    // 推定残り時間計算
+    this.updateEstimatedDuration();
+    
+    this.notifyTextUpdate();
+    
+    console.log(`バッファ更新完了: ${this.textBuffer.length}セグメント (チャンク${chunkInfo.sequenceNumber}の処理完了)`);
+  }
+  
+  /**
+   * 時間範囲ベースチャンクの処理（重複除去）
+   */
+  private processTimeRangeBasedChunk(result: TranscriptionResult, chunkInfo: ChunkFileInfo): void {
+    // チャンク番号から時間範囲を計算
+    const chunkNumber = chunkInfo.sequenceNumber;
+    const chunkIntervalSeconds = TRANSCRIPTION_CONFIG.CHUNK.DEFAULT_SIZE; // 設定値を使用
+    const expectedStartTime = (chunkNumber - 1) * chunkIntervalSeconds;
+    const expectedEndTime = chunkNumber * chunkIntervalSeconds;
+    
+    console.log(`📝 時間範囲フィルタリング: チャンク${chunkNumber}`);
+    console.log(`📝 期待時間範囲: ${expectedStartTime.toFixed(1)}s - ${expectedEndTime.toFixed(1)}s`);
+    
+    // この時間範囲内のセグメントのみを抽出
+    const filteredSegments = result.segments.filter(segment => {
+      // セグメントがこのチャンクの時間範囲に含まれるかチェック
+      const segmentInRange = segment.start >= expectedStartTime && segment.start < expectedEndTime;
       
-      // 新しいセグメントのみを抽出
-      const newSegments = this.extractNewSegments(result, this.lastRealtimeResult);
-      console.log(`📝 新しいセグメント: ${newSegments.length}個 (全体: ${result.segments.length}個)`);
-      
-      if (newSegments.length > 0) {
-        // 新しいセグメントをRealtimeTextSegmentに変換
-        const realtimeSegments: RealtimeTextSegment[] = newSegments.map((segment: TranscriptionSegment, index: number) => ({
-          chunkSequence: chunkInfo.sequenceNumber,
-          chunkFilename: chunkInfo.filename,
-          segmentIndex: this.textBuffer.length + index, // 連続するインデックス
-          start: segment.start,
-          end: segment.end,
-          text: segment.text,
-          confidence: segment.words?.[0]?.word ? 0.9 : 0.8, // 仮の信頼度
-          isProcessed: true,
-          addedAt: Date.now()
-        }));
-        
-        // 新しいセグメントのみをバッファに追加
-        this.textBuffer.push(...realtimeSegments);
-        console.log(`📝 バッファに追加: ${realtimeSegments.length}セグメント`);
-      } else {
-        console.log(`📝 新しいセグメントなし - スキップ`);
+      if (segmentInRange) {
+        console.log(`📝 時間範囲内セグメント: [${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s] "${segment.text.substring(0, 30)}${segment.text.length > 30 ? '...' : ''}"`);
       }
       
-      // 前回の結果を保存
-      this.lastRealtimeResult = result;
+      return segmentInRange;
+    });
+    
+    console.log(`📝 フィルタリング結果: ${filteredSegments.length}セグメント (全体から${result.segments.length}セグメント)`);
+    
+    if (filteredSegments.length > 0) {
+      // 既存の同じ時間範囲のセグメントを削除
+      this.textBuffer = this.textBuffer.filter(segment => {
+        const segmentInTimeRange = segment.start >= expectedStartTime && segment.start < expectedEndTime;
+        return !segmentInTimeRange; // この時間範囲外のセグメントのみ保持
+      });
       
-    } else {
-      // 通常のチャンクファイルの場合は該当チャンクのみクリア
-      this.textBuffer = this.textBuffer.filter(segment => segment.chunkSequence !== chunkInfo.sequenceNumber);
-      
-      // セグメントをRealtimeTextSegmentに変換
-      const realtimeSegments: RealtimeTextSegment[] = result.segments.map((segment: TranscriptionSegment, index: number) => ({
+      // 新しいセグメントをRealtimeTextSegmentに変換
+      const realtimeSegments: RealtimeTextSegment[] = filteredSegments.map((segment: TranscriptionSegment, index: number) => ({
         chunkSequence: chunkInfo.sequenceNumber,
         chunkFilename: chunkInfo.filename,
         segmentIndex: index,
@@ -185,69 +234,12 @@ export class RealtimeTextManager {
       
       // バッファに追加（時間順にソート）
       this.textBuffer.push(...realtimeSegments);
-      this.textBuffer.sort((a, b) => {
-        if (a.chunkSequence !== b.chunkSequence) {
-          return a.chunkSequence - b.chunkSequence;
-        }
-        return a.segmentIndex - b.segmentIndex;
-      });
-    }
-    
-    // バッファサイズ制限
-    if (this.textBuffer.length > this.config.bufferSize) {
-      const excess = this.textBuffer.length - this.config.bufferSize;
-      this.textBuffer.splice(0, excess);
-      console.log(`バッファサイズ制限により${excess}セグメントを削除`);
-    }
-    
-    // メタデータ更新
-    if (chunkInfo.filename === 'realtime_chunk.webm') {
-      // リアルタイムファイルの場合はsequenceNumberを使用（1から始まる連番）
-      this.metadata.processedChunks = chunkInfo.sequenceNumber;
+      this.textBuffer.sort((a, b) => a.start - b.start); // 開始時間順にソート
+      
+      console.log(`📝 時間範囲ベース追加完了: ${realtimeSegments.length}セグメント`);
     } else {
-      // 通常のチャンクファイルの場合
-      this.metadata.processedChunks = Math.max(this.metadata.processedChunks, chunkInfo.sequenceNumber);
+      console.log(`📝 この時間範囲に新しいセグメントなし`);
     }
-    this.metadata.lastUpdateTime = Date.now();
-    this.isModified = true;
-    
-    // 推定残り時間計算
-    this.updateEstimatedDuration();
-    
-    this.notifyTextUpdate();
-    
-    console.log(`バッファ更新完了: ${this.textBuffer.length}セグメント (チャンク${chunkInfo.sequenceNumber}の処理完了)`);
-  }
-  
-  /**
-   * 前回の結果と比較して新しいセグメントのみを抽出
-   */
-  private extractNewSegments(currentResult: TranscriptionResult, previousResult: TranscriptionResult | null): TranscriptionSegment[] {
-    if (!previousResult || previousResult.segments.length === 0) {
-      // 前回の結果がない場合は全てのセグメントが新しい
-      console.log(`📝 前回結果なし: 全${currentResult.segments.length}セグメントを新規として処理`);
-      return currentResult.segments;
-    }
-    
-    // 前回の最後のセグメントの終了時刻を取得
-    const lastEndTime = previousResult.segments.length > 0 
-      ? previousResult.segments[previousResult.segments.length - 1].end 
-      : 0;
-    
-    console.log(`📝 前回の最終時刻: ${lastEndTime.toFixed(1)}s`);
-    
-    // 前回の最終時刻より後に開始するセグメントのみを抽出
-    const newSegments = currentResult.segments.filter(segment => {
-      // 0.5秒のバッファを設けて重複を避ける
-      const isNew = segment.start > (lastEndTime - 0.5);
-      if (isNew) {
-        console.log(`📝 新しいセグメント検出: [${segment.start.toFixed(1)}s-${segment.end.toFixed(1)}s] "${segment.text.substring(0, 50)}${segment.text.length > 50 ? '...' : ''}"`);
-      }
-      return isNew;
-    });
-    
-    console.log(`📝 時間ベース差分抽出: 前回最終時刻${lastEndTime.toFixed(1)}s → 新規${newSegments.length}セグメント (全体: ${currentResult.segments.length}セグメント)`);
-    return newSegments;
   }
   
   /**
