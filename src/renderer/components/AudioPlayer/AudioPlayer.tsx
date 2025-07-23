@@ -25,9 +25,30 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   // ファイルが変更された時の処理
   useEffect(() => {
     if (selectedFile?.filepath) {
-      audioControls.loadFile(selectedFile.filepath).catch(error => {
-        console.error('AudioPlayer: ファイル読み込みエラー:', error)
-      })
+      // 録音中のファイルかチェック
+      if (selectedFile.isRecording) {
+        console.log('AudioPlayer: 録音中のファイルのため読み込みスキップ:', selectedFile.filename)
+        audioControls.stop()
+        return
+      }
+      
+      // 録音直後のファイル（今日作成されたrecording_*ファイル）の場合は少し遅延
+      const fileName = selectedFile.filename
+      const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
+      const isRecentRecording = fileName.startsWith('recording_') && fileName.includes(today)
+      
+      if (isRecentRecording) {
+        console.log('AudioPlayer: 録音直後のファイルのため500ms遅延して読み込み:', fileName)
+        setTimeout(() => {
+          audioControls.loadFile(selectedFile.filepath, selectedFile.duration).catch(error => {
+            console.error('AudioPlayer: 遅延ファイル読み込みエラー:', error)
+          })
+        }, 500)
+      } else {
+        audioControls.loadFile(selectedFile.filepath, selectedFile.duration).catch(error => {
+          console.error('AudioPlayer: ファイル読み込みエラー:', error)
+        })
+      }
     } else {
       audioControls.stop() 
     }
@@ -38,8 +59,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     setIsPlaying(audioState.isPlaying)
   }, [audioState.isPlaying, setIsPlaying])
   
-  // ファイルが選択されているかチェック
-  const hasFile = Boolean(filePath)
+  // ファイルが選択されているかチェック（録音中のファイルは除外）
+  const hasFile = Boolean(filePath) && !selectedFile?.isRecording
   
   // AudioPlayerレンダリング (デバッグログ削除済み)
   
@@ -48,7 +69,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       {/* プレイヤーヘッダー */}
       <div className="audio-player__header">
         <div className="audio-player__file-info">
-          {hasFile ? (
+          {selectedFile?.isRecording ? (
+            <div className="audio-player__recording-file">
+              🔴 録音中のファイル: {fileName || 'Unknown'}
+              <div className="audio-player__recording-note">
+                録音完了後に再生可能になります
+              </div>
+            </div>
+          ) : hasFile ? (
             <>
               <div className="audio-player__file-name" title={fileName}>
                 🎵 {fileName || 'Unknown'}

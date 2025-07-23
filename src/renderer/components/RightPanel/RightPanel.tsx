@@ -124,30 +124,49 @@ const RightPanel: React.FC = () => {
       </div>
       
       {/* 音声プレイヤーセクション */}
-      <div className="accordion-section">
-        <div 
-          className="accordion-header"
-          onClick={() => toggleAccordion('player')}
-        >
-          <h3 className="accordion-title">
-            🎵 音声プレイヤー
-            {isPlaying && <span style={{ marginLeft: '8px', color: 'var(--color-success)' }}>▶ 再生中</span>}
-          </h3>
-          <span className="accordion-icon">
-            {accordionState.player ? '▼' : '▶'}
-          </span>
+      {selectedFile?.isRecording ? (
+        // 録音中ファイルの場合
+        <div className="accordion-section">
+          <div className="accordion-header">
+            <h3 className="accordion-title">
+              🔴 録音中ファイル
+              <span style={{ marginLeft: '8px', color: 'var(--color-error)' }}>● 録音進行中</span>
+            </h3>
+          </div>
+          <div className="accordion-content accordion-content--expanded">
+            <div style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
+              <p>🎵 {selectedFile.filename}</p>
+              <p>録音完了後に再生が可能になります</p>
+            </div>
+          </div>
         </div>
-        <div 
-          className={`accordion-content ${accordionState.player ? 'accordion-content--expanded' : ''}`}
-          style={{ display: accordionState.player ? 'block' : 'none' }}
-        >
-          <AudioPlayer
-            filePath={selectedFile?.filepath}
-            fileName={selectedFile?.filename}
-            className="accordion-audio-player"
-          />
+      ) : (
+        // 一般ファイルの場合
+        <div className="accordion-section">
+          <div 
+            className="accordion-header"
+            onClick={() => toggleAccordion('player')}
+          >
+            <h3 className="accordion-title">
+              🎵 音声プレイヤー
+              {isPlaying && <span style={{ marginLeft: '8px', color: 'var(--color-success)' }}>▶ 再生中</span>}
+            </h3>
+            <span className="accordion-icon">
+              {accordionState.player ? '▼' : '▶'}
+            </span>
+          </div>
+          <div 
+            className={`accordion-content ${accordionState.player ? 'accordion-content--expanded' : ''}`}
+            style={{ display: accordionState.player ? 'block' : 'none' }}
+          >
+            <AudioPlayer
+              filePath={selectedFile?.filepath}
+              fileName={selectedFile?.filename}
+              className="accordion-audio-player"
+            />
+          </div>
         </div>
-      </div>
+      )}
       
       {/* 録音コントロールセクション */}
       <div className="accordion-section">

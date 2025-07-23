@@ -791,14 +791,28 @@ const BottomPanel: React.FC = () => {
         // 録音状態をリセット
         resetRecordingState()
         
-        // 録音完了後にrecordingFileをクリア（ファイルリスト更新は LeftPanel に任せる）
-        const cleanupRecordingState = () => {
+        // 録音完了後にファイルリストを即座に更新して録音中フラグをクリア
+        const cleanupRecordingState = async () => {
+          // 現在のファイルリストを取得して録音中フラグを更新
+          setFileList(prevFiles => 
+            prevFiles.map(file => {
+              if (file.isRecording && file.filename === recordingFilename) {
+                console.log('🎯 録音完了ファイルのisRecordingフラグをfalseに更新:', file.filename)
+                return {
+                  ...file,
+                  isRecording: false // 録音完了フラグに更新
+                }
+              }
+              return file
+            })
+          )
+          
           setRecordingFile(null)
           console.log('🎯 録音中ファイルのグローバル状態をクリア')
         }
         
-        // 少し遅延を入れてグローバル状態をクリア
-        setTimeout(cleanupRecordingState, 500)
+        // 即座にファイル状態を更新
+        setTimeout(cleanupRecordingState, 100)
       }
       
       // 録音開始時にファイルエントリを即座に作成（左ペインに表示するため）

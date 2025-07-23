@@ -282,23 +282,6 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     
     console.log('Audio File Loading:', { filePath, metadataDuration })
     
-    // 録音中のファイルかチェック（ファイル名とタイムスタンプで判定）
-    const fileName = filePath.split('\\').pop() || filePath.split('/').pop() || '';
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    
-    if (fileName.startsWith('recording_') && fileName.includes(today)) {
-      console.warn('録音中のファイルのため、読み込みをスキップ:', fileName);
-      setState(prev => ({
-        ...prev,
-        currentTime: 0,
-        duration: metadataDuration && isFinite(metadataDuration) ? metadataDuration : 0,
-        isPlaying: false,
-        error: '録音中のファイルは再生できません',
-        loading: false
-      }));
-      return;
-    }
-    
     audioRef.current.pause()
     
     // 状態をリセットし、メタデータから渡されたdurationを即座にセットする
