@@ -80,7 +80,6 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     lastUpdate: new Date()
   })
 
-  // 再生状態（型安全化済み）
   const [state, setState] = useState<AudioPlayerState>(createInitialState())
   
   // 型安全なエラー作成ヘルパー
@@ -117,7 +116,6 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     
     const handleLoadedMetadata = () => {
       const audioDuration = audio.duration
-      console.log('useAudioPlayer: loadedmetadata event, duration:', audioDuration);
 
       setState(prev => {
         // 既にメタデータから有効なdurationがセットされている場合は、それを上書きしない
@@ -134,7 +132,6 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
 
         // メタデータからのdurationがない場合、イベントから取得した値をフォールバックとして使用
         if (isFinite(audioDuration) && audioDuration > 0) {
-          console.log('Fallback: Setting duration from loadedmetadata event:', audioDuration)
           return { 
             ...prev, 
             status: 'ready',
@@ -219,10 +216,6 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
         lastUpdate: new Date()
       }))
       
-      // デバッグ用（頻繁すぎるので条件付き）
-      if (Math.floor(newCurrentTime) % 5 === 0) {
-        console.log('useAudioPlayer: time update', newCurrentTime)
-      }
     }
     
     const handlePlay = () => {

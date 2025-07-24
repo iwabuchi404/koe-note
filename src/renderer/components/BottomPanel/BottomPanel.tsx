@@ -399,13 +399,11 @@ const BottomPanel: React.FC = () => {
 
   // 録音処理の共通関数
   const startRecording = useCallback(async (enableTranscription: boolean) => {
-    console.log(`🚨🚨🚨 startRecording関数開始 - enableTranscription=${enableTranscription} 🚨🚨🚨`)
     try {
       let stream: MediaStream
       
       if (inputType === 'mixing') {
         // ミキシングモード
-        console.log('🎛️ ミキシングモード録音開始', mixingConfig);
         
         if (!audioMixingServiceRef.current) {
           audioMixingServiceRef.current = new AudioMixingService();
