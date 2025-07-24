@@ -3,7 +3,10 @@ import { useAppContext } from '../../App'
 import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor'
 import { AudioMixingService, MixingConfig, AudioLevels } from '../../services/AudioMixingService'
 import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../../services/TrueDifferentialChunkGenerator'
-import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor' 
+import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor'
+// 新しい状態管理の統合
+import { useRecordingStateManager } from '../../hooks/useRecordingStateManager' 
+import { useTranscriptionStateManager } from '../../hooks/useTranscriptionStateManager' 
 /**
  * 下部パネル - コントロールパネル
  * 録音・再生・文字起こし等の主要操作を提供
@@ -15,7 +18,12 @@ const FORCE_ENABLE_REALTIME_TRANSCRIPTION = true;
 const BottomPanel: React.FC = () => {
   // ファイルリストを更新するための関数を取得
   const { setFileList, setIsRecording: setGlobalIsRecording, setRecordingFile, setSelectedFile } = useAppContext()
-  // 録音関連状態
+  
+  // 新しい状態管理フック（段階的統合用）
+  const recordingManager = useRecordingStateManager()
+  const transcriptionManager = useTranscriptionStateManager()
+  
+  // 既存の録音関連状態（段階的に移行予定）
   const [isRecording, setIsRecording] = useState<boolean>(false)
   const [isPaused, setIsPaused] = useState<boolean>(false)
   const [recordingTime, setRecordingTime] = useState<number>(0)
@@ -134,6 +142,125 @@ const BottomPanel: React.FC = () => {
     }
     getDevices()
   }, [selectedDevice, selectedSystemDevice])
+
+  // 新しい状態管理との同期（段階的統合） - 安全装置付き
+  useEffect(() => {
+    // 🚨 安全装置: 既存の録音中は新しい状態管理を無効化
+    if (isRecording || mediaRecorderRef.current?.state === 'recording') {
+      console.log('⚠️ 既存録音中のため新しい状態管理との同期を停止', {
+        isRecording,
+        mediaRecorderState: mediaRecorderRef.current?.state
+      })
+      return
+    }
+
+    if (recordingManager.isInitialized && recordingManager.recordingState) {
+      const newState = recordingManager.recordingState
+      
+      console.log('🔄 新しい状態管理との同期チェック', {
+        managerStatus: newState.status,
+        existingRecording: isRecording,
+        existingPaused: isPaused
+      })
+      
+      // 新しい状態管理から既存の状態を同期（安全に）
+      const isManagerRecording = newState.status === 'recording'
+      const isManagerPaused = newState.status === 'paused'
+      
+      // デバイス情報の同期（安全に）
+      if (newState.availableDevices.length > 0 && !isRecording) {
+        const managerDevices = newState.availableDevices.map(device => ({
+          deviceId: device.deviceId,
+          groupId: device.groupId || '',
+          kind: device.kind,
+          label: device.label
+        } as MediaDeviceInfo))
+        
+        // デバイスリストが異なる場合のみ更新
+        if (availableDevices.length !== managerDevices.length) {
+          console.log('BottomPanel: デバイス一覧同期（安全）', { 
+            existingCount: availableDevices.length, 
+            newCount: managerDevices.length 
+          })
+          // 既存のデバイス情報を保持しつつ、新しい情報で補完
+          setAvailableDevices(prevDevices => {
+            if (prevDevices.length === 0) {
+              return managerDevices
+            }
+            return prevDevices // 既存の情報を保持
+          })
+        }
+      }
+      
+      // 設定の同期（録音中でない場合のみ）
+      if (newState.config && !isRecording) {
+        const managerConfig = newState.config
+        
+        // 空の値への同期は危険なので防ぐ
+        if (managerConfig.selectedDevice && selectedDevice !== managerConfig.selectedDevice) {
+          console.log('BottomPanel: 選択デバイス同期（安全）', { 
+            from: selectedDevice, 
+            to: managerConfig.selectedDevice 
+          })
+          setSelectedDevice(managerConfig.selectedDevice)
+        }
+        
+        // 既有の設定が有効な場合は変更しない
+        if (managerConfig.inputType && inputType !== managerConfig.inputType && !selectedDevice) {
+          console.log('BottomPanel: 入力タイプ同期（安全）', { 
+            from: inputType, 
+            to: managerConfig.inputType 
+          })
+          setInputType(managerConfig.inputType)
+        }
+      }
+    }
+  }, [recordingManager.recordingState, recordingManager.isInitialized, isRecording, isPaused])
+
+  // 新しい文字起こし状態管理との同期（段階的統合） - 安全装置付き
+  useEffect(() => {
+    // 🚨 安全装置: 既存の文字起こし処理中は新しい状態管理を無効化
+    if (realtimeProcessorRef.current?.isActive() || 
+        (trueDiffGeneratorRef.current?.isReady() && 
+         (trueDiffGeneratorRef.current?.getCurrentRecordingTime() || 0) > 0)) {
+      console.log('⚠️ 既存文字起こし処理中のため新しい状態管理との同期を停止', {
+        realtimeProcessing: realtimeProcessorRef.current?.isActive(),
+        trueDiffRecording: (trueDiffGeneratorRef.current?.getCurrentRecordingTime() || 0) > 0
+      })
+      return
+    }
+
+    if (transcriptionManager.isInitialized && transcriptionManager.transcriptionState) {
+      const newState = transcriptionManager.transcriptionState
+      
+      console.log('🔄 新しい文字起こし状態管理との同期チェック', {
+        managerStatus: newState.status,
+        managerMode: newState.mode,
+        serverConnected: newState.serverConnection?.isConnected,
+        hasResult: !!newState.currentResult
+      })
+      
+      // サーバー接続状態のログ出力（デバッグ用）
+      if (newState.serverConnection && !isRecording) {
+        console.log('📡 文字起こしサーバー状態', {
+          connected: newState.serverConnection.isConnected,
+          url: newState.serverConnection.serverUrl,
+          responseTime: newState.serverConnection.responseTime,
+          lastPing: newState.serverConnection.lastPingTime
+        })
+      }
+      
+      // 文字起こし結果がある場合はログ出力（デバッグ用）
+      if (newState.currentResult && !isRecording) {
+        console.log('📝 文字起こし結果取得', {
+          resultId: newState.currentResult.id,
+          mode: newState.currentResult.mode,
+          segmentCount: newState.currentResult.segments?.length || 0,
+          textLength: newState.currentResult.rawText?.length || 0
+        })
+      }
+    }
+  }, [transcriptionManager.transcriptionState, transcriptionManager.isInitialized, isRecording])
   
   // デスクトップキャプチャソース一覧を取得
   useEffect(() => {
@@ -1756,6 +1883,189 @@ const BottomPanel: React.FC = () => {
             </div>
           )}
         </div>
+        
+        {/* 新しい状態管理のテスト用UI（開発・デバッグ用） */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="border-t border-border mt-4 pt-4">
+            <div className="text-sm text-secondary mb-2">
+              🧪 新状態管理テスト (RecordingStateManager)
+              {isRecording && <span className="text-warning ml-2">⚠️ 既存録音中のため無効化</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <button
+                className="btn btn--small btn--secondary"
+                onClick={() => {
+                  console.log('=== BottomPanel Recording State Debug ===')
+                  console.log('Existing Recording:', isRecording)
+                  console.log('MediaRecorder State:', mediaRecorderRef.current?.state)
+                  console.log('Manager State:', recordingManager.recordingState)
+                  console.log('Is Initialized:', recordingManager.isInitialized)
+                  console.log('Available Devices:', recordingManager.availableDevices)
+                  console.log('Selected Device:', selectedDevice)
+                  console.log('Input Type:', inputType)
+                  console.log('=== End Debug ===')
+                }}
+                disabled={!recordingManager.isInitialized || isRecording}
+              >
+                状態デバッグ
+              </button>
+              <button
+                className="btn btn--small btn--success"
+                onClick={() => recordingManager.startRecording({
+                  inputType: 'microphone',
+                  selectedDevice: selectedDevice || 'default',
+                  quality: 'medium',
+                  format: 'webm',
+                  enableRealtimeTranscription: false
+                })}
+                disabled={!recordingManager.isInitialized || recordingManager.isRecording || isRecording}
+              >
+                新管理で録音開始
+              </button>
+              <button
+                className="btn btn--small btn--error"
+                onClick={() => recordingManager.stopRecording()}
+                disabled={!recordingManager.isInitialized || !recordingManager.isRecording || isRecording}
+              >
+                新管理で停止
+              </button>
+              <button
+                className="btn btn--small"
+                onClick={() => recordingManager.refreshDevices()}
+                disabled={!recordingManager.isInitialized || isRecording}
+              >
+                デバイス更新
+              </button>
+            </div>
+            <div className="text-xs text-secondary">
+              {isRecording ? (
+                <span className="text-warning">🚨 既存の録音機能が動作中 - 新状態管理は安全のため無効化</span>
+              ) : recordingManager.isInitialized ? (
+                <>
+                  状態: <span className={`${recordingManager.isRecording ? 'text-success' : 'text-primary'}`}>
+                    {recordingManager.recordingState?.status || 'unknown'}
+                  </span>
+                  {recordingManager.hasError && (
+                    <span className="text-error ml-2">
+                      エラー: {recordingManager.recordingState?.error?.message}
+                    </span>
+                  )}
+                  <span className="ml-2">
+                    デバイス: {recordingManager.availableDevices.length}台
+                  </span>
+                </>
+              ) : recordingManager.initializationError ? (
+                <span className="text-error">初期化失敗: {recordingManager.initializationError}</span>
+              ) : (
+                <span className="text-secondary">初期化中...</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 文字起こし状態管理テスト（開発用） */}
+        {process.env.NODE_ENV === 'development' && transcriptionManager.isInitialized && (
+          <div className="p-md bg-secondary/10 rounded border-dashed">
+            <h4 className="text-sm text-primary mb-sm">🔧 文字起こし状態管理テスト（開発専用）</h4>
+            <div className="flex gap-sm flex-wrap mb-sm">
+              <button
+                className="btn btn--small"
+                onClick={() => {
+                  console.log('=== Transcription State Debug ===')
+                  console.log('Manager State:', transcriptionManager.transcriptionState)
+                  console.log('Is Initialized:', transcriptionManager.isInitialized)
+                  console.log('Server Connection:', transcriptionManager.serverConnection)
+                  console.log('Current Result:', transcriptionManager.currentResult)
+                  console.log('Realtime Chunks:', transcriptionManager.realtimeChunks.length)
+                  console.log('=== End Debug ===')
+                }}
+                disabled={!transcriptionManager.isInitialized}
+              >
+                文字起こし状態デバッグ
+              </button>
+              <button
+                className="btn btn--small btn--primary"
+                onClick={() => transcriptionManager.checkServerConnection()}
+                disabled={!transcriptionManager.isInitialized}
+              >
+                サーバー接続確認
+              </button>
+              <button
+                className="btn btn--small btn--success"
+                onClick={() => {
+                  // ダミーファイルでテスト文字起こし
+                  const testFile = {
+                    id: 'test_file_' + Date.now(),
+                    fileName: 'test.webm',
+                    filePath: '/path/to/test.webm',
+                    size: 1024,
+                    duration: 10.0,
+                    format: 'webm',
+                    createdAt: new Date(),
+                    modifiedAt: new Date(),
+                    isRecording: false,
+                    isSelected: true,
+                    isPlaying: false
+                  }
+                  transcriptionManager.startFileTranscription(testFile, {
+                    quality: 'medium',
+                    language: 'ja',
+                    enableTimestamp: true
+                  })
+                }}
+                disabled={!transcriptionManager.isInitialized || transcriptionManager.isProcessing}
+              >
+                テスト文字起こし開始
+              </button>
+              <button
+                className="btn btn--small btn--error"
+                onClick={() => transcriptionManager.stopTranscription()}
+                disabled={!transcriptionManager.isInitialized || transcriptionManager.isIdle}
+              >
+                文字起こし停止
+              </button>
+              <button
+                className="btn btn--small"
+                onClick={() => transcriptionManager.clearError()}
+                disabled={!transcriptionManager.isInitialized || !transcriptionManager.hasError}
+              >
+                エラークリア
+              </button>
+            </div>
+            <div className="text-xs text-secondary">
+              {transcriptionManager.isInitialized ? (
+                <>
+                  状態: <span className={`${transcriptionManager.isProcessing ? 'text-warning' : 
+                                         transcriptionManager.isCompleted ? 'text-success' : 'text-primary'}`}>
+                    {transcriptionManager.transcriptionState?.status || 'unknown'}
+                  </span>
+                  <span className="ml-2">
+                    モード: {transcriptionManager.transcriptionState?.mode || 'unknown'}
+                  </span>
+                  {transcriptionManager.serverConnection && (
+                    <span className={`ml-2 ${transcriptionManager.serverConnection.isConnected ? 'text-success' : 'text-error'}`}>
+                      サーバー: {transcriptionManager.serverConnection.isConnected ? '接続中' : '未接続'}
+                    </span>
+                  )}
+                  {transcriptionManager.hasError && (
+                    <span className="text-error ml-2">
+                      エラー: {transcriptionManager.transcriptionState?.error?.message}
+                    </span>
+                  )}
+                  {transcriptionManager.currentResult && (
+                    <span className="text-success ml-2">
+                      結果: {transcriptionManager.currentResult.segments?.length || 0}セグメント
+                    </span>
+                  )}
+                </>
+              ) : transcriptionManager.initializationError ? (
+                <span className="text-error">初期化失敗: {transcriptionManager.initializationError}</span>
+              ) : (
+                <span className="text-secondary">初期化中...</span>
+              )}
+            </div>
+          </div>
+        )}
         
       </div>
     </div>

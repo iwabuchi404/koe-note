@@ -8,8 +8,8 @@
  * - エラー・通知の一元管理
  */
 
-import { RecordingState } from './RecordingState'
-import { TranscriptionState } from './TranscriptionState'
+import { RecordingState, createInitialRecordingState } from './RecordingState'
+import { TranscriptionState, createInitialTranscriptionState } from './TranscriptionState'
 
 // アプリケーション全体の動作モード
 export type ApplicationMode = 
@@ -300,8 +300,84 @@ export const createInitialApplicationState = (): ApplicationState => ({
   version: '1.0.0',
   buildNumber: '',
   
-  recording: require('./RecordingState').createInitialRecordingState(),
-  transcription: require('./TranscriptionState').createInitialTranscriptionState(),
+  recording: (() => {
+    try {
+      return createInitialRecordingState()
+    } catch {
+      // フォールバック用の最小限初期状態
+      return {
+        status: 'idle' as const,
+        session: null,
+        error: null,
+        availableDevices: [],
+        desktopSources: [],
+        systemAudioDevices: [],
+        config: {
+          inputType: 'microphone' as const,
+          selectedDevice: '',
+          quality: 'medium' as const,
+          format: 'webm' as const,
+          enableRealtimeTranscription: false
+        },
+        mixingConfig: {
+          enableMicrophone: true,
+          enableDesktop: true,
+          microphoneGain: 0.7,
+          desktopGain: 0.8
+        },
+        microphoneStatus: null,
+        microphoneAlerts: [],
+        audioLevels: {
+          microphoneLevel: 0,
+          desktopLevel: 0,
+          mixedLevel: 0
+        },
+        isDeviceListOpen: false,
+        isConfigPanelOpen: false,
+        lastUpdate: new Date()
+      }
+    }
+  })(),
+  transcription: (() => {
+    try {
+      return createInitialTranscriptionState()
+    } catch {
+      // フォールバック用の最小限初期状態
+      return {
+        status: 'idle' as const,
+        mode: 'realtime' as const,
+        config: {
+          mode: 'realtime' as const,
+          quality: 'medium' as const,
+          language: 'ja' as const,
+          model: 'kotoba-whisper-v1.0',
+          enableTimestamp: true,
+          enableSpeakerIdentification: false,
+          enablePunctuation: true,
+          chunkDurationSeconds: 20,
+          confidenceThreshold: 0.5
+        },
+        currentResult: null,
+        progress: null,
+        error: null,
+        realtimeChunks: [],
+        currentChunk: null,
+        recentResults: [],
+        savedResults: [],
+        serverConnection: {
+          isConnected: false,
+          serverUrl: 'ws://127.0.0.1:8770'
+        },
+        isResultPanelOpen: false,
+        isConfigPanelOpen: false,
+        selectedSegment: null,
+        editingSegment: null,
+        autoSave: true,
+        exportFormat: 'txt' as const,
+        lastUpdate: new Date()
+      }
+    }
+  })(),
   
   currentFolder: null,
   fileList: [],
