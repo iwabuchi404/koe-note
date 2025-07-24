@@ -1,14 +1,47 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-// 音声プレイヤーの状態管理
+// 型安全な音声再生状態をインポート
+import { AudioFileInfo } from '../state/ApplicationState'
+
+// 音声再生ステータス（型安全）
+export type AudioPlayerStatus = 
+  | 'idle'       // 待機中
+  | 'loading'    // 読み込み中
+  | 'ready'      // 再生準備完了
+  | 'playing'    // 再生中
+  | 'paused'     // 一時停止中
+  | 'ended'      // 再生終了
+  | 'error'      // エラー状態
+
+// 音声プレイヤーエラー情報（型安全）
+export interface AudioPlayerError {
+  type: 'load_error' | 'play_error' | 'seek_error' | 'format_error' | 'network_error' | 'unknown_error'
+  message: string
+  details?: any
+  timestamp: Date
+  recoverable: boolean
+  suggestedAction?: string
+}
+
+// 音声プレイヤーの状態管理（型安全化）
 export interface AudioPlayerState {
+  status: AudioPlayerStatus
   isPlaying: boolean
   currentTime: number
   duration: number
   volume: number
   playbackRate: number
   loading: boolean
-  error: string | null
+  error: AudioPlayerError | null
+  
+  // 追加情報
+  currentFile: AudioFileInfo | null
+  buffered: number           // バッファリング進捗（0-1）
+  networkState: number       // HTMLMediaElement.networkState
+  readyState: number         // HTMLMediaElement.readyState
+  
+  // メタデータ
+  lastUpdate: Date
 }
 
 // 音声プレイヤーコントロール
@@ -30,45 +63,98 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentFilePathRef = useRef<string | null>(null)
   
-  // 再生状態
-  const [state, setState] = useState<AudioPlayerState>({
+  // 型安全な初期状態を作成
+  const createInitialState = (): AudioPlayerState => ({
+    status: 'idle',
     isPlaying: false,
     currentTime: 0,
     duration: 0,
     volume: 0.8,
     playbackRate: 1.0,
     loading: false,
-    error: null
+    error: null,
+    currentFile: null,
+    buffered: 0,
+    networkState: 0,
+    readyState: 0,
+    lastUpdate: new Date()
   })
+
+  // 再生状態（型安全化済み）
+  const [state, setState] = useState<AudioPlayerState>(createInitialState())
   
+  // 型安全なエラー作成ヘルパー
+  const createAudioError = (
+    type: AudioPlayerError['type'],
+    message: string,
+    details?: any,
+    recoverable: boolean = true,
+    suggestedAction?: string
+  ): AudioPlayerError => ({
+    type,
+    message,
+    details,
+    timestamp: new Date(),
+    recoverable,
+    suggestedAction
+  })
+
   // 音声要素を初期化
   useEffect(() => {
     const audio = new Audio()
     audioRef.current = audio
     
-    // イベントリスナー設定
+    // イベントリスナー設定（型安全化）
     const handleLoadStart = () => {
-      setState(prev => ({ ...prev, loading: true, error: null }))
+      setState(prev => ({ 
+        ...prev, 
+        status: 'loading',
+        loading: true, 
+        error: null,
+        lastUpdate: new Date()
+      }))
     }
     
-      const handleLoadedMetadata = () => {
+    const handleLoadedMetadata = () => {
       const audioDuration = audio.duration
       console.log('useAudioPlayer: loadedmetadata event, duration:', audioDuration);
 
       setState(prev => {
         // 既にメタデータから有効なdurationがセットされている場合は、それを上書きしない
         if (prev.duration > 0) {
-          return { ...prev, loading: false }
+          return { 
+            ...prev, 
+            status: 'ready',
+            loading: false,
+            networkState: audio.networkState,
+            readyState: audio.readyState,
+            lastUpdate: new Date()
+          }
         }
 
         // メタデータからのdurationがない場合、イベントから取得した値をフォールバックとして使用
         if (isFinite(audioDuration) && audioDuration > 0) {
           console.log('Fallback: Setting duration from loadedmetadata event:', audioDuration)
-          return { ...prev, duration: audioDuration, loading: false }
+          return { 
+            ...prev, 
+            status: 'ready',
+            duration: audioDuration, 
+            loading: false,
+            networkState: audio.networkState,
+            readyState: audio.readyState,
+            lastUpdate: new Date()
+          }
         }
 
         // どちらも無効な場合は、ローディングを解除するだけ
-        return { ...prev, loading: false }
+        return { 
+          ...prev, 
+          status: 'ready',
+          loading: false,
+          networkState: audio.networkState,
+          readyState: audio.readyState,
+          lastUpdate: new Date()
+        }
       })
     }
     
@@ -89,14 +175,25 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
         networkState: audio.networkState
       })
       
-      // loadedmetadataでInfinityだった場合、ここで再度チェック
+      // loadedmetadataでInfinityだった場合、ここで再度チェック（型安全化）
       if (isFinite(audio.duration) && audio.duration > 0) {
         setState(prev => {
           if (prev.duration === 0) {
             console.log('Updating duration from canplaythrough:', audio.duration)
-            return { ...prev, duration: audio.duration }
+            return { 
+              ...prev, 
+              duration: audio.duration,
+              networkState: audio.networkState,
+              readyState: audio.readyState,
+              lastUpdate: new Date()
+            }
           }
-          return prev
+          return { 
+            ...prev,
+            networkState: audio.networkState,
+            readyState: audio.readyState,
+            lastUpdate: new Date()
+          }
         })
       }
     }
@@ -104,7 +201,23 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     
     const handleTimeUpdate = () => {
       const newCurrentTime = audio.currentTime
-      setState(prev => ({ ...prev, currentTime: newCurrentTime }))
+      const bufferedRanges = audio.buffered
+      let bufferedProgress = 0
+      
+      // バッファリング進捗を計算
+      if (bufferedRanges.length > 0 && audio.duration > 0) {
+        const bufferedEnd = bufferedRanges.end(bufferedRanges.length - 1)
+        bufferedProgress = Math.min(1, bufferedEnd / audio.duration)
+      }
+      
+      setState(prev => ({ 
+        ...prev, 
+        currentTime: newCurrentTime,
+        buffered: bufferedProgress,
+        networkState: audio.networkState,
+        readyState: audio.readyState,
+        lastUpdate: new Date()
+      }))
       
       // デバッグ用（頻繁すぎるので条件付き）
       if (Math.floor(newCurrentTime) % 5 === 0) {
@@ -113,11 +226,21 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     }
     
     const handlePlay = () => {
-      setState(prev => ({ ...prev, isPlaying: true }))
+      setState(prev => ({ 
+        ...prev, 
+        status: 'playing',
+        isPlaying: true,
+        lastUpdate: new Date()
+      }))
     }
     
     const handlePause = () => {
-      setState(prev => ({ ...prev, isPlaying: false }))
+      setState(prev => ({ 
+        ...prev, 
+        status: 'paused',
+        isPlaying: false,
+        lastUpdate: new Date()
+      }))
     }
     
     const handleEnded = () => {
@@ -127,28 +250,77 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
       
       setState(prev => ({ 
         ...prev, 
+        status: 'ended',
         isPlaying: false, 
         currentTime: 0,
         // durationが0の場合、実際の長さで更新
-        duration: prev.duration === 0 ? actualDuration : prev.duration
+        duration: prev.duration === 0 ? actualDuration : prev.duration,
+        lastUpdate: new Date()
       }))
     }
     
-    const handleError = () => {
+    const handleError = (event: Event) => {
+      const audioError = (event.target as HTMLAudioElement)?.error
+      let errorType: AudioPlayerError['type'] = 'unknown_error'
+      let errorMessage = '音声ファイルの読み込みに失敗しました'
+      let suggestedAction = 'ファイルの形式を確認するか、別のファイルをお試しください'
+      
+      // MediaErrorの詳細を分析
+      if (audioError) {
+        switch (audioError.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            errorType = 'load_error'
+            errorMessage = '音声の読み込みが中断されました'
+            break
+          case MediaError.MEDIA_ERR_NETWORK:
+            errorType = 'network_error'
+            errorMessage = 'ネットワークエラーが発生しました'
+            suggestedAction = 'インターネット接続を確認してください'
+            break
+          case MediaError.MEDIA_ERR_DECODE:
+            errorType = 'format_error'
+            errorMessage = '音声ファイルの形式がサポートされていません'
+            suggestedAction = 'サポートされている形式（MP3、WAV、WebM）のファイルをお使いください'
+            break
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorType = 'format_error'
+            errorMessage = '音声ファイルの形式または内容がサポートされていません'
+            break
+        }
+      }
+      
+      const playerError = createAudioError(
+        errorType,
+        errorMessage,
+        audioError,
+        true,
+        suggestedAction
+      )
+      
       setState(prev => ({ 
         ...prev, 
+        status: 'error',
         loading: false,
         isPlaying: false,
-        error: '音声ファイルの読み込みに失敗しました'
+        error: playerError,
+        lastUpdate: new Date()
       }))
     }
     
     const handleVolumeChange = () => {
-      setState(prev => ({ ...prev, volume: audio.volume }))
+      setState(prev => ({ 
+        ...prev, 
+        volume: audio.volume,
+        lastUpdate: new Date()
+      }))
     }
     
     const handleRateChange = () => {
-      setState(prev => ({ ...prev, playbackRate: audio.playbackRate }))
+      setState(prev => ({ 
+        ...prev, 
+        playbackRate: audio.playbackRate,
+        lastUpdate: new Date()
+      }))
     }
     
     // イベントリスナー登録
@@ -201,10 +373,21 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
           audioNetworkState: audioRef.current?.networkState,
           audioDuration: audioRef.current?.duration
         })
+        
+        const playError = createAudioError(
+          'play_error',
+          '音声の再生に失敗しました',
+          error,
+          true,
+          '音声ファイルを再読み込みするか、別のファイルをお試しください'
+        )
+        
         setState(prev => ({ 
           ...prev, 
-          error: '音声の再生に失敗しました',
-          isPlaying: false 
+          status: 'error',
+          error: playError,
+          isPlaying: false,
+          lastUpdate: new Date()
         }))
       })
     }
@@ -249,6 +432,20 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
         audioRef.current.currentTime = clampedTime
       } catch (error) {
         console.error('useAudioPlayer: Seek error', error)
+        
+        const seekError = createAudioError(
+          'seek_error',
+          'シーク操作に失敗しました',
+          error,
+          true,
+          '音声が完全に読み込まれてからシークしてください'
+        )
+        
+        setState(prev => ({
+          ...prev,
+          error: seekError,
+          lastUpdate: new Date()
+        }))
       }
     } else {
       console.warn('useAudioPlayer: Cannot seek', {
@@ -284,14 +481,35 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     
     audioRef.current.pause()
     
-    // 状態をリセットし、メタデータから渡されたdurationを即座にセットする
+    // ファイル情報を作成（型安全）
+    const fileInfo: AudioFileInfo = {
+      id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      fileName: filePath.split(/[\\/]/).pop() || 'unknown.audio',
+      filePath: filePath,
+      size: 0, // 実際のサイズは取得できないためデフォルト
+      duration: (metadataDuration && isFinite(metadataDuration)) ? metadataDuration : 0,
+      format: filePath.split('.').pop()?.toLowerCase() || 'unknown',
+      createdAt: new Date(),
+      modifiedAt: new Date(),
+      isRecording: false,
+      isSelected: true,
+      isPlaying: false
+    }
+    
+    // 状態をリセットし、メタデータから渡されたdurationを即座にセットする（型安全化）
     setState(prev => ({
       ...prev,
+      status: 'loading',
       currentTime: 0,
-      duration: (metadataDuration && isFinite(metadataDuration)) ? metadataDuration : 0,
+      duration: fileInfo.duration,
       isPlaying: false,
       error: null,
-      loading: true
+      loading: true,
+      currentFile: fileInfo,
+      buffered: 0,
+      networkState: 0,
+      readyState: 0,
+      lastUpdate: new Date()
     }))
     
     try {
@@ -307,10 +525,21 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
       }
     } catch (error) {
       console.error('Audio File Loading Error:', error)
+      
+      const loadError = createAudioError(
+        'load_error',
+        'オーディオファイルの読み込みに失敗しました',
+        error,
+        true,
+        'ファイルパスを確認するか、別のファイルを選択してください'
+      )
+      
       setState(prev => ({ 
         ...prev, 
+        status: 'error',
         loading: false,
-        error: 'オーディオファイルの読み込みに失敗しました。'
+        error: loadError,
+        lastUpdate: new Date()
       }))
     }
   }, [])

@@ -95,7 +95,12 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         {/* エラー表示 */}
         {audioState.error && (
           <div className="audio-player__error">
-            ⚠️ {audioState.error}
+            ⚠️ {audioState.error.message}
+            {audioState.error.suggestedAction && (
+              <div className="audio-player__error-suggestion">
+                💡 {audioState.error.suggestedAction}
+              </div>
+            )}
           </div>
         )}
       </div>
