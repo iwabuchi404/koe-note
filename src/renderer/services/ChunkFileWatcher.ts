@@ -67,9 +67,19 @@ export class ChunkFileWatcher {
    * フォルダ監視を開始
    */
   startWatching(folderPath: string): void {
+    console.log(`🔍 ChunkFileWatcher.startWatching呼び出し: ${folderPath}`)
+    console.log(`🔍 現在の監視状態: isWatching=${this.isWatching}, watchFolder=${this.watchFolder}`)
+    
     if (this.isWatching) {
-      console.warn('既にファイル監視中です');
-      return;
+      console.warn(`⚠️ 既にファイル監視中です: ${this.watchFolder}`)
+      // 既に同じフォルダを監視中の場合は何もしない
+      if (this.watchFolder === folderPath) {
+        console.log(`📁 同じフォルダを監視中のため処理をスキップ: ${folderPath}`)
+        return
+      }
+      // 異なるフォルダの場合は一度停止して再開
+      console.log(`📁 異なるフォルダへの切り替え: ${this.watchFolder} → ${folderPath}`)
+      this.stopWatching()
     }
 
     this.watchFolder = folderPath;
@@ -78,7 +88,8 @@ export class ChunkFileWatcher {
     this.processedFiles.clear();
     this.realtimeChunkCounter = 0; // カウンターをリセット
 
-    console.log(`チャンクファイル監視開始: ${folderPath}`);
+    console.log(`✅ チャンクファイル監視開始: ${folderPath}`)
+    console.log(`⏰ 監視間隔: ${this.config.watchIntervalMs}ms`);
 
     // 設定された間隔でフォルダをチェック
     this.watchInterval = setInterval(async () => {
@@ -112,13 +123,19 @@ export class ChunkFileWatcher {
    * 新しいファイルをチェック
    */
   private async checkForNewFiles(): Promise<void> {
-    if (!this.watchFolder) return;
+    if (!this.watchFolder) {
+      console.log(`⚠️ ChunkFileWatcher: watchFolderが未設定のためスキップ`)
+      return;
+    }
 
     try {
+      console.log(`🔍 ChunkFileWatcher: ファイル監視チェック開始 - フォルダ: ${this.watchFolder}`)
       // フォルダ内のファイル一覧を取得
       const files = await window.electronAPI.getFileList(this.watchFolder);
+      console.log(`📁 ChunkFileWatcher: ${files.length}個のファイル検出`)
+      
       if (files.length > 0) {
-        console.log(`📁 ファイル監視チェック: ${files.length}個のファイル検出`);
+        console.log(`📋 検出されたファイル:`, files.map(f => f.filename).join(', '))
       }
       
       for (const file of files) {

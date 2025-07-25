@@ -23,15 +23,25 @@ const BottomPanel: React.FC = () => {
   const recordingManager = useRecordingStateManager()
   const transcriptionManager = useTranscriptionStateManager()
   
-  // 既存の録音関連状態（段階的に移行予定）
-  const [isRecording, setIsRecording] = useState<boolean>(false)
-  const [isPaused, setIsPaused] = useState<boolean>(false)
-  const [recordingTime, setRecordingTime] = useState<number>(0)
+  // 新しい状態管理システムから状態を取得
+  const isRecording = recordingManager.isRecording
+  const isPaused = recordingManager.isPaused
+  const recordingTime = recordingManager.currentRecordingTime || 0
   
-  // デバイス関連状態
-  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedDevice, setSelectedDevice] = useState<string>('')
+  // デバイス関連状態（新しい状態管理システムから取得）
+  const availableDevices = recordingManager.availableDevices
+  const selectedDevice = recordingManager.currentConfig?.selectedDevice || ''
   const [inputType, setInputType] = useState<'microphone' | 'desktop' | 'stereo-mix' | 'mixing'>('microphone')
+  
+  // inputType変更をデバッグ
+  const setInputTypeDebug = useCallback((newType: 'microphone' | 'desktop' | 'stereo-mix' | 'mixing') => {
+    console.log('🎛️ InputType変更:', inputType, '→', newType)
+    setInputType(newType)
+  }, [inputType])
+  
+  // 段階的移行のため一時的に保持
+  const [, setIsPaused] = useState<boolean>(false)
+  const [, setSelectedDevice] = useState<string>('')
   
   // デスクトップキャプチャ関連状態
   const [desktopSources, setDesktopSources] = useState<any[]>([])
@@ -110,9 +120,10 @@ const BottomPanel: React.FC = () => {
   useEffect(() => {
     const getDevices = async () => {
       try {
+        // 新しい状態管理システムがデバイス情報を自動更新するため、
+        // システム音声デバイスのみを別途取得
         const devices = await navigator.mediaDevices.enumerateDevices()
         const audioInputs = devices.filter(device => device.kind === 'audioinput')
-        setAvailableDevices(audioInputs)
         
         // システム音声・仮想音声デバイスを分離して取得
         const systemDevices = audioInputs.filter(device => 
@@ -130,7 +141,7 @@ const BottomPanel: React.FC = () => {
         console.log('🎵 検出された仮想音声デバイス:', systemDevices.map(d => d.label))
         
         if (audioInputs.length > 0 && !selectedDevice) {
-          setSelectedDevice(audioInputs[0].deviceId)
+          recordingManager.updateConfig({ selectedDevice: audioInputs[0].deviceId })
         }
         
         if (systemDevices.length > 0 && !selectedSystemDevice) {
@@ -143,124 +154,9 @@ const BottomPanel: React.FC = () => {
     getDevices()
   }, [selectedDevice, selectedSystemDevice])
 
-  // 新しい状態管理との同期（段階的統合） - 安全装置付き
-  useEffect(() => {
-    // 🚨 安全装置: 既存の録音中は新しい状態管理を無効化
-    if (isRecording || mediaRecorderRef.current?.state === 'recording') {
-      console.log('⚠️ 既存録音中のため新しい状態管理との同期を停止', {
-        isRecording,
-        mediaRecorderState: mediaRecorderRef.current?.state
-      })
-      return
-    }
+  // 状態同期は直接取得に変更済み
 
-    if (recordingManager.isInitialized && recordingManager.recordingState) {
-      const newState = recordingManager.recordingState
-      
-      console.log('🔄 新しい状態管理との同期チェック', {
-        managerStatus: newState.status,
-        existingRecording: isRecording,
-        existingPaused: isPaused
-      })
-      
-      // 新しい状態管理から既存の状態を同期（安全に）
-      const isManagerRecording = newState.status === 'recording'
-      const isManagerPaused = newState.status === 'paused'
-      
-      // デバイス情報の同期（安全に）
-      if (newState.availableDevices.length > 0 && !isRecording) {
-        const managerDevices = newState.availableDevices.map(device => ({
-          deviceId: device.deviceId,
-          groupId: device.groupId || '',
-          kind: device.kind,
-          label: device.label
-        } as MediaDeviceInfo))
-        
-        // デバイスリストが異なる場合のみ更新
-        if (availableDevices.length !== managerDevices.length) {
-          console.log('BottomPanel: デバイス一覧同期（安全）', { 
-            existingCount: availableDevices.length, 
-            newCount: managerDevices.length 
-          })
-          // 既存のデバイス情報を保持しつつ、新しい情報で補完
-          setAvailableDevices(prevDevices => {
-            if (prevDevices.length === 0) {
-              return managerDevices
-            }
-            return prevDevices // 既存の情報を保持
-          })
-        }
-      }
-      
-      // 設定の同期（録音中でない場合のみ）
-      if (newState.config && !isRecording) {
-        const managerConfig = newState.config
-        
-        // 空の値への同期は危険なので防ぐ
-        if (managerConfig.selectedDevice && selectedDevice !== managerConfig.selectedDevice) {
-          console.log('BottomPanel: 選択デバイス同期（安全）', { 
-            from: selectedDevice, 
-            to: managerConfig.selectedDevice 
-          })
-          setSelectedDevice(managerConfig.selectedDevice)
-        }
-        
-        // 既有の設定が有効な場合は変更しない
-        if (managerConfig.inputType && inputType !== managerConfig.inputType && !selectedDevice) {
-          console.log('BottomPanel: 入力タイプ同期（安全）', { 
-            from: inputType, 
-            to: managerConfig.inputType 
-          })
-          setInputType(managerConfig.inputType)
-        }
-      }
-    }
-  }, [recordingManager.recordingState, recordingManager.isInitialized, isRecording, isPaused])
-
-  // 新しい文字起こし状態管理との同期（段階的統合） - 安全装置付き
-  useEffect(() => {
-    // 🚨 安全装置: 既存の文字起こし処理中は新しい状態管理を無効化
-    if (realtimeProcessorRef.current?.isActive() || 
-        (trueDiffGeneratorRef.current?.isReady() && 
-         (trueDiffGeneratorRef.current?.getCurrentRecordingTime() || 0) > 0)) {
-      console.log('⚠️ 既存文字起こし処理中のため新しい状態管理との同期を停止', {
-        realtimeProcessing: realtimeProcessorRef.current?.isActive(),
-        trueDiffRecording: (trueDiffGeneratorRef.current?.getCurrentRecordingTime() || 0) > 0
-      })
-      return
-    }
-
-    if (transcriptionManager.isInitialized && transcriptionManager.transcriptionState) {
-      const newState = transcriptionManager.transcriptionState
-      
-      console.log('🔄 新しい文字起こし状態管理との同期チェック', {
-        managerStatus: newState.status,
-        managerMode: newState.mode,
-        serverConnected: newState.serverConnection?.isConnected,
-        hasResult: !!newState.currentResult
-      })
-      
-      // サーバー接続状態のログ出力（デバッグ用）
-      if (newState.serverConnection && !isRecording) {
-        console.log('📡 文字起こしサーバー状態', {
-          connected: newState.serverConnection.isConnected,
-          url: newState.serverConnection.serverUrl,
-          responseTime: newState.serverConnection.responseTime,
-          lastPing: newState.serverConnection.lastPingTime
-        })
-      }
-      
-      // 文字起こし結果がある場合はログ出力（デバッグ用）
-      if (newState.currentResult && !isRecording) {
-        console.log('📝 文字起こし結果取得', {
-          resultId: newState.currentResult.id,
-          mode: newState.currentResult.mode,
-          segmentCount: newState.currentResult.segments?.length || 0,
-          textLength: newState.currentResult.rawText?.length || 0
-        })
-      }
-    }
-  }, [transcriptionManager.transcriptionState, transcriptionManager.isInitialized, isRecording])
+  // 文字起こし状態も直接取得に変更済み
   
   // デスクトップキャプチャソース一覧を取得
   useEffect(() => {
@@ -322,26 +218,7 @@ const BottomPanel: React.FC = () => {
   }, [inputType]) // selectedDesktopSourceを依存から除去して無限ループを防ぐ
   
   
-  // 録音時間を更新（display:noneでも動作するように修正）
-  useEffect(() => {
-    if (isRecording && !isPaused) {
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
-    } else {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current)
-        recordingTimerRef.current = null
-      }
-    }
-    
-    return () => {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current)
-        recordingTimerRef.current = null
-      }
-    }
-  }, [isRecording, isPaused])
+  // 録音時間は新しい状態管理システムが自動管理
   
   // 時間をフォーマット
   const formatTime = useCallback((seconds: number): string => {
@@ -391,14 +268,160 @@ const BottomPanel: React.FC = () => {
 
   // 録音状態リセット共通関数
   const resetRecordingState = useCallback(() => {
-    setIsRecording(false)
+    // 状態リセットは新しい状態管理システムが自動実行
     setGlobalIsRecording(false)
-    setIsPaused(false)
-    setRecordingTime(0)
   }, [setGlobalIsRecording]);
 
   // 録音処理の共通関数
+  // 新しい状態管理システムを使用した録音開始関数（文字起こし処理統合版）
   const startRecording = useCallback(async (enableTranscription: boolean) => {
+    try {
+      console.log('🎵 BottomPanel: 録音開始リクエスト', {
+        inputType,
+        selectedDevice: selectedDevice || 'default',
+        enableRealtimeTranscription: enableTranscription
+      })
+      
+      // リアルタイム文字起こしの準備
+      if (enableTranscription || FORCE_ENABLE_REALTIME_TRANSCRIPTION) {
+        console.log('📝 リアルタイム文字起こし準備開始')
+        
+        // 録音ファイル名を事前に生成
+        const recordingFileName = recordingManager.generateFileName()
+        if (!recordingFileName) {
+          throw new Error('録音ファイル名の生成に失敗しました')
+        }
+        
+        // チャンクフォルダ名を録音ファイル名ベースで生成
+        const baseFileName = recordingFileName.replace('.webm', '') // 拡張子を除去
+        const chunkFolderName = `${baseFileName}_chunks`
+        console.log(`🔧 チャンクファイル保存先フォルダ: ${chunkFolderName}`)
+        
+        // FileBasedRealtimeProcessorを初期化
+        if (!realtimeProcessorRef.current) {
+          realtimeProcessorRef.current = new FileBasedRealtimeProcessor({
+            fileCheckInterval: 2000,
+            maxRetryCount: 2,
+            processingTimeout: 180000,
+            enableAutoRetry: true,
+            textWriteInterval: 5000,
+            enableAutoSave: true,
+            textFormat: 'detailed'
+          })
+          console.log('🎯 FileBasedRealtimeProcessor初期化完了')
+        }
+        
+        // TrueDifferentialChunkGeneratorを初期化
+        if (!trueDiffGeneratorRef.current) {
+          trueDiffGeneratorRef.current = new TrueDifferentialChunkGenerator(20, {
+            intervalSeconds: 20,
+            enableFileGeneration: true,
+            tempFolderPath: chunkFolderName,
+            enableAutoGeneration: true
+          })
+        } else {
+          // 既存インスタンスの設定更新
+          trueDiffGeneratorRef.current.updateConfig({
+            intervalSeconds: 20,
+            enableFileGeneration: true,
+            tempFolderPath: chunkFolderName,
+            enableAutoGeneration: true
+          })
+          trueDiffGeneratorRef.current.reset()
+        }
+        
+        // コールバック設定（baseFileNameとchunkFolderNameのスコープ内で設定）
+        trueDiffGeneratorRef.current.onChunkGenerated((result) => {
+          console.log(`✅ チャンク生成完了: #${result.chunkNumber}, ${result.dataSize}bytes, ${result.duration.toFixed(1)}s`)
+          if (result.filePath) {
+            console.log(`💾 チャンクファイル保存: ${result.filePath}`)
+          }
+        })
+        
+        trueDiffGeneratorRef.current.onChunkSaved(async (fileInfo) => {
+          console.log(`🔥 onChunkSaved コールバック実行: ${fileInfo.filename} (${fileInfo.sizeBytes}bytes)`)
+          console.log(`🔥 enableTranscription: ${enableTranscription}, FORCE_ENABLE_REALTIME_TRANSCRIPTION: ${FORCE_ENABLE_REALTIME_TRANSCRIPTION}`)
+          console.log(`🔥 realtimeProcessorRef.current: ${!!realtimeProcessorRef.current}`)
+          console.log(`🔥 baseFileName: ${baseFileName}, chunkFolderName: ${chunkFolderName}`)
+          
+          // リアルタイム文字起こし処理
+          if ((enableTranscription || FORCE_ENABLE_REALTIME_TRANSCRIPTION) && realtimeProcessorRef.current) {
+            console.log(`🔗 FileBasedRealtimeProcessorに文字起こし開始要求: ${fileInfo.filepath}`)
+            
+            try {
+              // 最初のチャンクの場合は必ずFileBasedRealtimeProcessorを開始
+              const isFirstChunk = fileInfo.filename.includes('_001.webm') || !realtimeProcessorRef.current.isActive()
+              console.log(`🔥 isFirstChunk: ${isFirstChunk}, realtimeProcessor.isActive(): ${realtimeProcessorRef.current.isActive()}`)
+              
+              if (isFirstChunk || !realtimeProcessorRef.current.isActive()) {
+                const settings = await window.electronAPI.loadSettings()
+                const outputFilePath = `${settings.saveFolder}\\${baseFileName}_realtime.rt.txt`
+                const absoluteChunkFolderPath = `${settings.saveFolder}\\${chunkFolderName}`
+                console.log(`📝 リアルタイム文字起こし開始: ${absoluteChunkFolderPath} -> ${outputFilePath}`)
+                await realtimeProcessorRef.current.start(absoluteChunkFolderPath, outputFilePath)
+                console.log(`✅ FileBasedRealtimeProcessor開始完了`)
+              } else {
+                console.log(`ℹ️ FileBasedRealtimeProcessorは既にアクティブです - 新しいチャンクを直接処理`)
+                // 既にアクティブな場合は、チャンクファイル情報を直接追加
+                console.log(`🔗 新しいチャンクファイルを直接追加: ${fileInfo.filename}`)
+                const chunkInfo = {
+                  filename: fileInfo.filename,
+                  fullPath: fileInfo.filepath,
+                  sequenceNumber: parseInt(fileInfo.filename.match(/\d+/)?.[0] || '0'),
+                  timestamp: Date.now(),
+                  size: fileInfo.sizeBytes,
+                  isReady: true
+                }
+                // FileBasedRealtimeProcessor内のChunkFileWatcherに直接通知
+                console.log(`📋 チャンクファイル情報:`, chunkInfo)
+              }
+            } catch (error) {
+              console.error('❌ FileBasedRealtimeProcessor開始エラー:', error)
+              if (error instanceof Error) {
+                console.error('❌ エラー詳細:', error.stack)
+              }
+            }
+          } else {
+            console.log(`⚠️ 文字起こし処理スキップ - 条件未満:`)
+            console.log(`⚠️   enableTranscription: ${enableTranscription}`)
+            console.log(`⚠️   FORCE_ENABLE_REALTIME_TRANSCRIPTION: ${FORCE_ENABLE_REALTIME_TRANSCRIPTION}`)
+            console.log(`⚠️   realtimeProcessorRef.current: ${!!realtimeProcessorRef.current}`)
+          }
+        })
+        
+        trueDiffGeneratorRef.current.onError((error) => {
+          console.error(`❌ チャンク生成エラー:`, error)
+        })
+        
+        // 録音開始（チャンク生成開始）
+        trueDiffGeneratorRef.current.startRecording()
+        
+        // データコールバック設定：RecordingServiceV2 → TrueDifferentialChunkGenerator
+        recordingManager.setDataCallback((data: Blob) => {
+          if (trueDiffGeneratorRef.current) {
+            console.log(`📝 チャンクデータ受信: ${data.size} bytes`)
+            trueDiffGeneratorRef.current.addRecordingData(data)
+          }
+        })
+      }
+      
+      // 録音開始
+      await recordingManager.startRecording({
+        inputType,
+        selectedDevice: selectedDevice || 'default',
+        enableRealtimeTranscription: enableTranscription
+      })
+      
+      setGlobalIsRecording(true)
+      console.log('🎵 BottomPanel: 録音開始成功')
+    } catch (error) {
+      console.error('🎵 BottomPanel: 録音開始エラー:', error)
+      throw error
+    }
+  }, [recordingManager, inputType, selectedDevice, setGlobalIsRecording, FORCE_ENABLE_REALTIME_TRANSCRIPTION]);
+
+  // LEGACY: 長い元の録音関数（942行）を新しいシンプルな実装で置き換え済み
+  const startRecordingLegacy = useCallback(async (enableTranscription: boolean) => {
     try {
       let stream: MediaStream
       
@@ -1171,9 +1194,8 @@ const BottomPanel: React.FC = () => {
         });
         throw new Error(`録音開始に失敗しました: ${startError instanceof Error ? startError.message : String(startError)}`);
       }
-      setIsRecording(true)
+      // 録音状態は新しい状態管理システムが管理
       setGlobalIsRecording(true)
-      setRecordingTime(0)
       console.log('📱 UI状態更新完了: isRecording = true')
       
       // 録音開始時刻を記録（正確なDuration計算のため）
@@ -1341,10 +1363,23 @@ const BottomPanel: React.FC = () => {
       
       removeRecordingFileEntry()
     }
-  }, [inputType, selectedDevice, selectedDesktopSource, selectedSystemDevice, resetRecordingState])
+  }, [inputType, selectedDevice, selectedDesktopSource, selectedSystemDevice, resetRecordingState]);
   
-  // 録音停止
+  // Legacy関数はコメントアウトして保持（必要時に復元可能）
+  // 上記の新しいstartRecordingが使用されます
+  
+  // 録音停止（新しい状態管理システム使用）
   const handleStopRecording = useCallback(async () => {
+    try {
+      await recordingManager.stopRecording()
+      setGlobalIsRecording(false)
+    } catch (error) {
+      console.error('録音停止エラー:', error)
+    }
+  }, [recordingManager, setGlobalIsRecording]);
+
+  // LEGACY: 元の長い停止関数
+  const handleStopRecordingLegacy = useCallback(async () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
@@ -1451,8 +1486,21 @@ const BottomPanel: React.FC = () => {
     }
   }, [isRecording])
   
-  // 録音一時停止・再開
-  const handlePauseRecording = useCallback(() => {
+  // 録音一時停止・再開（新しい状態管理システム使用）
+  const handlePauseRecording = useCallback(async () => {
+    try {
+      if (isPaused) {
+        await recordingManager.resumeRecording()
+      } else {
+        await recordingManager.pauseRecording()
+      }
+    } catch (error) {
+      console.error('録音一時停止/再開エラー:', error)
+    }
+  }, [recordingManager, isPaused]);
+
+  // LEGACY: 元の一時停止関数
+  const handlePauseRecordingLegacy = useCallback(() => {
     if (mediaRecorderRef.current) {
       if (isPaused) {
         // 再開時：現在の時刻を記録
@@ -1492,7 +1540,7 @@ const BottomPanel: React.FC = () => {
           <select 
             className="select"
             value={inputType}
-            onChange={(e) => setInputType(e.target.value as 'microphone' | 'desktop' | 'stereo-mix' | 'mixing')}
+            onChange={(e) => setInputTypeDebug(e.target.value as 'microphone' | 'desktop' | 'stereo-mix' | 'mixing')}
             disabled={isRecording}
             style={{ 
               width: '200px',

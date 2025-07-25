@@ -232,6 +232,58 @@ export const useRecordingStateManager = () => {
     return managerRef.current.getState()
   }, [isInitialized])
 
+  /**
+   * データコールバック設定（チャンク処理用）
+   */
+  const setDataCallback = useCallback((callback?: (data: Blob) => void) => {
+    if (!managerRef.current || !isInitialized) {
+      console.warn('RecordingStateManager が初期化されていません')
+      return
+    }
+
+    managerRef.current.setDataCallback(callback)
+  }, [isInitialized])
+
+  /**
+   * ファイル名生成（録音開始前に使用）
+   */
+  const generateFileName = useCallback((): string | null => {
+    if (!managerRef.current || !isInitialized) {
+      console.warn('RecordingStateManager が初期化されていません')
+      return null
+    }
+
+    return managerRef.current.generateFileName()
+  }, [isInitialized])
+
+  // 録音時間をリアルタイム計算するstate
+  const [currentRecordingTime, setCurrentRecordingTime] = useState<number>(0)
+  
+  // 録音時間の動的計算
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    
+    if (recordingState?.status === 'recording' && recordingState.session) {
+      interval = setInterval(() => {
+        const now = Date.now()
+        const startTime = recordingState.session!.startTime.getTime()
+        const pausedDuration = recordingState.session!.pausedDuration
+        const currentDurationMs = now - startTime - pausedDuration
+        const currentDurationSeconds = Math.floor(currentDurationMs / 1000) // ミリ秒→秒変換
+        setCurrentRecordingTime(Math.max(0, currentDurationSeconds))
+      }, 1000) // 1秒間隔
+    } else if (recordingState?.status === 'paused' && recordingState.session) {
+      // 一時停止中は最後の時間を保持（更新しない）
+      // setCurrentRecordingTime は更新せずに現在の値を保持
+    } else {
+      setCurrentRecordingTime(0)
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [recordingState?.status, recordingState?.session?.startTime]) // sessionオブジェクト全体の監視を避ける
+
   // 便利な状態プロパティ（computedプロパティ）
   const isRecording = recordingState?.status === 'recording'
   const isPaused = recordingState?.status === 'paused'
@@ -259,6 +311,7 @@ export const useRecordingStateManager = () => {
     currentConfig,
     microphoneStatus,
     audioLevels,
+    currentRecordingTime, // リアルタイム録音時間
     
     // アクション
     startRecording,
@@ -270,6 +323,8 @@ export const useRecordingStateManager = () => {
     updateMicrophoneStatus,
     clearError,
     getCurrentState,
+    setDataCallback,
+    generateFileName,
     
     // 高度な操作
     manager: managerRef.current

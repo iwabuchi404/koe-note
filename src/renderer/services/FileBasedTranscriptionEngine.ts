@@ -449,7 +449,9 @@ export class FileBasedTranscriptionEngine {
       type: errorType,
       message: errorInfo.message,
       retryCount: item.retryCount,
-      action: errorInfo.suggestedAction
+      action: errorInfo.suggestedAction,
+      fileSize: item.fileInfo.size,
+      filePath: item.fileInfo.fullPath
     });
     
     // 重要度の高いエラーの場合は即座に通知

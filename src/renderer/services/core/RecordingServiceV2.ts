@@ -64,16 +64,22 @@ export class RecordingServiceV2 {
   private currentSession: RecordingSession | null = null
   private onStatusChange?: (session: RecordingSession) => void
   private onError?: (error: RecordingError) => void
+  private onDataAvailable?: (data: Blob) => void
+  private audioContext?: AudioContext
+  private analyser?: AnalyserNode
+  private audioLevelData?: Uint8Array
 
   /**
    * イベントリスナー設定
    */
   setEventHandlers(
     onStatusChange?: (session: RecordingSession) => void,
-    onError?: (error: RecordingError) => void
+    onError?: (error: RecordingError) => void,
+    onDataAvailable?: (data: Blob) => void
   ) {
     this.onStatusChange = onStatusChange
     this.onError = onError
+    this.onDataAvailable = onDataAvailable
   }
 
   /**
@@ -83,8 +89,11 @@ export class RecordingServiceV2 {
    */
   async startRecording(config: RecordingConfig): Promise<RecordingResult<RecordingSession>> {
     try {
+      console.log('🎙️ RecordingServiceV2: 録音開始リクエスト', config)
+      
       // 1. 既存セッションのチェック
       if (this.currentSession && this.currentSession.status === 'recording') {
+        console.warn('🎙️ RecordingServiceV2: 既に録音中です')
         return {
           success: false,
           error: {
@@ -96,10 +105,16 @@ export class RecordingServiceV2 {
       }
 
       // 2. デバイス取得・検証
+      console.log('🎙️ RecordingServiceV2: メディアストリーム取得開始')
       const mediaStreamResult = await this.getMediaStream(config)
       if (!mediaStreamResult.success) {
+        console.error('🎙️ RecordingServiceV2: メディアストリーム取得失敗', mediaStreamResult.error)
         return mediaStreamResult
       }
+      console.log('🎙️ RecordingServiceV2: メディアストリーム取得成功', mediaStreamResult.data)
+      
+      // 実際に使用されるストリームの音声レベルを監視
+      this.monitorAudioLevel(mediaStreamResult.data)
 
       // 3. ファイル名生成
       const fileName = this.generateFileName()
@@ -118,26 +133,32 @@ export class RecordingServiceV2 {
       }
 
       // 5. MediaRecorder設定
+      console.log('🎙️ RecordingServiceV2: MediaRecorder作成開始')
       const mediaRecorderResult = await this.createMediaRecorder(session)
       if (!mediaRecorderResult.success) {
+        console.error('🎙️ RecordingServiceV2: MediaRecorder作成失敗', mediaRecorderResult.error)
         // ストリームをクリーンアップ
         mediaStreamResult.data.getTracks().forEach(track => track.stop())
         return mediaRecorderResult
       }
+      console.log('🎙️ RecordingServiceV2: MediaRecorder作成成功')
 
       session.mediaRecorder = mediaRecorderResult.data
       session.status = 'recording'
       this.currentSession = session
 
       // 6. 録音開始
+      console.log('🎙️ RecordingServiceV2: 録音開始処理')
       const startResult = await this.startMediaRecorder(session)
       if (!startResult.success) {
+        console.error('🎙️ RecordingServiceV2: 録音開始失敗', startResult.error)
         // リソースクリーンアップ
         this.cleanupSession(session)
         return startResult
       }
 
       // 7. 成功通知
+      console.log('🎙️ RecordingServiceV2: 録音開始成功！')
       this.onStatusChange?.(session)
 
       return {
@@ -318,6 +339,46 @@ export class RecordingServiceV2 {
     return this.currentSession?.status === 'recording' || false
   }
 
+  /**
+   * 現在の音声レベル取得
+   */
+  getCurrentAudioLevel(): number {
+    if (!this.analyser || !this.audioLevelData) {
+      // console.log('🔇 RecordingServiceV2: アナライザー未初期化')
+      return 0
+    }
+    
+    try {
+      this.analyser.getByteFrequencyData(this.audioLevelData)
+      const average = this.audioLevelData.reduce((sum, value) => sum + value, 0) / this.audioLevelData.length
+      
+      // 基本の正規化（0-1）
+      let normalizedLevel = average / 255
+      
+      // 音声レベルの増幅・調整
+      // 1. 非線形増幅（小さな値を大きく、大きな値はそれなりに）
+      normalizedLevel = Math.pow(normalizedLevel, 0.5) // 平方根で増幅
+      
+      // 2. 最小閾値以上の場合にさらに増幅
+      if (normalizedLevel > 0.005) {
+        normalizedLevel = Math.min(1.0, normalizedLevel * 15) // 15倍に増幅、上限1.0
+      }
+      
+      // 3. 最終的な範囲制限
+      normalizedLevel = Math.max(0, Math.min(1, normalizedLevel))
+      
+      // デバッグ用：レベルが取得できている場合のみログ出力
+      if (normalizedLevel > 0.05) {
+        console.log(`🔊 RecordingServiceV2: 増幅後音声レベル: ${normalizedLevel.toFixed(3)} (元値: ${(average/255).toFixed(3)})`)
+      }
+      
+      return normalizedLevel
+    } catch (error) {
+      console.error('音声レベル取得エラー:', error)
+      return 0
+    }
+  }
+
   // プライベートメソッド
 
   private async getMediaStream(config: RecordingConfig): Promise<RecordingResult<MediaStream>> {
@@ -359,24 +420,116 @@ export class RecordingServiceV2 {
       video: false
     }
 
-    return await navigator.mediaDevices.getUserMedia(constraints)
+    console.log('🎙️ RecordingServiceV2: マイクストリーム取得開始', constraints)
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    
+    // ストリームの詳細をログ出力
+    console.log('🎙️ RecordingServiceV2: ストリーム取得成功', {
+      id: stream.id,
+      active: stream.active,
+      tracks: stream.getTracks().map(track => ({
+        kind: track.kind,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        label: track.label
+      }))
+    })
+    
+    return stream
   }
 
   private async getDesktopStream(): Promise<MediaStream> {
-    return await navigator.mediaDevices.getDisplayMedia({
-      audio: true,
-      video: { width: { ideal: 1 }, height: { ideal: 1 } }
-    })
+    console.log('🖥️ RecordingServiceV2: デスクトップ音声取得開始')
+    
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          sampleRate: 48000
+        },
+        video: { width: { ideal: 1 }, height: { ideal: 1 } }
+      })
+      
+      console.log('🖥️ RecordingServiceV2: デスクトップストリーム取得成功', {
+        id: stream.id,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
+        audioTrackDetails: stream.getAudioTracks().map(track => ({
+          label: track.label,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState
+        }))
+      })
+      
+      // ビデオトラックは不要なので削除
+      stream.getVideoTracks().forEach(track => {
+        stream.removeTrack(track)
+        track.stop()
+      })
+      
+      return stream
+      
+    } catch (error) {
+      console.error('🖥️ RecordingServiceV2: デスクトップ音声取得エラー:', error)
+      throw error
+    }
   }
 
   private async getMixedStream(micDeviceId: string): Promise<MediaStream> {
-    // マイクとデスクトップ音声のミキシング
-    // 実装は複雑なので、現在は簡易版
-    const micStream = await this.getMicrophoneStream(micDeviceId)
-    return micStream
+    console.log('🎛️ RecordingServiceV2: ミキシング録音開始（既存実装からの機能抽出）')
+    
+    try {
+      // 既存AudioMixingServiceから必要機能のみを抽出した実装
+      // Step 1: AudioContext初期化
+      const audioContext = new AudioContext()
+      console.log('🔊 AudioContext作成完了')
+      
+      // Step 2: マイクストリーム取得
+      const microphoneStream = await this.getMicrophoneStream(micDeviceId)
+      console.log('🎤 マイクストリーム取得完了')
+      
+      // Step 3: デスクトップストリーム取得
+      const desktopStream = await this.getDesktopStream()
+      console.log('🖥️ デスクトップストリーム取得完了')
+      
+      // Step 4: Web Audio APIノード作成
+      const microphoneSource = audioContext.createMediaStreamSource(microphoneStream)
+      const desktopSource = audioContext.createMediaStreamSource(desktopStream)
+      const destination = audioContext.createMediaStreamDestination()
+      
+      // Step 5: ゲインノード作成（既存設定を参考）
+      const microphoneGain = audioContext.createGain()
+      const desktopGain = audioContext.createGain()
+      microphoneGain.gain.value = 0.7  // 既存設定
+      desktopGain.gain.value = 0.8     // 既存設定
+      
+      // Step 6: ノード接続
+      microphoneSource.connect(microphoneGain)
+      desktopSource.connect(desktopGain)
+      microphoneGain.connect(destination)
+      desktopGain.connect(destination)
+      
+      // Step 7: ミキシング済みストリームを返す
+      const mixedStream = destination.stream
+      console.log('✅ ミキシングストリーム作成完了', {
+        audioTracks: mixedStream.getAudioTracks().length,
+        micTracks: microphoneStream.getAudioTracks().length,
+        desktopTracks: desktopStream.getAudioTracks().length
+      })
+      
+      return mixedStream
+      
+    } catch (error) {
+      console.error('🎛️ RecordingServiceV2: ミキシング失敗:', error)
+      throw new Error(`ミキシング録音に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
-  private generateFileName(): string {
+  public generateFileName(): string {
     const now = new Date()
     const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`
     return `recording_${timestamp}.webm`
@@ -394,9 +547,76 @@ export class RecordingServiceV2 {
         throw new Error('MediaStream is null')
       }
 
-      const mediaRecorder = new MediaRecorder(session.mediaStream, {
-        mimeType: session.config.mimeType
+      // MediaRecorderでサポートされているmimeTypeを確認
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/mp4',
+        'audio/wav'
+      ]
+      
+      let selectedMimeType = session.config.mimeType
+      if (!MediaRecorder.isTypeSupported(selectedMimeType)) {
+        console.warn('🎙️ RecordingServiceV2: 指定されたmimeTypeがサポートされていません:', selectedMimeType)
+        // サポートされているタイプを検索
+        for (const type of supportedTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+            selectedMimeType = type
+            console.log('🎙️ RecordingServiceV2: 代替mimeType選択:', selectedMimeType)
+            break
+          }
+        }
+      }
+
+      console.log('🎙️ RecordingServiceV2: MediaRecorder作成', {
+        mimeType: selectedMimeType,
+        streamTracks: session.mediaStream.getTracks().length,
+        streamActive: session.mediaStream.active
       })
+
+      const mediaRecorder = new MediaRecorder(session.mediaStream, {
+        mimeType: selectedMimeType
+      })
+
+      // 録音データを蓄積する配列
+      const recordedChunks: Blob[] = []
+
+      // データが利用可能になったときの処理
+      mediaRecorder.ondataavailable = (event) => {
+        console.log('🎙️ RecordingServiceV2: データ受信', event.data.size, 'bytes')
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data)
+          
+          // データコールバック実行（チャンク処理用）
+          if (this.onDataAvailable) {
+            console.log('🎙️ RecordingServiceV2: データコールバック実行')
+            this.onDataAvailable(event.data)
+          }
+        }
+      }
+
+      // 録音停止時の処理
+      mediaRecorder.onstop = async () => {
+        console.log('🎙️ RecordingServiceV2: 録音停止、ファイル保存開始')
+        try {
+          // 録音データを結合
+          const blob = new Blob(recordedChunks, { type: session.config.mimeType })
+          console.log('🎙️ RecordingServiceV2: ファイルサイズ', blob.size, 'bytes')
+          
+          // ファイル保存（Electron preload API経由）
+          const arrayBuffer = await blob.arrayBuffer()
+          
+          // ファイル名を取得
+          const fileName = session.fileName
+          
+          // Electron APIを使用してファイル保存
+          const savedPath = await window.electronAPI.saveFile(arrayBuffer, fileName)
+          
+          console.log('🎙️ RecordingServiceV2: ファイル保存完了:', savedPath)
+        } catch (error) {
+          console.error('🎙️ RecordingServiceV2: ファイル保存エラー:', error)
+        }
+      }
 
       return { success: true, data: mediaRecorder }
 
@@ -428,7 +648,8 @@ export class RecordingServiceV2 {
       }
 
       try {
-        session.mediaRecorder.start()
+        // チャンク処理のため、短い間隔でデータを生成
+        session.mediaRecorder.start(1000) // 1秒ごとにondataavailableを発火
         resolve({ success: true, data: undefined })
       } catch (error) {
         resolve({
@@ -488,6 +709,53 @@ export class RecordingServiceV2 {
       metadata: {
         config: session.config
       }
+    }
+  }
+
+  private monitorAudioLevel(stream: MediaStream): void {
+    try {
+      // 既存のaudioContextがあればクリーンアップ
+      if (this.audioContext) {
+        this.audioContext.close()
+      }
+      
+      this.audioContext = new AudioContext()
+      this.analyser = this.audioContext.createAnalyser()
+      const microphone = this.audioContext.createMediaStreamSource(stream)
+      
+      // AnalyserNodeの設定を音声レベル検出用に最適化
+      this.analyser.fftSize = 512 // より高い解像度
+      this.analyser.smoothingTimeConstant = 0.3 // レスポンスを向上
+      this.analyser.minDecibels = -90 // より低い音量も検出
+      this.analyser.maxDecibels = -10 // 上限を適切に設定
+      
+      this.audioLevelData = new Uint8Array(this.analyser.frequencyBinCount)
+
+      microphone.connect(this.analyser)
+
+      const checkAudioLevel = () => {
+        if (!this.analyser || !this.audioLevelData) return
+        
+        this.analyser.getByteFrequencyData(this.audioLevelData)
+        const average = this.audioLevelData.reduce((sum, value) => sum + value, 0) / this.audioLevelData.length
+        
+        if (average > 0) {
+          console.log('🔊 RecordingServiceV2: 音声レベル検出', Math.round(average))
+        } else {
+          console.log('🔇 RecordingServiceV2: 音声レベル0（無音）- ミキシング設定を確認してください')
+          console.log('💡 RecordingServiceV2: デスクトップ音声とマイクの音量設定を確認')
+        }
+      }
+
+      // 初回の3秒間は詳細ログを出力
+      const initialMonitorInterval = setInterval(checkAudioLevel, 1000)
+      setTimeout(() => {
+        clearInterval(initialMonitorInterval)
+        console.log('🎙️ RecordingServiceV2: 初期音声レベル監視終了（継続監視に切替）')
+      }, 3000)
+
+    } catch (error) {
+      console.error('🎙️ RecordingServiceV2: 音声レベル監視エラー:', error)
     }
   }
 

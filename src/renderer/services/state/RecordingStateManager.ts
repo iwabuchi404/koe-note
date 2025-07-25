@@ -35,6 +35,8 @@ export class RecordingStateManager {
   private listeners: Set<RecordingStateListener> = new Set()
   private audioLevelUpdateInterval?: NodeJS.Timeout
   private deviceMonitorInterval?: NodeJS.Timeout
+  private recordingTimeUpdateInterval?: NodeJS.Timeout
+  private pauseStartTime?: number
 
   constructor() {
     this.currentState = createInitialRecordingState()
@@ -114,9 +116,9 @@ export class RecordingStateManager {
       lastUpdate: new Date()
     }
 
-    // 状態バリデーション
+    // 状態バリデーション（録音中の一時的なバリデーションエラーを無視）
     const errors = validateRecordingState(this.currentState)
-    if (errors.length > 0) {
+    if (errors.length > 0 && this.currentState.status !== 'recording') {
       console.warn('録音状態バリデーションエラー:', errors)
     }
 
@@ -131,6 +133,34 @@ export class RecordingStateManager {
   }
 
   /**
+   * サービスからの状態変更を処理
+   */
+  private handleServiceStatusChange = (session: any): void => {
+    console.log('RecordingStateManager: サービス状態変更', session.status)
+    // 必要に応じて状態を更新
+  }
+
+  /**
+   * サービスからのエラーを処理
+   */
+  private handleServiceError = (error: any): void => {
+    console.error('RecordingStateManager: サービスエラー', error)
+    this.handleError(error)
+  }
+
+  /**
+   * データコールバック設定（チャンク処理用）
+   */
+  public setDataCallback(callback?: (data: Blob) => void): void {
+    // 既存のイベントハンドラーを保持しつつ、データコールバックを追加
+    this.recordingService.setEventHandlers(
+      this.handleServiceStatusChange,
+      this.handleServiceError,
+      callback
+    )
+  }
+
+  /**
    * 録音開始
    */
   public async startRecording(config?: Partial<RecordingConfig>): Promise<void> {
@@ -140,18 +170,12 @@ export class RecordingStateManager {
         ...config
       }
 
-      this.updateState({
-        status: 'recording',
-        config: recordingConfig,
-        error: null
-      })
-
       // RecordingServiceV2のRecordingConfigに合わせて変換
       const serviceConfig = {
         inputType: recordingConfig.inputType,
         deviceId: recordingConfig.selectedDevice,
         deviceName: 'Selected Device', // 仮の名前
-        mimeType: recordingConfig.format === 'webm' ? 'audio/webm' : 'audio/wav',
+        mimeType: 'audio/webm;codecs=opus', // WebM固定（チャンク処理との整合性）
         quality: recordingConfig.quality,
         enableRealtimeTranscription: recordingConfig.enableRealtimeTranscription
       }
@@ -161,6 +185,27 @@ export class RecordingStateManager {
       if (!result.success) {
         throw new Error(result.error?.message || '録音開始に失敗しました')
       }
+
+      // 録音成功時にセッション情報を作成し、状態とセッションを同時更新
+      const session: RecordingSession = {
+        id: `session_${Date.now()}`,
+        startTime: new Date(),
+        pausedDuration: 0,
+        currentDuration: 0,
+        config: recordingConfig
+      }
+
+      this.updateState({
+        status: 'recording',
+        config: recordingConfig,
+        error: null,
+        session: session
+      })
+
+      // 録音時間更新タイマーを開始
+      this.startRecordingTimeUpdate()
+      
+      console.log('🎙️ RecordingStateManager: 録音セッション作成完了', session)
 
     } catch (error) {
       this.handleError({
@@ -179,7 +224,14 @@ export class RecordingStateManager {
    */
   public async pauseRecording(): Promise<void> {
     try {
+      // 一時停止開始時刻を記録
+      this.pauseStartTime = Date.now()
+      
       this.updateState({ status: 'paused' })
+      
+      // 録音時間更新タイマーを停止（一時停止中）
+      this.stopRecordingTimeUpdate()
+      
       await this.recordingService.pauseRecording()
     } catch (error) {
       this.handleError({
@@ -197,7 +249,28 @@ export class RecordingStateManager {
    */
   public async resumeRecording(): Promise<void> {
     try {
-      this.updateState({ status: 'recording' })
+      // 一時停止時間を累積
+      if (this.pauseStartTime && this.currentState.session) {
+        const pauseDuration = Date.now() - this.pauseStartTime
+        const updatedSession = {
+          ...this.currentState.session,
+          pausedDuration: this.currentState.session.pausedDuration + pauseDuration
+        }
+        
+        this.updateState({ 
+          status: 'recording',
+          session: updatedSession
+        })
+      } else {
+        this.updateState({ status: 'recording' })
+      }
+      
+      // 一時停止時刻をクリア
+      this.pauseStartTime = undefined
+      
+      // 録音時間更新タイマーを再開
+      this.startRecordingTimeUpdate()
+      
       await this.recordingService.resumeRecording()
     } catch (error) {
       this.handleError({
@@ -219,6 +292,9 @@ export class RecordingStateManager {
       const result = await this.recordingService.stopRecording()
       
       if (result.success) {
+        // 録音時間更新タイマーを停止
+        this.stopRecordingTimeUpdate()
+        
         this.updateState({
           status: 'idle',
           session: null
@@ -299,6 +375,13 @@ export class RecordingStateManager {
   }
 
   /**
+   * ファイル名生成（録音開始前に使用）
+   */
+  public generateFileName(): string {
+    return this.recordingService.generateFileName()
+  }
+
+  /**
    * エラークリア
    */
   public clearError(): void {
@@ -316,17 +399,24 @@ export class RecordingStateManager {
   private startAudioLevelMonitoring(): void {
     this.audioLevelUpdateInterval = setInterval(() => {
       if (this.currentState.status === 'recording') {
-        // 実際の音声レベル取得は RecordingServiceV2 から
-        // ここではダミーデータで代替
+        // RecordingServiceV2から実際の音声レベルを取得
+        const actualLevel = this.recordingService.getCurrentAudioLevel()
+        
         const levels: AudioLevels = {
-          microphoneLevel: Math.random() * 0.8,
-          desktopLevel: Math.random() * 0.6,
-          mixedLevel: Math.random() * 0.9
+          microphoneLevel: actualLevel, // 実際のレベル使用
+          desktopLevel: actualLevel * 0.8, // 近似値
+          mixedLevel: actualLevel
         }
         
+        // デバッグ用：レベルが0.05以上の場合のみログ出力
+        if (actualLevel > 0.05) {
+          console.log(`📊 RecordingStateManager: 音声レベル更新: ${actualLevel.toFixed(3)}`)
+        }
+        
+        // 音声レベルを更新
         this.updateState({ audioLevels: levels })
       }
-    }, 100) // 100ms間隔で更新
+    }, 200) // より高頻度で更新（視覚的な反応性向上）
   }
 
   /**
@@ -336,6 +426,25 @@ export class RecordingStateManager {
     this.deviceMonitorInterval = setInterval(async () => {
       await this.updateAvailableDevices()
     }, 5000) // 5秒間隔でデバイス変更をチェック
+  }
+
+  /**
+   * 録音時間更新タイマーを開始
+   */
+  private startRecordingTimeUpdate(): void {
+    // 録音時間の自動更新を無効化（UI側で計算するため）
+    console.log('🎙️ RecordingStateManager: 録音時間自動更新を無効化（UI側で処理）')
+    this.stopRecordingTimeUpdate() // 既存のタイマーをクリア（念のため）
+  }
+
+  /**
+   * 録音時間更新タイマーを停止
+   */
+  private stopRecordingTimeUpdate(): void {
+    if (this.recordingTimeUpdateInterval) {
+      clearInterval(this.recordingTimeUpdateInterval)
+      this.recordingTimeUpdateInterval = undefined
+    }
   }
 
   /**
@@ -349,6 +458,10 @@ export class RecordingStateManager {
     
     if (this.deviceMonitorInterval) {
       clearInterval(this.deviceMonitorInterval)
+    }
+
+    if (this.recordingTimeUpdateInterval) {
+      clearInterval(this.recordingTimeUpdateInterval)
     }
 
     // リスナークリア

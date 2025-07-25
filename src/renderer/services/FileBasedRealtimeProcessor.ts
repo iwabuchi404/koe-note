@@ -184,7 +184,9 @@ export class FileBasedRealtimeProcessor {
       this.transcriptionEngine.start();
       
       console.log('3. ファイル監視開始...');
+      console.log(`📁 FileBasedRealtimeProcessor: ChunkFileWatcher.startWatching呼び出し: ${watchFolderPath}`);
       this.chunkWatcher.startWatching(watchFolderPath);
+      console.log(`📁 FileBasedRealtimeProcessor: ChunkFileWatcher.startWatching完了`);
       
       console.log('✓ FileBasedRealtimeProcessor 開始完了');
       this.updateStats();
