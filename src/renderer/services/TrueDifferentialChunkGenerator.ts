@@ -12,6 +12,7 @@
  */
 
 import { TRANSCRIPTION_CONFIG } from '../config/transcriptionConfig';
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
 
 export interface TrueDifferentialResult {
   chunkBlob: Blob;
@@ -56,6 +57,7 @@ export class TrueDifferentialChunkGenerator {
   private webmHeader: Uint8Array | null = null;
   private minimalWebMHeader: Uint8Array | null = null;
   private isInitialized: boolean = false;
+  private logger = LoggerFactory.getLogger(LogCategories.AUDIO_DIFFERENTIAL_GENERATOR);
   
   // バッファベース分割用プロパティ
   private continuousData: Blob[] = [];
@@ -85,9 +87,12 @@ export class TrueDifferentialChunkGenerator {
       ...config
     };
     
-    console.log(`🔧 TrueDifferentialChunkGenerator初期化 (${defaultChunkSize}秒間隔)`);
-    console.log(`📋 設定:`, this.config);
-    console.log(`📋 設定ファイルからのデフォルト値: PROCESSING_INTERVAL=${TRANSCRIPTION_CONFIG.REALTIME.PROCESSING_INTERVAL}ms, CHUNK_SIZE=${TRANSCRIPTION_CONFIG.CHUNK.DEFAULT_SIZE}s`);
+    this.logger.info('TrueDifferentialChunkGenerator初期化', { 
+      intervalSeconds: defaultChunkSize,
+      config: this.config,
+      processingInterval: TRANSCRIPTION_CONFIG.REALTIME.PROCESSING_INTERVAL,
+      chunkSize: TRANSCRIPTION_CONFIG.CHUNK.DEFAULT_SIZE
+    });
   }
   
   /**
@@ -105,7 +110,7 @@ export class TrueDifferentialChunkGenerator {
     this.savedChunkFiles = [];
     this.continuousData = [];
     
-    console.log('🎬 録音開始 - TrueDifferentialChunkGenerator（拡張版）');
+    this.logger.info('録音開始 - TrueDifferentialChunkGenerator拡張版');
     
     // 自動チャンク生成開始
     if (this.config.enableAutoGeneration) {
@@ -117,7 +122,7 @@ export class TrueDifferentialChunkGenerator {
    * 録音停止（拡張版）
    */
   stopRecording(): void {
-    console.log('🛑 録音停止 - TrueDifferentialChunkGenerator');
+    this.logger.info('録音停止 - TrueDifferentialChunkGenerator');
     
     // 自動チャンク生成停止
     this.stopAutoChunkGeneration();
@@ -134,7 +139,10 @@ export class TrueDifferentialChunkGenerator {
   addRecordingData(blob: Blob): void {
     // 連続データバッファに追加
     this.continuousData.push(blob);
-    console.log(`📝 録音データ追加: ${blob.size} bytes (バッファ: ${this.continuousData.length}チャンク)`);
+    this.logger.debug('録音データ追加', { 
+      size: blob.size, 
+      bufferCount: this.continuousData.length 
+    });
     
     // 最初のチャンクからWebMヘッダーを抽出
     if (!this.isInitialized && this.continuousData.length === 1) {
@@ -152,7 +160,7 @@ export class TrueDifferentialChunkGenerator {
    */
   private async extractHeaderFromFirstChunk(firstChunk: Blob): Promise<void> {
     try {
-      console.log('🎯 最初のチャンクからWebMヘッダーを抽出中...');
+      this.logger.debug('最初のチャンクからWebMヘッダーを抽出中');
       
       const arrayBuffer = await firstChunk.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
@@ -170,9 +178,9 @@ export class TrueDifferentialChunkGenerator {
       // フォールバック: サイズが特定できない場合は保守的なサイズを使用
       if (headerSize <= 0) {
         headerSize = Math.min(2048, Math.floor(uint8Array.length * 0.1)); // より大きめに設定
-        console.log(`⚠️ ヘッダーサイズ自動検出失敗 - フォールバック: ${headerSize} bytes`);
+        this.logger.warn('ヘッダーサイズ自動検出失敗 - フォールバック', { headerSize });
       } else {
-        console.log(`🔍 WebMヘッダーサイズ自動検出: ${headerSize} bytes`);
+        this.logger.debug('WebMヘッダーサイズ自動検出', { headerSize });
       }
       
       this.webmHeader = uint8Array.slice(0, headerSize);
@@ -183,14 +191,16 @@ export class TrueDifferentialChunkGenerator {
       // 最小限のWebMヘッダーも作成（2チャンク目以降用）
       this.createMinimalWebMHeader();
       
-      console.log(`✅ WebMヘッダー抽出完了: ${this.webmHeader.length} bytes`);
-      console.log(`📊 ヘッダー先頭: ${Array.from(this.webmHeader.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()}`);
-      console.log(`📊 ヘッダー末尾: ${Array.from(this.webmHeader.slice(-16)).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()}`);
+      this.logger.info('WebMヘッダー抽出完了', { 
+        headerSize: this.webmHeader.length,
+        headerStart: Array.from(this.webmHeader.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase(),
+        headerEnd: Array.from(this.webmHeader.slice(-16)).map(b => b.toString(16).padStart(2, '0')).join(' ').toUpperCase()
+      });
       
       this.isInitialized = true;
       
     } catch (error) {
-      console.error('❌ WebMヘッダー抽出エラー:', error);
+      this.logger.error('WebMヘッダー抽出エラー', error instanceof Error ? error : undefined, error);
       // ヘッダー抽出に失敗した場合でも継続（差分データのみ使用）
       this.isInitialized = true;
     }
@@ -625,7 +635,7 @@ export class TrueDifferentialChunkGenerator {
    * リセット（新しい録音開始時）（拡張版）
    */
   reset(): void {
-    console.log('🔄 TrueDifferentialChunkGenerator リセット');
+    this.logger.info('TrueDifferentialChunkGenerator リセット');
     
     // 自動チャンク生成停止
     this.stopAutoChunkGeneration();
@@ -647,7 +657,7 @@ export class TrueDifferentialChunkGenerator {
    * クリーンアップ（拡張版）
    */
   cleanup(): void {
-    console.log('🧹 TrueDifferentialChunkGenerator クリーンアップ');
+    this.logger.info('TrueDifferentialChunkGenerator クリーンアップ');
     
     // 自動チャンク生成停止
     this.stopAutoChunkGeneration();

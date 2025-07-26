@@ -7,6 +7,7 @@
 
 import { AudioChunk, ChunkResult } from './ChunkTranscriptionManager';
 import { TranscriptionSegment } from '../../preload/preload';
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
 
 export interface QueueItem {
   id: string;
@@ -43,6 +44,7 @@ export class ChunkTranscriptionQueue {
   private progressCallbacks: ((stats: QueueStats) => void)[] = [];
   private consecutiveErrors: number = 0;
   private lastErrorTime: number = 0;
+  private logger = LoggerFactory.getLogger(LogCategories.TRANSCRIPTION_QUEUE);
 
   constructor(maxConcurrency: number = 1) {
     this.maxConcurrency = maxConcurrency;
@@ -83,7 +85,7 @@ export class ChunkTranscriptionQueue {
     this.stats.pendingItems++;
     this.updateStats();
 
-    console.log(`チャンクをキューに追加: ${chunk.id} (優先度: ${priority})`);
+    this.logger.info('チャンクキュー追加', { chunkId: chunk.id, priority, totalItems: this.stats.totalItems });
   }
 
   /**
@@ -91,13 +93,13 @@ export class ChunkTranscriptionQueue {
    */
   async startProcessing(): Promise<void> {
     if (this.isProcessing) {
-      console.warn('既に処理中です');
+      this.logger.warn('既に処理中です');
       return;
     }
 
     this.isProcessing = true;
     this.stats.queueStartTime = Date.now();
-    console.log('チャンクキュー処理開始');
+    this.logger.info('チャンクキュー処理開始', { maxConcurrency: this.maxConcurrency });
 
     // 並列処理を開始
     const processingPromises: Promise<void>[] = [];
@@ -107,7 +109,7 @@ export class ChunkTranscriptionQueue {
 
     await Promise.all(processingPromises);
     this.isProcessing = false;
-    console.log('チャンクキュー処理完了');
+    this.logger.info('チャンクキュー処理完了', { completedItems: this.stats.completedItems, failedItems: this.stats.failedItems });
   }
 
   /**
@@ -124,7 +126,12 @@ export class ChunkTranscriptionQueue {
       item.startedAt = Date.now();
 
       try {
-        console.log(`チャンク処理開始: ${item.id} (${item.retryCount + 1}/${item.maxRetries + 1}回目)`);
+        this.logger.info('チャンク処理開始', {
+          chunkId: item.id,
+          retryCount: item.retryCount + 1,
+          maxRetries: item.maxRetries + 1,
+          priority: item.priority
+        });
         
         const result = await this.processChunk(item.chunk);
         
@@ -143,10 +150,19 @@ export class ChunkTranscriptionQueue {
         // コールバック実行
         this.processingCallbacks.forEach(callback => callback(result));
         
-        console.log(`チャンク処理完了: ${item.id} (処理時間: ${processingTime}ms)`);
+        this.logger.info('チャンク処理完了', {
+          chunkId: item.id,
+          processingTime,
+          confidence: result.confidence,
+          segmentCount: result.segments.length
+        });
         
       } catch (error) {
-        console.error(`チャンク処理エラー: ${item.id}`, error);
+        this.logger.error('チャンク処理エラー', error instanceof Error ? error : undefined, {
+          chunkId: item.id,
+          retryCount: item.retryCount,
+          error: String(error)
+        });
         
         // 連続エラーの追跡
         const currentTime = Date.now();
@@ -159,7 +175,11 @@ export class ChunkTranscriptionQueue {
         
         // 連続エラーが5回以上発生した場合は処理を停止
         if (this.consecutiveErrors >= 5 && String(error).includes('音声認識サーバー')) {
-          console.warn('🚨 連続エラーが多発しました。処理を停止します。');
+          this.logger.warn('連続エラー多発により処理停止', {
+            consecutiveErrors: this.consecutiveErrors,
+            errorType: 'server_connection',
+            action: 'stopping_processing'
+          });
           this.isProcessing = false;
           
           // エラー通知をユーザーに送信
@@ -193,11 +213,16 @@ export class ChunkTranscriptionQueue {
           this.stats.processingItems--;
           this.stats.pendingItems++;
           
-          console.log(`チャンクを再キューイング: ${item.id} (リトライ: ${item.retryCount}/${item.maxRetries})`);
+          this.logger.info('チャンク再キューイング', {
+            chunkId: item.id,
+            retryCount: item.retryCount,
+            maxRetries: item.maxRetries,
+            newPriority: item.priority
+          });
           
           // リトライ間隔を設定（指数バックオフ）
           const retryDelay = Math.min(1000 * Math.pow(2, item.retryCount - 1), 5000); // 1秒、2秒、4秒、最大5秒
-          console.log(`${retryDelay}ms後にリトライします...`);
+          this.logger.debug('リトライ待機', { chunkId: item.id, retryDelay });
           
           setTimeout(() => {
             this.queue.push(item);
@@ -212,7 +237,11 @@ export class ChunkTranscriptionQueue {
           this.stats.processingItems--;
           this.stats.failedItems++;
           
-          console.error(`チャンク処理最終失敗: ${item.id}`);
+          this.logger.error('チャンク処理最終失敗', undefined, {
+            chunkId: item.id,
+            error: item.error,
+            totalRetries: item.retryCount
+          });
           
           // 失敗したチャンクの結果を作成（よりユーザーフレンドリーなメッセージ）
           let errorMessage = `チャンク処理に失敗しました`;
@@ -255,22 +284,32 @@ export class ChunkTranscriptionQueue {
         chunk.id.startsWith('safe_minimal_chunk_') ||
         chunk.id.startsWith('live_real_chunk_') ||
         chunk.id.startsWith('recording_')) {
-      console.log(`🎆 録音中チャンク ${chunk.id} を処理中 - リアルタイム文字起こしを実行`);
+      this.logger.info('録音中チャンクリアルタイム処理開始', {
+        chunkId: chunk.id,
+        startTime: chunk.startTime,
+        endTime: chunk.endTime,
+        sequenceNumber: chunk.sequenceNumber
+      });
       
       try {
         // 録音中チャンクでも実際の文字起こしを実行
         const tempFilePath = await this.createTempAudioFile(chunk);
         
         try {
-          console.log(`📝 録音中チャンク ${chunk.id} の文字起こしを開始`);
+          this.logger.info('録音中チャンク文字起こし開始', {
+            chunkId: chunk.id,
+            tempFilePath
+          });
           
           // 実際のWhisper APIで文字起こし実行
           const result = await window.electronAPI.speechTranscribe(tempFilePath);
           
-          console.log(`📝 録音中チャンク ${chunk.id} の文字起こし完了:`, {
+          this.logger.info('録音中チャンク文字起こし完了', {
+            chunkId: chunk.id,
             segments: result.segments.length,
             duration: result.duration,
-            language: result.language
+            language: result.language,
+            confidence: result.segments.length > 0 ? 0.8 : 0
           });
           
           // 結果を ChunkResult 形式に変換
@@ -294,12 +333,19 @@ export class ChunkTranscriptionQueue {
           try {
             await window.electronAPI.deleteFile(tempFilePath);
           } catch (error) {
-            console.warn('録音中チャンクの一時ファイル削除エラー:', error);
+            this.logger.warn('録音中チャンク一時ファイル削除エラー', {
+              chunkId: chunk.id,
+              tempFilePath,
+              error: String(error)
+            }, error instanceof Error ? error : undefined);
           }
         }
         
       } catch (error) {
-        console.error(`🚨 録音中チャンク ${chunk.id} の文字起こしエラー:`, error);
+        this.logger.error('録音中チャンク文字起こしエラー', error instanceof Error ? error : undefined, {
+          chunkId: chunk.id,
+          error: String(error)
+        });
         
         // エラーメッセージの詳細化
         let errorMessage = `文字起こし処理中にエラーが発生しました`;
@@ -324,7 +370,11 @@ export class ChunkTranscriptionQueue {
           error: String(error)
         };
         
-        console.log(`🎆 録音中チャンク ${chunk.id} のエラー処理完了 - フォールバック結果を返しました`);
+        this.logger.info('録音中チャンクエラーフォールバック完了', {
+          chunkId: chunk.id,
+          status: 'failed',
+          fallbackMessage: errorMessage
+        });
         return fallbackResult;
       }
     }
@@ -357,7 +407,10 @@ export class ChunkTranscriptionQueue {
       try {
         await window.electronAPI.deleteFile(tempFilePath);
       } catch (error) {
-        console.warn('一時ファイル削除エラー:', error);
+        this.logger.warn('一時ファイル削除エラー', {
+          tempFilePath,
+          error: String(error)
+        }, error instanceof Error ? error : undefined);
       }
     }
   }
@@ -373,7 +426,11 @@ export class ChunkTranscriptionQueue {
     
     // 通常の音声データの場合はWAV形式に変換
     const tempFileName = `chunk_${chunk.id}_${Date.now()}.wav`;
-    console.log(`📝 WAVチャンクファイル作成: ${tempFileName}`);
+    this.logger.debug('WAVチャンクファイル作成', {
+      chunkId: chunk.id,
+      tempFileName,
+      dataType: 'WAV'
+    });
     
     try {
       // AudioChunkProcessor の createWavBuffer を使用
@@ -383,7 +440,11 @@ export class ChunkTranscriptionQueue {
       
       return await window.electronAPI.saveFile(wavBuffer, tempFileName);
     } catch (error) {
-      console.error('WAVファイル作成エラー:', error);
+      this.logger.error('WAVファイル作成エラー', error instanceof Error ? error : undefined, {
+        chunkId: chunk.id,
+        tempFileName,
+        error: String(error)
+      });
       throw new Error(`チャンク ${chunk.id} のWAVファイル作成に失敗しました: ${error}`);
     }
   }
@@ -392,19 +453,32 @@ export class ChunkTranscriptionQueue {
    * WebMチャンクファイルを作成（WebM形式で保存）
    */
   private async createWebMChunkFile(chunk: AudioChunk): Promise<string> {
-    console.log(`📝 録音中チャンクファイル作成: ${chunk.id} (時間範囲: ${chunk.startTime}s - ${chunk.endTime}s)`);
+    this.logger.info('録音中チャンクファイル作成開始', {
+      chunkId: chunk.id,
+      startTime: chunk.startTime,
+      endTime: chunk.endTime,
+      duration: chunk.endTime - chunk.startTime
+    });
     
     // チャンクの音声データを詳細に検証
     await this.validateChunkAudioData(chunk);
     
     // WebM形式でそのまま保存
     const webmFileName = `recording_chunk_${chunk.id}.webm`;
-    console.log(`📝 録音中チャンクをWebM形式で作成: ${webmFileName}`);
+    this.logger.debug('録音中チャンクWebMファイル作成', {
+      chunkId: chunk.id,
+      webmFileName,
+      format: 'WebM'
+    });
     
     try {
       // AudioDataがArrayBufferの場合はそのまま保存
       if (chunk.audioData instanceof ArrayBuffer && chunk.audioData.byteLength > 0) {
-        console.log(`📝 ArrayBufferをWebMファイルとして保存: ${chunk.audioData.byteLength} bytes`);
+        this.logger.debug('ArrayBufferWebMファイル保存', {
+          chunkId: chunk.id,
+          dataSize: chunk.audioData.byteLength,
+          format: 'WebM'
+        });
         
         // WebMヘッダーを検証
         await this.validateWebMHeader(chunk.audioData, chunk);
@@ -416,11 +490,19 @@ export class ChunkTranscriptionQueue {
         
         return filePath;
       } else {
-        console.error(`❌ チャンク ${chunk.id} の音声データが空または無効です`);
+        this.logger.error('チャンク音声データ空または無効', undefined, {
+          chunkId: chunk.id,
+          audioDataType: typeof chunk.audioData,
+          audioDataSize: chunk.audioData instanceof ArrayBuffer ? chunk.audioData.byteLength : 0
+        });
         throw new Error(`チャンク ${chunk.id} の音声データが空です。録音データの生成に問題があります。`);
       }
     } catch (error) {
-      console.error('録音中チャンクのWebMファイル作成エラー:', error);
+      this.logger.error('録音中チャンクWebMファイル作成エラー', error instanceof Error ? error : undefined, {
+        chunkId: chunk.id,
+        webmFileName,
+        error: String(error)
+      });
       
       // エラーの場合は問題をユーザーに通知
       throw new Error(`録音中チャンク ${chunk.id} のWebMファイル作成に失敗しました。録音データが不完全な可能性があります。`);
@@ -431,21 +513,31 @@ export class ChunkTranscriptionQueue {
    * チャンクの音声データを検証
    */
   private async validateChunkAudioData(chunk: AudioChunk): Promise<void> {
-    console.log(`🔍 チャンク ${chunk.id} の音声データ検証:`);
-    console.log(`  - シーケンス番号: ${chunk.sequenceNumber}`);
-    console.log(`  - 時間範囲: ${chunk.startTime}s - ${chunk.endTime}s (長さ: ${chunk.endTime - chunk.startTime}s)`);
-    console.log(`  - サンプルレート: ${chunk.sampleRate}Hz`);
-    console.log(`  - チャンネル数: ${chunk.channels}`);
-    console.log(`  - 重複時間: ${chunk.overlapWithPrevious}s`);
+    this.logger.debug('チャンク音声データ検証開始', { chunkId: chunk.id });
+    this.logger.debug('チャンク基本情報', {
+      chunkId: chunk.id,
+      sequenceNumber: chunk.sequenceNumber,
+      startTime: chunk.startTime,
+      endTime: chunk.endTime,
+      duration: chunk.endTime - chunk.startTime,
+      sampleRate: chunk.sampleRate,
+      channels: chunk.channels,
+      overlapWithPrevious: chunk.overlapWithPrevious
+    });
     
     if (chunk.audioData instanceof ArrayBuffer) {
-      console.log(`  - AudioData型: ArrayBuffer`);
-      console.log(`  - AudioDataサイズ: ${chunk.audioData.byteLength} bytes`);
+      this.logger.debug('音声データタイプArrayBuffer', {
+        chunkId: chunk.id,
+        audioDataSize: chunk.audioData.byteLength
+      });
       
       // ArrayBufferの最初の数バイトを16進数で表示
       const header = new Uint8Array(chunk.audioData.slice(0, Math.min(32, chunk.audioData.byteLength)));
       const headerHex = Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ');
-      console.log(`  - AudioDataヘッダー (最初32bytes): ${headerHex}`);
+      this.logger.debug('音声データヘッダー', {
+        chunkId: chunk.id,
+        headerHex: headerHex.substring(0, 50) + (headerHex.length > 50 ? '...' : '')
+      });
       
       // WebMデータの場合は、Float32Arrayとしての解釈をスキップ
       if (chunk.audioData.byteLength >= 4) {
@@ -454,14 +546,16 @@ export class ChunkTranscriptionQueue {
         const isWebM = header[0] === 0x1A && header[1] === 0x45 && header[2] === 0xDF && header[3] === 0xA3;
         
         if (isWebM) {
-          console.log(`  - ✅ データ形式: WebM (標準EBMLヘッダー検出)`);
-          console.log(`  - WebMファイルサイズ: ${chunk.audioData.byteLength} bytes`);
-          
-          // 推定音声長と期待サイズの比較
           const estimatedDuration = chunk.endTime - chunk.startTime;
-          const estimatedBitrate = Math.floor((chunk.audioData.byteLength * 8) / estimatedDuration); // bps
-          console.log(`  - 推定ビットレート: ${Math.floor(estimatedBitrate / 1000)} kbps`);
-          console.log(`  - 推定音声長: ${estimatedDuration}秒`);
+          const estimatedBitrate = Math.floor((chunk.audioData.byteLength * 8) / estimatedDuration);
+          this.logger.info('WebMフォーマット検出', {
+            chunkId: chunk.id,
+            format: 'WebM',
+            headerType: 'EBML',
+            fileSize: chunk.audioData.byteLength,
+            estimatedDuration,
+            estimatedBitrate: Math.floor(estimatedBitrate / 1000)
+          });
         } else {
           // 他の一般的なWebM/EBMLヘッダーパターンもチェック
           const alternativeHeaders = [
@@ -487,39 +581,62 @@ export class ChunkTranscriptionQueue {
                 detectedHeaderType = 'DocType';
               }
               
-              console.log(`  - ✅ データ形式: WebM (${detectedHeaderType}ヘッダー検出: ${headerHex})`);
+              this.logger.info('WebMフォーマット検出', {
+                chunkId: chunk.id,
+                format: 'WebM',
+                headerType: detectedHeaderType,
+                headerPattern: headerHex
+              });
               break;
             }
           }
           
           if (!isAlternativeWebM) {
-            console.log(`  - ⚠️ データ形式: 不明（認識可能なWebMパターンなし）`);
-            console.log(`  - データサイズ: ${chunk.audioData.byteLength} bytes`);
-            console.log(`  - ヘッダー: ${Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-            console.log(`  - 期待パターン: 1a 45 df a3 (EBML), 1f 43 b6 75 (Cluster), など`);
-            
-            console.log(`  - ⚠️ このチャンクは認識可能なWebMパターンではないため、文字起こしでエラーが発生する可能性があります`);
+            const headerStr = Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            this.logger.warn('未認識データフォーマット', {
+              chunkId: chunk.id,
+              dataSize: chunk.audioData.byteLength,
+              headerPattern: headerStr.substring(0, 50),
+              warning: '文字起こしエラーの可能性',
+              expectedPatterns: ['1a 45 df a3 (EBML)', '1f 43 b6 75 (Cluster)']
+            });
             
             // PCMデータとしての解析も試行しない（サイズが4の倍数でない場合が多いため）
             if (chunk.audioData.byteLength % 4 === 0) {
               try {
                 const float32View = new Float32Array(chunk.audioData.slice(0, Math.min(16, chunk.audioData.byteLength)));
-                console.log(`  - Float32Array最初4サンプル: [${Array.from(float32View).slice(0, 4).join(', ')}]`);
+                this.logger.debug('Float32Arrayサンプル', {
+                  chunkId: chunk.id,
+                  samples: Array.from(float32View).slice(0, 4)
+                });
               } catch (error) {
-                console.log(`  - Float32Array変換エラー: ${error instanceof Error ? error.message : String(error)}`);
+                this.logger.warn('Float32Array変換エラー', {
+                  chunkId: chunk.id,
+                  error: String(error)
+                }, error instanceof Error ? error : undefined);
               }
             } else {
-              console.log(`  - ⚠️ データサイズが4の倍数ではないため、Float32Array変換をスキップ`);
+              this.logger.debug('Float32Array変換スキップ', {
+                chunkId: chunk.id,
+                reason: 'データサイズが4の倍数ではない',
+                dataSize: chunk.audioData.byteLength
+              });
             }
           }
         }
       }
     } else {
-      console.log(`  - AudioData型: ${typeof chunk.audioData}`);
-      console.log(`  - AudioData: ${chunk.audioData}`);
+      this.logger.debug('音声データ型情報', {
+        chunkId: chunk.id,
+        audioDataType: typeof chunk.audioData,
+        audioDataValue: String(chunk.audioData).substring(0, 100)
+      });
     }
     
-    console.log(`  - ソースファイルパス: ${chunk.sourceFilePath || 'なし'}`);
+    this.logger.debug('チャンクソース情報', {
+      chunkId: chunk.id,
+      sourceFilePath: chunk.sourceFilePath || 'なし'
+    });
   }
 
   /**
@@ -663,19 +780,39 @@ export class ChunkTranscriptionQueue {
   private async validateSavedFile(filePath: string, chunk: AudioChunk): Promise<void> {
     try {
       const fileSize = await window.electronAPI.getFileSize(filePath);
-      console.log(`🔍 保存ファイル検証 (チャンク ${chunk.id}):`);
-      console.log(`  - ファイルパス: ${filePath}`);
-      console.log(`  - ファイルサイズ: ${fileSize} bytes`);
+      this.logger.debug('保存ファイル検証開始', { chunkId: chunk.id });
+      this.logger.debug('保存ファイル情報', {
+        chunkId: chunk.id,
+        filePath,
+        fileSize
+      });
       
       if (fileSize === 0) {
-        console.error(`❌ 保存されたファイルのサイズが0バイトです。`);
+        this.logger.error('保存ファイルサイズ0バイト', undefined, {
+          chunkId: chunk.id,
+          filePath,
+          fileSize: 0
+        });
       } else if (fileSize < 44) {
-        console.error(`❌ 保存されたファイルのサイズが小さすぎます (${fileSize} < 44 bytes)。`);
+        this.logger.error('保存ファイルサイズ小さすぎ', undefined, {
+          chunkId: chunk.id,
+          filePath,
+          fileSize,
+          minimumSize: 44
+        });
       } else {
-        console.log(`✅ 保存されたファイルのサイズは正常です。`);
+        this.logger.debug('保存ファイルサイズ正常', {
+          chunkId: chunk.id,
+          filePath,
+          fileSize
+        });
       }
     } catch (error) {
-      console.error(`❌ 保存ファイルの検証中にエラーが発生しました:`, error);
+      this.logger.error('保存ファイル検証エラー', error instanceof Error ? error : undefined, {
+        chunkId: chunk.id,
+        filePath,
+        error: String(error)
+      });
     }
   }
 
@@ -692,7 +829,7 @@ export class ChunkTranscriptionQueue {
    */
   stop(): void {
     this.isProcessing = false;
-    console.log('チャンクキュー処理停止');
+    this.logger.info('チャンクキュー処理停止');
   }
 
   /**

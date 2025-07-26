@@ -44,6 +44,7 @@ export const LogCategories = {
   TRANSCRIPTION_ENGINE: 'Transcription.Engine',
   TRANSCRIPTION_REALTIME: 'Transcription.Realtime',
   TRANSCRIPTION_FILE_BASED: 'Transcription.FileBased',
+  TRANSCRIPTION_QUEUE: 'Transcription.Queue',
   
   // ファイル処理
   FILE_CHUNK_WATCHER: 'File.ChunkWatcher',

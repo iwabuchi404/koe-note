@@ -1,8 +1,10 @@
-import React, { useState, createContext, useContext } from 'react'
+import React, { useState, createContext, useContext, useEffect } from 'react'
 import './styles/global.css'
 import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
 import { SettingsProvider } from './contexts/SettingsContext'
+import { LoggerFactory, LogCategories } from './utils/LoggerFactory'
+import { initializeLogger, enableLoggerDebugMode } from './utils/LoggerInitializer'
 
 export interface AudioFile {
   id: string
@@ -74,6 +76,35 @@ const App: React.FC = () => {
   const [currentModel, setCurrentModel] = useState<string>('small')
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false)
   const [recordingFile, setRecordingFile] = useState<AudioFile | null>(null)
+
+  // ログシステム初期化
+  useEffect(() => {
+    const initializeLogging = async () => {
+      try {
+        // ログシステム初期化
+        await initializeLogger()
+
+        // アプリケーション開始ログ
+        const appLogger = LoggerFactory.getLogger(LogCategories.APP)
+        appLogger.info('KoeNoteアプリケーション開始', {
+          userAgent: navigator.userAgent,
+          url: window.location.href,
+          timestamp: new Date().toISOString()
+        })
+
+        // 開発環境でデバッグモードを有効化
+        if (process.env.NODE_ENV === 'development') {
+          enableLoggerDebugMode()
+          appLogger.debug('開発者向けログデバッグ機能を有効化 (window.koeNoteLogDebug)')
+        }
+
+      } catch (error) {
+        console.error('ログシステム初期化エラー:', error)
+      }
+    }
+
+    initializeLogging()
+  }, [])
 
   const contextValue: AppContextType = {
     fileList,

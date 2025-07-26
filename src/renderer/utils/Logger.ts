@@ -177,8 +177,8 @@ export class Logger {
   /**
    * WARNレベルログ
    */
-  warn(message: string, data?: any): void {
-    const entry = this.createLogEntry(LogLevel.WARN, message, data)
+  warn(message: string, data?: any, error?: Error): void {
+    const entry = this.createLogEntry(LogLevel.WARN, message, data, error)
     this.output(entry)
   }
 

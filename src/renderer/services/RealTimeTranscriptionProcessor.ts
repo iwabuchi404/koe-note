@@ -8,6 +8,7 @@
 import { AudioChunk, ChunkResult } from './ChunkTranscriptionManager';
 import { TranscriptionSegment } from '../../preload/preload';
 import { TRANSCRIPTION_CONFIG } from '../config/transcriptionConfig';
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
 
 export interface RealTimeChunk {
   id: string;
@@ -28,6 +29,7 @@ export class RealTimeTranscriptionProcessor {
   private processingChunkId: string | null = null;
   private audioFilePath: string = '';
   private chunkSize: number = TRANSCRIPTION_CONFIG.CHUNK.DEFAULT_SIZE; // 秒
+  private logger = LoggerFactory.getLogger(LogCategories.TRANSCRIPTION_REALTIME);
   private onChunkCompletedCallbacks: ((chunk: ChunkResult) => void)[] = [];
   private processedChunks: Map<string, ChunkResult> = new Map();
   private consecutiveErrorCount: number = 0;
@@ -43,12 +45,11 @@ export class RealTimeTranscriptionProcessor {
     chunkSize: number = TRANSCRIPTION_CONFIG.CHUNK.DEFAULT_SIZE
   ): Promise<void> {
     if (this.isProcessing) {
-      console.warn('🔄 既にリアルタイム処理中です');
+      this.logger.warn('既にリアルタイム処理中です');
       return;
     }
 
-    console.log('🎆 リアルタイム文字起こし開始:', audioFilePath);
-    console.log('🎆 設定 - チャンクサイズ:', chunkSize, '秒');
+    this.logger.info('リアルタイム文字起こし開始', { audioFilePath, chunkSize });
     
     this.audioFilePath = audioFilePath;
     this.chunkSize = chunkSize;
@@ -108,20 +109,20 @@ export class RealTimeTranscriptionProcessor {
    * 処理中フラグをクリア
    */
   private clearProcessingFlags(): void {
-    console.log('🧹 処理中フラグクリア開始');
+    this.logger.debug('処理中フラグクリア開始');
     const processingKeys = Array.from(this.processedChunks.keys()).filter(key => key.startsWith('processing_'));
-    console.log(`🧹 削除対象の処理中フラグ: ${processingKeys.join(', ')}`);
+    this.logger.debug('削除対象の処理中フラグ特定', { processingKeys });
     
     processingKeys.forEach(key => {
       const deleted = this.processedChunks.delete(key);
-      console.log(`🧹 停止時 - 処理中フラグ削除: ${key} - ${deleted ? '成功' : '失敗'}`);
+      this.logger.debug('処理中フラグ削除実行', { key, deleted });
     });
-    console.log(`🧹 処理中フラグクリア完了: ${processingKeys.length}個削除`);
+    this.logger.info('処理中フラグクリア完了', { deletedCount: processingKeys.length });
     
     // 削除後の状態を確認
     const remainingProcessingKeys = Array.from(this.processedChunks.keys()).filter(key => key.startsWith('processing_'));
     if (remainingProcessingKeys.length > 0) {
-      console.warn(`⚠️ 削除後にも処理中フラグが残っています: ${remainingProcessingKeys.join(', ')}`);
+      this.logger.warn('削除後にも処理中フラグが残存', { remainingKeys: remainingProcessingKeys });
     }
   }
   
@@ -141,13 +142,16 @@ export class RealTimeTranscriptionProcessor {
         const deleted = this.processedChunks.delete(key);
         if (deleted) {
           cleanedCount++;
-          console.log(`🧹 古い処理中フラグを削除: ${key} (経過時間: ${Math.round((now - chunk.processingTime) / 1000)}秒)`);
+          this.logger.debug('古い処理中フラグ削除', {
+            key,
+            elapsedTime: Math.round((now - chunk.processingTime) / 1000)
+          });
         }
       }
     });
     
     if (cleanedCount > 0) {
-      console.log(`🧹 古い処理中フラグクリーンアップ完了: ${cleanedCount}個削除`);
+      this.logger.info('古い処理中フラグクリーンアップ完了', { cleanedCount });
     }
   }
 
@@ -164,10 +168,10 @@ export class RealTimeTranscriptionProcessor {
     if (this.consecutiveErrorCount >= 3) {
       const timeSinceLastError = Date.now() - this.lastErrorTime;
       if (timeSinceLastError < TRANSCRIPTION_CONFIG.REALTIME.ERROR_RECOVERY_DELAY) {
-        console.log(`🔄 エラー回復待機中... (連続エラー: ${this.consecutiveErrorCount}回)`);
+        this.logger.warn('エラー回復待機中', { consecutiveErrorCount: this.consecutiveErrorCount });
         return;
       } else {
-        console.log(`🔄 エラー回復待機終了 - 処理を再開します`);
+        this.logger.info('エラー回復待機終了', { action: '処理再開' });
         this.consecutiveErrorCount = 0;
       }
     }
@@ -176,14 +180,19 @@ export class RealTimeTranscriptionProcessor {
       // 現在のファイルサイズを確認
       const currentFileSize = await window.electronAPI.getFileSize(this.audioFilePath);
       
-      console.log(`📊 ファイルサイズチェック: ${currentFileSize} bytes (前回処理位置: ${this.lastProcessedOffset})`);
+      this.logger.debug('ファイルサイズチェック', {
+        currentFileSize,
+        lastProcessedOffset: this.lastProcessedOffset,
+        sizeIncrease: currentFileSize - this.lastProcessedOffset
+      });
       
       // ファイルサイズが増加している場合のみ処理
       if (currentFileSize > this.lastProcessedOffset && currentFileSize > TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE) {
-        console.log(`📈 新しいデータを検出: ${currentFileSize - this.lastProcessedOffset} bytes`);
+        const dataIncrease = currentFileSize - this.lastProcessedOffset;
+        this.logger.debug('新しいデータ検出', { dataIncrease });
         
         // 推定時間を計算（概算: 1秒あたり約16KB）
-        const estimatedDuration = Math.max((currentFileSize - this.lastProcessedOffset) / TRANSCRIPTION_CONFIG.REALTIME.BYTES_PER_SECOND, 1);
+        const estimatedDuration = Math.max(dataIncrease / TRANSCRIPTION_CONFIG.REALTIME.BYTES_PER_SECOND, 1);
         
         // 設定されたチャンクサイズに基づいて処理判定
         const minProcessingTime = TRANSCRIPTION_CONFIG.REALTIME.MIN_PROCESSING_TIME;
@@ -194,18 +203,26 @@ export class RealTimeTranscriptionProcessor {
         const actualMinTime = isFirstChunk ? Math.min(minProcessingTime, this.chunkSize) : minProcessingTime;
         
         if (estimatedDuration >= actualMinTime) {
-          console.log(`🎯 処理開始条件満たしました: ${estimatedDuration.toFixed(1)}秒分 (最小: ${actualMinTime}秒)${isFirstChunk ? ' [初回チャンク]' : ''}`);
-          console.log(`🎯 チャンクサイズ設定: ${chunkDuration}秒`);
+          this.logger.info('処理開始条件満たしました', {
+            estimatedDuration: estimatedDuration.toFixed(1),
+            minTime: actualMinTime,
+            chunkDuration,
+            isFirstChunk
+          });
           await this.processNewChunk(currentFileSize, chunkDuration);
         } else {
-          console.log(`⏳ データ蓄積待機中: ${estimatedDuration.toFixed(1)}秒分 (最小: ${actualMinTime}秒)${isFirstChunk ? ' [初回チャンク]' : ''}`);
+          this.logger.debug('データ蓄積待機中', {
+            estimatedDuration: estimatedDuration.toFixed(1),
+            minTime: actualMinTime,
+            isFirstChunk
+          });
         }
       } else if (currentFileSize <= TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE) {
-        console.log('📉 ファイルサイズが小さく、録音開始直後の可能性があります');
+        this.logger.debug('ファイルサイズ小さく録音開始直後の可能性');
       }
       
     } catch (error) {
-      console.error('新しいデータのチェック中にエラー:', error);
+      this.logger.error('新しいデータチェック中エラー', error instanceof Error ? error : undefined, error);
     }
   }
 
@@ -219,34 +236,49 @@ export class RealTimeTranscriptionProcessor {
     const startTime = this.chunkSequence * this.chunkSize;
     const endTime = startTime + this.chunkSize;
     
-    console.log(`🎯 チャンク時間範囲: ${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s (実際サイズ: ${chunkDuration}秒, 設定サイズ: ${this.chunkSize}秒, シーケンス: ${this.chunkSequence})`);
+    this.logger.info('チャンク時間範囲設定', {
+      startTime: startTime.toFixed(1),
+      endTime: endTime.toFixed(1),
+      actualDuration: chunkDuration,
+      configuredSize: this.chunkSize,
+      sequence: this.chunkSequence
+    });
     
     // 既に処理済みのチャンクかチェック
     if (this.processedChunks.has(chunkId)) {
-      console.log(`⏭️ チャンク ${chunkId} は既に処理済みのためスキップ`);
+      this.logger.debug('チャンク既に処理済みスキップ', { chunkId });
       return;
     }
     
     // 現在処理中のチャンクと同じかチェック
     if (this.processingChunkId === chunkId) {
-      console.log(`🔄 チャンク ${chunkId} は既に処理中のためスキップ (processingChunkId: ${this.processingChunkId})`);
+      this.logger.debug('チャンク既に処理中スキップ', {
+        chunkId,
+        currentProcessingChunkId: this.processingChunkId
+      });
       return;
     }
     
     // 進行中のチャンクかチェック（重複処理を防ぐ）
     const processingChunkId = `processing_${chunkId}`;
     if (this.processedChunks.has(processingChunkId)) {
-      console.log(`🔄 チャンク ${chunkId} は既に処理中のためスキップ`);
+      this.logger.debug('チャンク処理中フラグ存在スキップ', { chunkId });
       
       // 処理中フラグの詳細情報を出力
       const processingFlag = this.processedChunks.get(processingChunkId);
       if (processingFlag) {
         const ageInSeconds = (Date.now() - (processingFlag.processingTime || 0)) / 1000;
-        console.log(`🔄 処理中フラグの詳細: ${processingChunkId} - 経過時間: ${ageInSeconds.toFixed(1)}秒`);
+        this.logger.debug('処理中フラグ詳細確認', {
+          processingChunkId,
+          ageInSeconds: ageInSeconds.toFixed(1)
+        });
         
         // 3分以上経過している場合は強制削除
         if (ageInSeconds > 180) {
-          console.warn(`⚠️ 古い処理中フラグを強制削除: ${processingChunkId} (経過時間: ${ageInSeconds.toFixed(1)}秒)`);
+          this.logger.warn('古い処理中フラグ強制削除', {
+            processingChunkId,
+            ageInSeconds: ageInSeconds.toFixed(1)
+          });
           this.processedChunks.delete(processingChunkId);
           this.processingChunkId = null;
           // 削除後、再度処理を試行
@@ -268,8 +300,15 @@ export class RealTimeTranscriptionProcessor {
       processingTime: Date.now()
     });
     
-    console.log(`🎯 新しいチャンク処理開始: ${chunkId} (${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s)`);
-    console.log(`🏷️ 処理中フラグ設定: ${processingChunkId} - 総チャンク数: ${this.processedChunks.size}`);
+    this.logger.info('新しいチャンク処理開始', {
+      chunkId,
+      startTime: startTime.toFixed(1),
+      endTime: endTime.toFixed(1)
+    });
+    this.logger.debug('処理中フラグ設定', {
+      processingChunkId,
+      totalChunksInMap: this.processedChunks.size
+    });
     
     let processingCompleted = false;
     
@@ -290,30 +329,47 @@ export class RealTimeTranscriptionProcessor {
         // コールバック実行
         this.onChunkCompletedCallbacks.forEach(callback => callback(result));
         
-        console.log(`✅ チャンク処理完了: ${chunkId} - "${result.segments.map(s => s.text).join(' ')}"`)
+        this.logger.info('チャンク処理完了', {
+          chunkId,
+          text: result.segments.map(s => s.text).join(' '),
+          segmentCount: result.segments.length,
+          confidence: result.confidence
+        })
         
         // 次のチャンクの準備
         this.lastProcessedOffset = currentFileSize;
         this.chunkSequence++;
         
-        console.log(`🎯 チャンク処理完了 - 次のチャンクの準備: lastProcessedOffset=${this.lastProcessedOffset}, chunkSequence=${this.chunkSequence}`);
+        this.logger.debug('チャンク処理次の準備', {
+          lastProcessedOffset: this.lastProcessedOffset,
+          chunkSequence: this.chunkSequence
+        });
         processingCompleted = true;
       } else {
         // 結果がnullでも次のチャンクに進む
         this.lastProcessedOffset = currentFileSize;
         this.chunkSequence++;
         
-        console.log(`🎯 結果null - 次のチャンクの準備: lastProcessedOffset=${this.lastProcessedOffset}, chunkSequence=${this.chunkSequence}`);
+        this.logger.debug('結果null次のチャンク準備', {
+          lastProcessedOffset: this.lastProcessedOffset,
+          chunkSequence: this.chunkSequence
+        });
         processingCompleted = true;
       }
       
     } catch (error) {
-      console.error(`❌ チャンク ${chunkId} の処理エラー:`, error);
+      this.logger.error('チャンク処理エラー', error instanceof Error ? error : undefined, {
+        chunkId,
+        error: String(error)
+      });
       
       // サーバー関連のエラーかチェック
       const errorMessage = String(error);
       if (errorMessage.includes('server') || errorMessage.includes('connection') || errorMessage.includes('timeout') || errorMessage.includes('タイムアウト') || errorMessage.includes('切断')) {
-        console.warn('⚠️ チャンク処理でサーバー関連のエラーを検出');
+        this.logger.warn('チャンク処理サーバーエラー検出', {
+          chunkId,
+          errorType: 'server_related'
+        });
         
         // 連続エラーカウントを増加
         this.consecutiveErrorCount++;
@@ -327,7 +383,10 @@ export class RealTimeTranscriptionProcessor {
           await new Promise(resolve => setTimeout(resolve, 3000));
           
         } catch (serverError) {
-          console.error('サーバー状態確認エラー:', serverError);
+          this.logger.error('サーバー状態確認エラー', serverError instanceof Error ? serverError : undefined, {
+            chunkId,
+            error: String(serverError)
+          });
         }
       }
       
