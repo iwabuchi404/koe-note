@@ -9,6 +9,7 @@ import { ChunkFileWatcher, ChunkFileInfo, ChunkWatcherStats } from './ChunkFileW
 import { FileBasedTranscriptionEngine, ProcessingStats, TranscriptionError } from './FileBasedTranscriptionEngine';
 import { RealtimeTextManager, RealtimeTextData } from './RealtimeTextManager';
 import { TranscriptionResult } from '../../preload/preload';
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
 
 export interface RealtimeProcessorConfig {
   // ファイル監視設定
@@ -49,6 +50,7 @@ export class FileBasedRealtimeProcessor {
   private chunkWatcher: ChunkFileWatcher;
   private transcriptionEngine: FileBasedTranscriptionEngine;
   private textManager: RealtimeTextManager;
+  private logger = LoggerFactory.getLogger(LogCategories.FILE_REALTIME_PROCESSOR);
   
   private isRunning: boolean = false;
   private startTime: number = 0;
@@ -98,7 +100,7 @@ export class FileBasedRealtimeProcessor {
     
     this.setupEventHandlers();
     
-    console.log('🎯 FileBasedRealtimeProcessor初期化完了', this.config);
+    this.logger.info('FileBasedRealtimeProcessor初期化完了', this.config);
   }
   
   /**

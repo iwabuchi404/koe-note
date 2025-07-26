@@ -17,10 +17,14 @@ import { useRecordingControl } from '../../hooks/useRecordingControl'
 import { useDeviceManager } from '../../hooks/useDeviceManager'
 import { useBottomPanelState, InputType } from '../../hooks/useBottomPanelState'
 import { AudioMixingService } from '../../services/AudioMixingService'
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 
 const BottomPanel: React.FC = () => {
   // アプリケーション全体の状態管理
   const { setFileList, setIsRecording: setGlobalIsRecording, setRecordingFile, setSelectedFile } = useAppContext()
+  
+  // ログシステム
+  const logger = LoggerFactory.getLogger(LogCategories.UI_BOTTOM_PANEL)
   
   // 各責務に特化したフック
   const recordingManager = useRecordingStateManager()
@@ -32,14 +36,14 @@ const BottomPanel: React.FC = () => {
   const recordingControl = useRecordingControl({
     onRecordingStart: () => {
       setGlobalIsRecording(true)
-      console.log('🎵 録音開始通知')
+      logger.info('録音開始通知')
     },
     onRecordingStopped: () => {
       setGlobalIsRecording(false)
-      console.log('⏹️ 録音停止通知')
+      logger.info('録音停止通知')
     },
     onError: (error) => {
-      console.error('❌ 録音エラー:', error)
+      logger.error('録音エラー', error)
       uiState.clearError() // エラー表示をクリア
     }
   })

@@ -12,6 +12,7 @@ import { useCallback, useRef } from 'react'
 import { useRecordingStateManager } from './useRecordingStateManager'
 import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../services/TrueDifferentialChunkGenerator'
 import { FileBasedRealtimeProcessor } from '../services/FileBasedRealtimeProcessor'
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 
 export interface RecordingControlConfig {
   inputType: 'microphone' | 'desktop' | 'stereo-mix' | 'mixing'
@@ -33,6 +34,9 @@ export interface RecordingControlCallbacks {
 export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
   const recordingManager = useRecordingStateManager()
   
+  // ログシステム
+  const logger = LoggerFactory.getLogger(LogCategories.HOOK_RECORDING_CONTROL)
+  
   // リアルタイム文字起こし関連のRef
   const trueDiffGeneratorRef = useRef<TrueDifferentialChunkGenerator | null>(null)
   const realtimeProcessorRef = useRef<FileBasedRealtimeProcessor | null>(null)
@@ -47,12 +51,12 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
     recordingFileName: string, 
     enableTranscription: boolean
   ) => {
-    console.log('📝 リアルタイム文字起こし準備開始')
+    logger.info('リアルタイム文字起こし準備開始')
     
     // チャンクフォルダ名を録音ファイル名ベースで生成
     const baseFileName = recordingFileName.replace('.webm', '')
     const chunkFolderName = `${baseFileName}_chunks`
-    console.log(`🔧 チャンクファイル保存先フォルダ: ${chunkFolderName}`)
+    logger.debug('チャンクファイル保存先フォルダ設定', { chunkFolderName })
     
     // FileBasedRealtimeProcessorを初期化
     if (!realtimeProcessorRef.current) {
@@ -65,7 +69,7 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
         enableAutoSave: true,
         textFormat: 'detailed'
       })
-      console.log('🎯 FileBasedRealtimeProcessor初期化完了')
+      logger.info('FileBasedRealtimeProcessor初期化完了')
     }
     
     // TrueDifferentialChunkGeneratorを初期化
