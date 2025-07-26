@@ -70,6 +70,10 @@ export class FileBasedRealtimeProcessor {
   private onErrorCallbacks: ((error: Error) => void)[] = [];
   private onTranscriptionCompleteCallbacks: ((result: TranscriptionResult, chunkInfo: ChunkFileInfo) => void)[] = [];
   
+  // エラー重複防止
+  private lastErrorTime: number = 0;
+  private errorCooldown: number = 3000; // 3秒間のクールダウン
+  
   constructor(config?: Partial<RealtimeProcessorConfig>) {
     if (config) {
       this.config = { ...this.config, ...config };
@@ -271,10 +275,27 @@ export class FileBasedRealtimeProcessor {
   }
   
   /**
-   * エラーハンドリング
+   * エラーハンドリング（重複防止付き）
    */
   private handleError(error: Error): void {
+    const now = Date.now();
+    
+    // エラー重複防止チェック
+    if (now - this.lastErrorTime < this.errorCooldown) {
+      console.log(`⚠️ FileBasedRealtimeProcessor: エラーコールバック重複防止`);
+      return;
+    }
+    this.lastErrorTime = now;
+    
     console.error('システムエラー:', error);
+    
+    // 音声品質エラーの場合は特別扱い（頻度を下げる）
+    const isAudioQualityError = error.message.includes('音声認識処理でエラーが発生しました');
+    if (isAudioQualityError) {
+      console.warn('🎤 音声品質エラーが発生しました - 次のチャンクで継続します');
+      // 音声品質エラーは文字起こしを中断させずに継続
+      return;
+    }
     
     // RealtimeTextManagerからのエラーの場合は、無限ループを防ぐため
     // reportErrorを呼び出さずに直接外部コールバックのみ実行

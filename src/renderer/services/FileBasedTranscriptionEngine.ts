@@ -445,17 +445,22 @@ export class FileBasedTranscriptionEngine {
     
     this.errorLog.push(errorInfo);
     
-    console.error(`文字起こしエラー [${severity}]: ${item.fileInfo.filename}`, {
-      type: errorType,
-      message: errorInfo.message,
-      retryCount: item.retryCount,
-      action: errorInfo.suggestedAction,
-      fileSize: item.fileInfo.size,
-      filePath: item.fileInfo.fullPath
-    });
+    // 音声品質エラーの場合は警告レベルを下げる
+    if (errorType === 'audio_quality_error') {
+      console.warn(`🎤 音声品質エラー: ${item.fileInfo.filename} - 次のチャンクで継続`);
+    } else {
+      console.error(`文字起こしエラー [${severity}]: ${item.fileInfo.filename}`, {
+        type: errorType,
+        message: errorInfo.message,
+        retryCount: item.retryCount,
+        action: errorInfo.suggestedAction,
+        fileSize: item.fileInfo.size,
+        filePath: item.fileInfo.fullPath
+      });
+    }
     
-    // 重要度の高いエラーの場合は即座に通知
-    if (severity === 'critical' || severity === 'high') {
+    // 重要度の高いエラーの場合は即座に通知（音声品質エラーは除く）
+    if ((severity === 'critical' || severity === 'high') && errorType !== 'audio_quality_error') {
       console.warn(`⚠️ 重要エラー: ${errorInfo.suggestedAction}`);
     }
     
@@ -477,18 +482,24 @@ export class FileBasedTranscriptionEngine {
       
     } else {
       // 最大リトライ回数に達した場合はスキップ
-      console.log(`ファイルスキップ: ${item.fileInfo.filename} (最大リトライ回数に達しました / リトライ不可能なエラー)`);
+      if (errorType === 'audio_quality_error') {
+        console.log(`音声品質エラーのためスキップ: ${item.fileInfo.filename} - 処理継続`);
+      } else {
+        console.log(`ファイルスキップ: ${item.fileInfo.filename} (最大リトライ回数に達しました / リトライ不可能なエラー)`);
+      }
       this.processedFiles.add(item.fileInfo.filename); // スキップとしてマーク
     }
     
-    // エラーコールバック実行
-    this.onErrorCallbacks.forEach(callback => {
-      try {
-        callback(errorInfo);
-      } catch (callbackError) {
-        console.error('Error callback実行エラー:', callbackError);
-      }
-    });
+    // エラーコールバック実行（音声品質エラーの場合は頻度を下げる）
+    if (errorType !== 'audio_quality_error') {
+      this.onErrorCallbacks.forEach(callback => {
+        try {
+          callback(errorInfo);
+        } catch (callbackError) {
+          console.error('Error callback実行エラー:', callbackError);
+        }
+      });
+    }
   }
   
   /**
@@ -550,7 +561,7 @@ export class FileBasedTranscriptionEngine {
         return retryCount === 0 ? 'medium' : 'high';
         
       case 'audio_quality_error':
-        return 'high'; // 音声品質エラーは通常リトライしても意味がない
+        return 'medium'; // 音声品質エラーは中程度（処理は継続）
         
       case 'file_error':
         return 'critical'; // ファイルエラーは致命的
@@ -576,7 +587,7 @@ export class FileBasedTranscriptionEngine {
         return 'ファイルサイズが大きい場合は分割を検討してください';
         
       case 'audio_quality_error':
-        return '音声ファイルの品質・形式を確認してください';
+        return '音声品質が低いチャンクです。処理は継続されます';
         
       case 'file_error':
         return 'ファイルの存在と権限を確認してください';
