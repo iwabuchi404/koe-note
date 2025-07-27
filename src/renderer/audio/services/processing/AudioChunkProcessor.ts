@@ -5,9 +5,9 @@
  * 文字起こし処理用の音声データを生成する
  */
 
-import { AudioChunk } from './ChunkTranscriptionManager';
-import { TRANSCRIPTION_CONFIG } from '../config/transcriptionConfig';
-import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
+import { AudioChunk } from '../../../services/ChunkTranscriptionManager';
+import { TRANSCRIPTION_CONFIG } from '../../../config/transcriptionConfig';
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory';
 
 export class AudioChunkProcessor {
   private audioContext: AudioContext | null = null;

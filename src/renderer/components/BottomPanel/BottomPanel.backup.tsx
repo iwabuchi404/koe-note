@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useAppContext } from '../../App'
-import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../services/MicrophoneMonitor'
-import { AudioMixingService, MixingConfig, AudioLevels } from '../../services/AudioMixingService'
-import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../../services/TrueDifferentialChunkGenerator'
+import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../../audio/services/core/MicrophoneMonitorService'
+import { AudioMixingService, MixingConfig, AudioLevels } from '../../audio/services/core/AudioMixingService'
+import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../../audio/services/processing/ChunkGenerator'
 import { FileBasedRealtimeProcessor } from '../../services/FileBasedRealtimeProcessor'
 // 新しい状態管理の統合
 import { useRecordingStateManager } from '../../hooks/useRecordingStateManager' 

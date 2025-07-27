@@ -11,8 +11,8 @@
  * - 設定ファイルからのチャンクサイズ読み込み
  */
 
-import { TRANSCRIPTION_CONFIG } from '../config/transcriptionConfig';
-import { LoggerFactory, LogCategories } from '../utils/LoggerFactory';
+import { TRANSCRIPTION_CONFIG } from '../../../config/transcriptionConfig';
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory';
 
 export interface TrueDifferentialResult {
   chunkBlob: Blob;

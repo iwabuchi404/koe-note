@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 
 // 型安全な音声再生状態をインポート
-import { AudioFileInfo } from '../state/ApplicationState'
+import { AudioFileInfo } from '../../state/ApplicationState'
 
 // 音声再生ステータス（型安全）
 export type AudioPlayerStatus = 
@@ -59,7 +59,7 @@ export interface AudioPlayerControls {
  * 音声再生機能を提供するカスタムフック
  * HTMLAudioElementを使用した音声再生制御
  */
-export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
+export const useAudioPlayer = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentFilePathRef = useRef<string | null>(null)
   
@@ -69,7 +69,7 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     isPlaying: false,
     currentTime: 0,
     duration: 0,
-    volume: 0.8,
+    volume: 1,
     playbackRate: 1.0,
     loading: false,
     error: null,
@@ -80,7 +80,7 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     lastUpdate: new Date()
   })
 
-  const [state, setState] = useState<AudioPlayerState>(createInitialState())
+  const [state, setState] = useState<AudioPlayerState>(createInitialState)
   
   // 型安全なエラー作成ヘルパー
   const createAudioError = (
@@ -329,9 +329,9 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     audio.addEventListener('volumechange', handleVolumeChange)
     audio.addEventListener('ratechange', handleRateChange)
     
-    // 初期設定
-    audio.volume = state.volume
-    audio.playbackRate = state.playbackRate
+    // 初期設定（ハードコーディングで初期値を設定）
+    audio.volume = 1
+    audio.playbackRate = 1.0
     
     // クリーンアップ
     return () => {
@@ -537,17 +537,57 @@ export const useAudioPlayer = (): [AudioPlayerState, AudioPlayerControls] => {
     }
   }, [])
   
-  const controls: AudioPlayerControls = {
+  // 計算されたプロパティをメモ化して無限ループを防ぐ
+  const computedValues = useMemo(() => ({
+    progress: state.duration > 0 ? state.currentTime / state.duration : 0,
+    formattedCurrentTime: formatTime(state.currentTime),
+    formattedDuration: formatTime(state.duration),
+  }), [state.currentTime, state.duration])
+  
+  // 返り値をメモ化して無限レンダリングを防ぐ
+  return useMemo(() => ({
+    // 状態
+    isPlaying: state.isPlaying,
+    currentTime: state.currentTime,
+    duration: state.duration,
+    volume: state.volume,
+    playbackRate: state.playbackRate,
+    isLoading: state.loading,
+    error: state.error,
+    status: state.status,
+    
+    // 計算されたプロパティ（メモ化済み）
+    progress: computedValues.progress,
+    formattedCurrentTime: computedValues.formattedCurrentTime,
+    formattedDuration: computedValues.formattedDuration,
+    
+    // コントロール関数
+    loadAudio: loadFile,
     play,
     pause,
     stop,
     seek,
     setVolume,
     setPlaybackRate,
-    loadFile
-  }
-  
-  return [state, controls]
+    clearError: () => setState(prev => ({ ...prev, error: null }))
+  }), [
+    state.isPlaying,
+    state.currentTime,
+    state.duration,
+    state.volume,
+    state.playbackRate,
+    state.loading,
+    state.error,
+    state.status,
+    computedValues,
+    loadFile,
+    play,
+    pause,
+    stop,
+    seek,
+    setVolume,
+    setPlaybackRate
+  ])
 }
 
 // 時間をフォーマットする関数

@@ -9,8 +9,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../services/MicrophoneMonitor'
-import { AudioMixingService, MixingConfig, AudioLevels } from '../services/AudioMixingService'
+import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../audio/services/core/MicrophoneMonitorService'
+import { AudioMixingService, MixingConfig, AudioLevels } from '../audio/services/core/AudioMixingService'
 
 export type InputType = 'microphone' | 'desktop' | 'stereo-mix' | 'mixing'
 

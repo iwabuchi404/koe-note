@@ -1,5 +1,5 @@
 import React from 'react'
-import { PLAYBACK_RATES } from '../../hooks/useAudioPlayer'
+import { PLAYBACK_RATES } from '../../audio/hooks/useAudioPlayer'
 
 interface PlaybackControlsProps {
   isPlaying: boolean

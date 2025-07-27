@@ -6,7 +6,7 @@
  */
 
 import { TranscriptionFile, TranscriptionSegment, ChunkSettings, ChunkProgress } from '../../preload/preload';
-import { AudioChunkProcessor } from './AudioChunkProcessor';
+import { AudioChunkProcessor } from '../audio/services/processing/AudioChunkProcessor';
 import { ChunkTranscriptionQueue } from './ChunkTranscriptionQueue';
 import { ResultConsolidator } from './ResultConsolidator';
 import { RealTimeTranscriptionProcessor } from './RealTimeTranscriptionProcessor';

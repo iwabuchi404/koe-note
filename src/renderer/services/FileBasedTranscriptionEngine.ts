@@ -6,7 +6,7 @@
 
 import { ChunkFileInfo } from './ChunkFileWatcher';
 import { TranscriptionResult } from '../../preload/preload';
-import { AudioDiagnostics, AudioDiagnosticResult } from './AudioDiagnostics';
+import { AudioDiagnostics, AudioDiagnosticResult } from '../audio/services/processing/AudioDiagnostics';
 import { ChunkTranscriptionQueue } from './ChunkTranscriptionQueue';
 import { AudioChunk, ChunkResult } from './ChunkTranscriptionManager';
 

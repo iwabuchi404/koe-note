@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect } from 'react'
-import { formatTime } from '../../hooks/useAudioPlayer'
+import { formatTime } from '../../audio/hooks/useAudioPlayer'
 
 interface SeekBarProps {
   currentTime: number

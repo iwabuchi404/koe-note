@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { useAudioPlayer } from '../../hooks/useAudioPlayer'
+import { useAudioPlayer } from '../../audio/hooks/useAudioPlayer'
 import SeekBar from './SeekBar'
 import PlaybackControls from './PlaybackControls'
 import { useAppContext } from '../../App' 
@@ -20,7 +20,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   className = ''
 }) => {
   const { selectedFile, setIsPlaying } = useAppContext() // グローバルな状態から選択ファイルを取得
-  const [audioState, audioControls] = useAudioPlayer()
+  const audioPlayer = useAudioPlayer()
   
   // ファイルが変更された時の処理
   useEffect(() => {
@@ -28,7 +28,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       // 録音中のファイルかチェック
       if (selectedFile.isRecording) {
         console.log('AudioPlayer: 録音中のファイルのため読み込みスキップ:', selectedFile.filename)
-        audioControls.stop()
+        audioPlayer.stop()
         return
       }
       
@@ -40,24 +40,24 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       if (isRecentRecording) {
         console.log('AudioPlayer: 録音直後のファイルのため500ms遅延して読み込み:', fileName)
         setTimeout(() => {
-          audioControls.loadFile(selectedFile.filepath, selectedFile.duration).catch(error => {
+          audioPlayer.loadAudio(selectedFile.filepath, selectedFile.duration).catch((error: any) => {
             console.error('AudioPlayer: 遅延ファイル読み込みエラー:', error)
           })
         }, 500)
       } else {
-        audioControls.loadFile(selectedFile.filepath, selectedFile.duration).catch(error => {
+        audioPlayer.loadAudio(selectedFile.filepath, selectedFile.duration).catch((error: any) => {
           console.error('AudioPlayer: ファイル読み込みエラー:', error)
         })
       }
     } else {
-      audioControls.stop() 
+      audioPlayer.stop() 
     }
   }, [selectedFile]) // 依存配列をselectedFileに変更
 
   // 再生状態をグローバルコンテキストに同期
   useEffect(() => {
-    setIsPlaying(audioState.isPlaying)
-  }, [audioState.isPlaying, setIsPlaying])
+    setIsPlaying(audioPlayer.isPlaying)
+  }, [audioPlayer.isPlaying, setIsPlaying])
   
   // ファイルが選択されているかチェック（録音中のファイルは除外）
   const hasFile = Boolean(filePath) && !selectedFile?.isRecording
@@ -93,12 +93,12 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         </div>
         
         {/* エラー表示 */}
-        {audioState.error && (
+        {audioPlayer.error && (
           <div className="audio-player__error">
-            ⚠️ {audioState.error.message}
-            {audioState.error.suggestedAction && (
+            ⚠️ {audioPlayer.error.message}
+            {audioPlayer.error.suggestedAction && (
               <div className="audio-player__error-suggestion">
-                💡 {audioState.error.suggestedAction}
+                💡 {audioPlayer.error.suggestedAction}
               </div>
             )}
           </div>
@@ -107,25 +107,25 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       
       {/* シークバー */}
       <SeekBar
-        currentTime={audioState.currentTime}
+        currentTime={audioPlayer.currentTime}
         duration={selectedFile?.duration ?? 0}
-        loading={audioState.loading}
-        onSeek={audioControls.seek}
+        loading={audioPlayer.isLoading}
+        onSeek={audioPlayer.seek}
         className="audio-player__seek-bar"
       />
       
       {/* 再生コントロール */}
       <PlaybackControls
-        isPlaying={audioState.isPlaying}
-        loading={audioState.loading}
-        volume={audioState.volume}
-        playbackRate={audioState.playbackRate}
+        isPlaying={audioPlayer.isPlaying}
+        loading={audioPlayer.isLoading}
+        volume={audioPlayer.volume}
+        playbackRate={audioPlayer.playbackRate}
         hasFile={hasFile}
-        onPlay={audioControls.play}
-        onPause={audioControls.pause}
-        onStop={audioControls.stop}
-        onVolumeChange={audioControls.setVolume}
-        onPlaybackRateChange={audioControls.setPlaybackRate}
+        onPlay={audioPlayer.play}
+        onPause={audioPlayer.pause}
+        onStop={audioPlayer.stop}
+        onVolumeChange={audioPlayer.setVolume}
+        onPlaybackRateChange={audioPlayer.setPlaybackRate}
       />
     </div>
   )

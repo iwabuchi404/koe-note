@@ -4,7 +4,7 @@ import '@testing-library/jest-dom'
 Object.defineProperty(window, 'electronAPI', {
   value: {
     // ファイル操作
-    loadAudioFile: vi.fn().mockResolvedValue('data:audio/wav;base64,mock-data'),
+    loadAudioFile: vi.fn().mockResolvedValue('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj'),
     saveFile: vi.fn().mockResolvedValue('/mock/path/file.wav'),
     deleteFile: vi.fn().mockResolvedValue(true),
     getFileSize: vi.fn().mockResolvedValue(1024),

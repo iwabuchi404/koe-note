@@ -70,7 +70,12 @@ export const LogCategories = {
   
   // デバッグ
   DEBUG_GENERAL: 'Debug.General',
-  DEBUG_STATE: 'Debug.State'
+  DEBUG_STATE: 'Debug.State',
+  
+  // チャンクシステム
+  CHUNK_PROCESSOR: 'Chunk.Processor',
+  CHUNK_MANAGER: 'Chunk.Manager',
+  CHUNK_WATCHER: 'Chunk.Watcher'
 } as const
 
 export type LogCategory = typeof LogCategories[keyof typeof LogCategories]

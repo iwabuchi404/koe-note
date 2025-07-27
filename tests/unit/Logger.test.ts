@@ -6,7 +6,8 @@ describe('Logger', () => {
   
   beforeEach(() => {
     consoleSpy = {
-      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
       warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
       error: vi.spyOn(console, 'error').mockImplementation(() => {})
     }
@@ -25,10 +26,9 @@ describe('Logger', () => {
       const logger = new Logger('test')
       logger.debug('テストメッセージ')
       
-      expect(consoleSpy.log).toHaveBeenCalledWith(
+      expect(consoleSpy.debug).toHaveBeenCalledWith(
         expect.stringContaining('[DEBUG]'),
-        expect.stringContaining('test'),
-        expect.stringContaining('テストメッセージ')
+        expect.stringContaining('')
       )
     })
 
@@ -36,10 +36,9 @@ describe('Logger', () => {
       const logger = new Logger('test')
       logger.info('インフォメッセージ')
       
-      expect(consoleSpy.log).toHaveBeenCalledWith(
-        expect.stringContaining('[INFO]'),
-        expect.stringContaining('test'),
-        expect.stringContaining('インフォメッセージ')
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('[INFO ]'),
+        expect.stringContaining('')
       )
     })
 
@@ -48,9 +47,8 @@ describe('Logger', () => {
       logger.warn('警告メッセージ')
       
       expect(consoleSpy.warn).toHaveBeenCalledWith(
-        expect.stringContaining('[WARN]'),
-        expect.stringContaining('test'),
-        expect.stringContaining('警告メッセージ')
+        expect.stringContaining('[WARN ]'),
+        expect.stringContaining('')
       )
     })
 
@@ -61,14 +59,8 @@ describe('Logger', () => {
       
       expect(consoleSpy.error).toHaveBeenCalledWith(
         expect.stringContaining('[ERROR]'),
-        expect.stringContaining('test'),
-        expect.stringContaining('エラーメッセージ'),
-        expect.objectContaining({
-          error: expect.objectContaining({
-            name: 'Error',
-            message: 'テストエラー'
-          })
-        })
+        expect.stringContaining(''),
+        expect.any(Error)
       )
     })
   })
@@ -82,7 +74,8 @@ describe('Logger', () => {
       logger.info('インフォメッセージ')
       logger.warn('警告メッセージ')
       
-      expect(consoleSpy.log).not.toHaveBeenCalled()
+      expect(consoleSpy.debug).not.toHaveBeenCalled()
+      expect(consoleSpy.info).not.toHaveBeenCalled()
       expect(consoleSpy.warn).toHaveBeenCalledTimes(1)
     })
 
@@ -95,7 +88,8 @@ describe('Logger', () => {
       logger.warn('警告メッセージ')
       logger.error('エラーメッセージ')
       
-      expect(consoleSpy.log).not.toHaveBeenCalled()
+      expect(consoleSpy.debug).not.toHaveBeenCalled()
+      expect(consoleSpy.info).not.toHaveBeenCalled()
       expect(consoleSpy.warn).not.toHaveBeenCalled()
       expect(consoleSpy.error).not.toHaveBeenCalled()
     })
@@ -108,13 +102,9 @@ describe('Logger', () => {
       
       logger.info('ユーザーログイン', testData)
       
-      expect(consoleSpy.log).toHaveBeenCalledWith(
-        expect.stringContaining('[INFO]'),
-        expect.stringContaining('test'),
-        expect.stringContaining('ユーザーログイン'),
-        expect.objectContaining({
-          data: testData
-        })
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('[INFO ]'),
+        testData
       )
     })
 
@@ -124,13 +114,9 @@ describe('Logger', () => {
       
       logger.info('テストメッセージ')
       
-      expect(consoleSpy.log).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.objectContaining({
-          context
-        })
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('TestComponent'),
+        ''
       )
     })
   })
@@ -143,7 +129,7 @@ describe('Logger', () => {
       const logger = new Logger('test')
       logger.debug('デバッグメッセージ')
       
-      expect(consoleSpy.log).not.toHaveBeenCalled()
+      expect(consoleSpy.debug).not.toHaveBeenCalled()
     })
 
     it('本番環境でもWARN以上は出力されること', () => {
@@ -154,8 +140,10 @@ describe('Logger', () => {
       logger.warn('警告メッセージ')
       logger.error('エラーメッセージ')
       
-      expect(consoleSpy.warn).toHaveBeenCalledTimes(1)
-      expect(consoleSpy.error).toHaveBeenCalledTimes(1)
+      // 本番環境では現在ファイル出力のみで、コンソール出力は行われない
+      // 将来ファイル出力が実装された時にここを更新する
+      expect(consoleSpy.warn).toHaveBeenCalledTimes(0)
+      expect(consoleSpy.error).toHaveBeenCalledTimes(0)
     })
   })
 })

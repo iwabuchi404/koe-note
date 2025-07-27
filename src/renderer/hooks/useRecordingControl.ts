@@ -10,7 +10,7 @@
 
 import { useCallback, useRef } from 'react'
 import { useRecordingStateManager } from './useRecordingStateManager'
-import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../services/TrueDifferentialChunkGenerator'
+import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../audio/services/processing/ChunkGenerator'
 import { FileBasedRealtimeProcessor } from '../services/FileBasedRealtimeProcessor'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 

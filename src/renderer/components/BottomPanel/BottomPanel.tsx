@@ -16,7 +16,7 @@ import { useTranscriptionStateManager } from '../../hooks/useTranscriptionStateM
 import { useRecordingControl } from '../../hooks/useRecordingControl'
 import { useDeviceManager } from '../../hooks/useDeviceManager'
 import { useBottomPanelState, InputType } from '../../hooks/useBottomPanelState'
-import { AudioMixingService } from '../../services/AudioMixingService'
+import { AudioMixingService } from '../../audio/services/core/AudioMixingService'
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 
 const BottomPanel: React.FC = () => {

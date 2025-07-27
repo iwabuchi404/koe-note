@@ -434,7 +434,7 @@ export class ChunkTranscriptionQueue {
     
     try {
       // AudioChunkProcessor の createWavBuffer を使用
-      const { AudioChunkProcessor } = await import('./AudioChunkProcessor');
+      const { AudioChunkProcessor } = await import('../audio/services/processing/AudioChunkProcessor');
       const processor = new AudioChunkProcessor();
       const wavBuffer = processor.createWavBuffer(chunk);
       
