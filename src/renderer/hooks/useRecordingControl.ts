@@ -10,7 +10,7 @@
 
 import { useCallback, useRef } from 'react'
 import { useRecordingStateManager } from './useRecordingStateManager'
-import { TrueDifferentialChunkGenerator, TrueDifferentialResult } from '../audio/services/processing/ChunkGenerator'
+import { AudioChunkGenerator, AudioChunkResult, ChunkGeneratorConfig, ChunkFileInfo } from '../audio/services/processing/AudioChunkGenerator'
 import { FileBasedRealtimeProcessor } from '../services/FileBasedRealtimeProcessor'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 
@@ -39,10 +39,10 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
   const logger = LoggerFactory.getLogger(LogCategories.HOOK_RECORDING_CONTROL)
   
   // リアルタイム文字起こし関連のRef
-  const trueDiffGeneratorRef = useRef<TrueDifferentialChunkGenerator | null>(null)
+  const chunkGeneratorRef = useRef<AudioChunkGenerator | null>(null)
   const realtimeProcessorRef = useRef<FileBasedRealtimeProcessor | null>(null)
   
-  // テスト用: リアルタイム文字起こし強制有効化フラグ
+  // リアルタイム文字起こし強制有効化フラグ
   const FORCE_ENABLE_REALTIME_TRANSCRIPTION = true
   
   // 文字起こし結果監視用
@@ -51,7 +51,7 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
   /**
    * リアルタイム文字起こしシステムの初期化
    */
-  const initializeRealtimeTranscription = useCallback(async (
+  const initializeRealtimeTranscription = useCallback( async (
     recordingFileName: string, 
     enableTranscription: boolean
   ) => {
@@ -76,83 +76,86 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
       logger.info('FileBasedRealtimeProcessor初期化完了')
     }
     
-    // TrueDifferentialChunkGeneratorを初期化
-    if (!trueDiffGeneratorRef.current) {
-      logger.debug('TrueDifferentialChunkGenerator新規作成')
-      trueDiffGeneratorRef.current = new TrueDifferentialChunkGenerator(20, {
+    // AudioChunkGeneratorを初期化
+    if (!chunkGeneratorRef.current) {
+      logger.debug('AudioChunkGenerator新規作成')
+      const config: ChunkGeneratorConfig = {
         intervalSeconds: 20,
         enableFileGeneration: true,
         tempFolderPath: chunkFolderName,
         enableAutoGeneration: true
-      })
-      logger.info('TrueDifferentialChunkGenerator作成完了')
+      }
+      chunkGeneratorRef.current = new AudioChunkGenerator(config)
+      logger.info('AudioChunkGenerator作成完了')
     } else {
-      logger.debug('TrueDifferentialChunkGenerator設定更新')
-      // 既存インスタンスの設定更新
-      trueDiffGeneratorRef.current.updateConfig({
+      logger.debug('AudioChunkGenerator設定更新')
+      chunkGeneratorRef.current.updateConfig({
         intervalSeconds: 20,
         enableFileGeneration: true,
         tempFolderPath: chunkFolderName,
         enableAutoGeneration: true
       })
-      trueDiffGeneratorRef.current.reset()
-      logger.info('TrueDifferentialChunkGenerator設定更新完了')
+      chunkGeneratorRef.current.reset()
+      logger.info('AudioChunkGenerator設定更新完了')
     }
     
     // チャンク生成コールバック設定
-    trueDiffGeneratorRef.current.onChunkGenerated((result: TrueDifferentialResult) => {
-      logger.info('チャンク生成完了', {
-        chunkNumber: result.chunkNumber,
-        dataSize: result.dataSize,
-        duration: result.duration.toFixed(1),
-        filePath: result.filePath
+    if (chunkGeneratorRef.current) {
+      chunkGeneratorRef.current.onChunkGenerated((result: AudioChunkResult) => {
+        logger.info('チャンク生成完了', {
+          chunkNumber: result.chunkNumber,
+          dataSize: result.dataSize,
+          duration: result.duration.toFixed(1),
+          filePath: result.filePath
+        })
+        if (!result.filePath) {
+          logger.warn('チャンクファイルのパスが設定されていません', { chunkNumber: result.chunkNumber })
+        }
       })
-      if (!result.filePath) {
-        logger.warn('チャンクファイルのパスが設定されていません', { chunkNumber: result.chunkNumber })
-      }
-    })
+    }
     
     // チャンク保存コールバック設定（重複起動防止版）
     let isProcessorStarting = false // 起動中フラグ
     
-    trueDiffGeneratorRef.current.onChunkSaved(async (fileInfo) => {
-      logger.debug('onChunkSaved コールバック実行', { 
-        filename: fileInfo.filename, 
-        sizeBytes: fileInfo.sizeBytes,
-        filepath: fileInfo.filepath 
-      })
-      
-      // リアルタイム文字起こし処理
-      if ((enableTranscription || FORCE_ENABLE_REALTIME_TRANSCRIPTION) && realtimeProcessorRef.current) {
-        logger.debug('FileBasedRealtimeProcessorに文字起こし開始要求', { filepath: fileInfo.filepath })
+    if (chunkGeneratorRef.current) {
+      chunkGeneratorRef.current.onChunkSaved(async (fileInfo: ChunkFileInfo) => {
+        logger.debug('onChunkSaved コールバック実行', { 
+          filename: fileInfo.filename, 
+          sizeBytes: fileInfo.sizeBytes,
+          filepath: fileInfo.filepath 
+        })
         
-        try {
-          // 重複起動チェック
-          if (isProcessorStarting) {
-            logger.warn('FileBasedRealtimeProcessor起動中のため要求をスキップ', { filename: fileInfo.filename })
-            return
-          }
+        // リアルタイム文字起こし処理
+        if ((enableTranscription || FORCE_ENABLE_REALTIME_TRANSCRIPTION) && realtimeProcessorRef.current) {
+          logger.debug('FileBasedRealtimeProcessorに文字起こし開始要求', { filepath: fileInfo.filepath })
           
-          // 最初のチャンクの場合は必ずFileBasedRealtimeProcessorを開始
-          const isFirstChunk = fileInfo.filename.includes('_001.webm')
-          const isActive = realtimeProcessorRef.current.isActive()
-          logger.debug('プロセッサ状態確認', { isFirstChunk, isActive })
-          
-          if (isFirstChunk && !isActive && !isProcessorStarting) {
-            isProcessorStarting = true
+          try {
+            // 重複起動チェック
+            if (isProcessorStarting) {
+              logger.warn('FileBasedRealtimeProcessor起動中のため要求をスキップ', { filename: fileInfo.filename })
+              return
+            }
             
-            const settings = await window.electronAPI.loadSettings()
+            // 最初のチャンクの場合は必ずFileBasedRealtimeProcessorを開始
+            const isFirstChunk = fileInfo.filename.includes('_001.webm')
+            const isActive = realtimeProcessorRef.current.isActive()
+            logger.debug('プロセッサ状態確認', { isFirstChunk, isActive })
             
-            // 実際のチャンクファイルパスから正しいフォルダパスを取得
-            const actualChunkFolderPath = fileInfo.filepath.substring(0, fileInfo.filepath.lastIndexOf('\\'))
-            const actualBaseFileName = actualChunkFolderPath.substring(actualChunkFolderPath.lastIndexOf('\\') + 1).replace('_chunks', '')
-            const outputFilePath = `${actualChunkFolderPath.substring(0, actualChunkFolderPath.lastIndexOf('\\'))}\\${actualBaseFileName}_realtime.rt.txt`
-            
-            logger.info('リアルタイム文字起こし開始', { 
-              input: actualChunkFolderPath, 
-              output: outputFilePath,
-              detectedFromFile: fileInfo.filepath
-            })
+            if (isFirstChunk && !isActive && !isProcessorStarting) {
+              isProcessorStarting = true
+              
+              const settings = await window.electronAPI.loadSettings()
+              
+              // 実際のチャンクファイルパスから正しいフォルダパスを取得
+              const actualChunkFolderPath = fileInfo.filepath.substring(0, fileInfo.filepath.lastIndexOf('\\'))
+              const actualBaseFileName = actualChunkFolderPath.substring(actualChunkFolderPath.lastIndexOf('\\') + 1).replace('_chunks', '')
+              const outputFilePath = `${actualChunkFolderPath.substring(0, actualChunkFolderPath.lastIndexOf('\\'))}\\${actualBaseFileName}_realtime.rt.txt`
+              
+              logger.info('リアルタイム文字起こし開始', { 
+                input: actualChunkFolderPath, 
+                output: outputFilePath,
+                detectedFromFile: fileInfo.filepath
+              })
             
             await realtimeProcessorRef.current.start(actualChunkFolderPath, outputFilePath)
             
@@ -162,42 +165,43 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
             logger.info('FileBasedRealtimeProcessor開始完了')
             
             isProcessorStarting = false
-          } else if (isActive) {
-            logger.debug('FileBasedRealtimeProcessorは既にアクティブ - 新しいチャンクを直接処理', { filename: fileInfo.filename })
-          } else {
-            logger.debug('非最初チャンクのため処理スキップ', { filename: fileInfo.filename })
+            } else if (isActive) {
+              logger.debug('FileBasedRealtimeProcessorは既にアクティブ - 新しいチャンクを直接処理', { filename: fileInfo.filename })
+            } else {
+              logger.debug('非最初チャンクのため処理スキップ', { filename: fileInfo.filename })
+            }
+          } catch (error) {
+            isProcessorStarting = false
+            logger.error('FileBasedRealtimeProcessor開始エラー', error instanceof Error ? error : undefined, error)
           }
-        } catch (error) {
-          isProcessorStarting = false
-          logger.error('FileBasedRealtimeProcessor開始エラー', error instanceof Error ? error : undefined, error)
+        } else {
+          logger.debug('文字起こし処理スキップ', { 
+            enableTranscription, 
+            forceEnable: FORCE_ENABLE_REALTIME_TRANSCRIPTION, 
+            hasProcessor: !!realtimeProcessorRef.current 
+          })
         }
-      } else {
-        logger.debug('文字起こし処理スキップ', { 
-          enableTranscription, 
-          forceEnable: FORCE_ENABLE_REALTIME_TRANSCRIPTION, 
-          hasProcessor: !!realtimeProcessorRef.current 
-        })
-      }
-    })
-    
-    // エラーコールバック設定（重複防止付き）
-    let lastErrorTime = 0
-    const errorCooldown = 5000 // 5秒間のクールダウン
-    
-    trueDiffGeneratorRef.current.onError((error) => {
-      const now = Date.now()
-      if (now - lastErrorTime < errorCooldown) {
-        console.log(`⚠️ エラーコールバック重複防止: ${error}`)
-        return
-      }
-      lastErrorTime = now
+      })
       
-      console.error(`❌ チャンク生成エラー:`, error)
-      callbacks?.onError?.(error instanceof Error ? error : new Error(String(error)))
-    })
+      // エラーコールバック設定（重複防止付き）
+      let lastErrorTime = 0
+      const errorCooldown = 5000 // 5秒間のクールダウン
+      
+      chunkGeneratorRef.current.onError((error) => {
+        const now = Date.now()
+        if (now - lastErrorTime < errorCooldown) {
+          console.log(`⚠️ エラーコールバック重複防止: ${error}`)
+          return
+        }
+        lastErrorTime = now
+        
+        console.error(`❌ チャンク生成エラー:`, error)
+        callbacks?.onError?.(error instanceof Error ? error : new Error(String(error)))
+      })
+    }
     
     return { baseFileName, chunkFolderName }
-  }, [callbacks])
+  }, [callbacks, logger])
 
   /**
    * 文字起こし結果を監視して、UIに更新を通知
@@ -307,22 +311,21 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
         await initializeRealtimeTranscription(recordingFileName, config.enableRealtimeTranscription)
         
         // 録音開始（チャンク生成開始）
-        trueDiffGeneratorRef.current?.startRecording()
-        
-        // データコールバック設定：RecordingServiceV2 → TrueDifferentialChunkGenerator
-        recordingManager.setDataCallback((data: Blob) => {
-          if (trueDiffGeneratorRef.current) {
-            logger.debug('チャンクデータ受信', { size: data.size })
-            try {
-              trueDiffGeneratorRef.current.addRecordingData(data)
-              logger.debug('チャンクデータ追加成功', { size: data.size })
-            } catch (error) {
-              logger.error('チャンクデータ追加エラー', error instanceof Error ? error : undefined, error)
+        if (chunkGeneratorRef.current) {
+          await chunkGeneratorRef.current.startRecording()
+          
+          // データコールバック設定：RecordingServiceV2 → AudioChunkGenerator
+          recordingManager.setDataCallback((data: Blob) => {
+            if (chunkGeneratorRef.current) {
+              logger.debug('チャンクデータ受信', { size: data.size })
+              chunkGeneratorRef.current.addAudioData(data).catch(error => {
+                logger.error('チャンクデータ追加エラー', error instanceof Error ? error : undefined, error)
+              })
+            } else {
+              logger.warn('AudioChunkGenerator未初期化 - データ破棄', { size: data.size })
             }
-          } else {
-            logger.warn('TrueDifferentialChunkGenerator未初期化 - データ破棄', { size: data.size })
-          }
-        })
+          })
+        }
       }
       
       // 録音開始
@@ -341,7 +344,7 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
       callbacks?.onError?.(errorObj)
       throw errorObj
     }
-  }, [recordingManager, initializeRealtimeTranscription, callbacks])
+  }, [recordingManager, callbacks])
 
   /**
    * 録音停止
@@ -360,9 +363,9 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
       }
       
       // チャンク生成停止（最後に停止）
-      if (trueDiffGeneratorRef.current) {
-        trueDiffGeneratorRef.current.stopRecording()
-        logger.info('チャンク生成停止完了')
+      if (chunkGeneratorRef.current) {
+        await chunkGeneratorRef.current.stopRecording()
+        logger.info('AudioChunkGenerator停止完了')
       }
       
       // 文字起こし監視停止
@@ -390,11 +393,8 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
     try {
       await recordingManager.pauseRecording()
       
-      // チャンク生成も一時停止
-      if (trueDiffGeneratorRef.current) {
-        // TrueDifferentialChunkGeneratorに一時停止機能があれば使用
-        logger.debug('チャンク生成一時停止')
-      }
+      // チャンク生成も一時停止（AudioChunkGeneratorには一時停止機能なし）
+      logger.debug('チャンク生成一時停止（AudioChunkGeneratorは継続）')
       
     } catch (error) {
       logger.error('録音一時停止エラー', error instanceof Error ? error : undefined, error)
@@ -411,11 +411,8 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
     try {
       await recordingManager.resumeRecording()
       
-      // チャンク生成も再開
-      if (trueDiffGeneratorRef.current) {
-        logger.debug('チャンク生成再開')
-        // 必要に応じてチャンク生成を再開
-      }
+      // チャンク生成も再開（AudioChunkGeneratorは自動継続）
+      logger.debug('チャンク生成再開（AudioChunkGeneratorは自動継続）')
       
     } catch (error) {
       logger.error('録音再開エラー', error instanceof Error ? error : undefined, error)
@@ -443,14 +440,14 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
     }
     
     // チャンク生成停止
-    if (trueDiffGeneratorRef.current) {
-      logger.debug('TrueDifferentialChunkGenerator停止中')
+    if (chunkGeneratorRef.current) {
+      logger.debug('AudioChunkGenerator停止中')
       try {
-        trueDiffGeneratorRef.current.stopRecording()
+        chunkGeneratorRef.current.cleanup()
       } catch (error) {
-        logger.error('TrueDifferentialChunkGenerator停止エラー', error instanceof Error ? error : undefined, error)
+        logger.error('AudioChunkGenerator停止エラー', error instanceof Error ? error : undefined, error)
       }
-      trueDiffGeneratorRef.current = null
+      chunkGeneratorRef.current = null
     }
     
     // 文字起こし監視停止

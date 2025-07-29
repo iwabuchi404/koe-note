@@ -42,6 +42,8 @@ export const LogCategories = {
   AUDIO_CHUNK_PROCESSOR: 'Audio.ChunkProcessor',
   AUDIO_DIFFERENTIAL_GENERATOR: 'Audio.DifferentialGenerator',
   AUDIO_CHUNK_WATCHER: 'Audio.ChunkWatcher',
+  AUDIO_WEBM_PROCESSOR: 'Audio.WebMProcessor',
+  AUDIO_CHUNK_GENERATOR: 'Audio.ChunkGenerator',
   
   // 文字起こし処理
   TRANSCRIPTION_ENGINE: 'Transcription.Engine',
