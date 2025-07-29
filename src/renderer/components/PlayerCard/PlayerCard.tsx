@@ -20,9 +20,9 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
   const { updateTab } = useTabContext()
   
   // ファイル情報
-  const [fileName] = useState(data?.fileName || '未選択ファイル')
-  const [filePath] = useState(data?.filePath || '')
-  const [fileType] = useState(data?.fileType || 'text')
+  const [fileName, setFileName] = useState(data?.fileName || '未選択ファイル')
+  const [filePath, setFilePath] = useState(data?.filePath || '')
+  const [fileType, setFileType] = useState(data?.fileType || 'text')
   
   // 音声プレイヤー状態
   const [isPlaying, setIsPlaying] = useState(false)
@@ -37,8 +37,8 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
   const [isEdited, setIsEdited] = useState(false)
   
   // 文字起こし状態
-  const [hasTranscriptionFile] = useState(data?.hasTranscriptionFile || false)
-  const [transcriptionPath] = useState(data?.transcriptionPath || '')
+  const [hasTranscriptionFile, setHasTranscriptionFile] = useState(data?.hasTranscriptionFile || false)
+  const [transcriptionPath, setTranscriptionPath] = useState(data?.transcriptionPath || '')
   const [transcriptionText, setTranscriptionText] = useState('')
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcriptionProgress, setTranscriptionProgress] = useState(0)
@@ -191,6 +191,46 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
       setTranscriptionProgress(0)
     }
   }, [fileName, filePath, fileType])
+
+  // dataプロパティ変更時の状態更新
+  useEffect(() => {
+    if (!data) return
+
+    // ファイル情報の更新
+    if (data.fileName && data.fileName !== fileName) {
+      setFileName(data.fileName)
+    }
+    if (data.filePath && data.filePath !== filePath) {
+      setFilePath(data.filePath)
+    }
+    if (data.fileType && data.fileType !== fileType) {
+      setFileType(data.fileType)
+    }
+    
+    // 音声関連の更新
+    if (data.duration && data.duration !== duration) {
+      setDuration(data.duration)
+    }
+    
+    // テキスト内容の更新
+    if (data.content !== undefined && data.content !== content) {
+      setContent(data.content)
+    }
+    
+    // 文字起こし関連の更新
+    if (data.hasTranscriptionFile !== undefined && data.hasTranscriptionFile !== hasTranscriptionFile) {
+      setHasTranscriptionFile(data.hasTranscriptionFile)
+    }
+    if (data.transcriptionPath && data.transcriptionPath !== transcriptionPath) {
+      setTranscriptionPath(data.transcriptionPath)
+    }
+    
+    logger.info('PlayerCardデータ更新', { 
+      fileName: data.fileName, 
+      filePath: data.filePath, 
+      fileType: data.fileType 
+    })
+  }, [data, fileName, filePath, fileType, duration, content, hasTranscriptionFile, transcriptionPath])
 
   // ファイル読み込み
   useEffect(() => {
