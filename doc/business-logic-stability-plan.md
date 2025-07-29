@@ -29,7 +29,7 @@ App.tsx (8個のグローバル状態)
   ↓
 BottomPanel.tsx (15個のローカル状態 + 10個のuseRef)
   ↓  
-各サービス (TrueDifferentialChunkGenerator, FileBasedRealtimeProcessor...)
+各サービス (AudioChunkGenerator, FileBasedRealtimeProcessor...)
   ↓
 Electron IPC呼び出し
 

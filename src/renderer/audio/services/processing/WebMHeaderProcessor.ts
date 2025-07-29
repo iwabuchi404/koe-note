@@ -1,7 +1,7 @@
 /**
  * WebMHeaderProcessor - WebMファイルヘッダー処理システム
  * 
- * TrueDifferentialChunkGeneratorから分離した専門的なWebMヘッダー処理クラス
+ * AudioChunkGeneratorから分離した専門的なWebMヘッダー処理クラス
  * 
  * 責務:
  * - WebMヘッダーの抽出と検証

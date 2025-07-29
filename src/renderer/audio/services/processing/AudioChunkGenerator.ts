@@ -1,7 +1,7 @@
 /**
  * AudioChunkGenerator - 簡素化されたオーディオチャンク生成システム
  * 
- * TrueDifferentialChunkGeneratorから重要な機能のみを抽出し、
+ * 旧システムから重要な機能のみを抽出し、
  * 責務を明確にして保守性を向上させたクラス
  * 
  * 責務:
