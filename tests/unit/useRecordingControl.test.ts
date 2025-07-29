@@ -122,7 +122,7 @@ describe('useRecordingControl', () => {
       })
 
       // リアルタイム文字起こしの初期化が実行されることを確認
-      // 実際の実装では、TrueDifferentialChunkGeneratorとFileBasedRealtimeProcessorが初期化される
+      // 実際の実装では、AudioChunkGeneratorとFileBasedRealtimeProcessorが初期化される
       expect(mockCallbacks.onRecordingStart).toHaveBeenCalled()
     })
 

@@ -37,7 +37,7 @@ const RecordingCard: React.FC<RecordingCardProps> = ({ tabId, data }) => {
   const [audioLevel, setAudioLevel] = useState(0)
   const [showSettings, setShowSettings] = useState(false)
   
-  // useRecordingControlを使用（RealTimeTranscriptionProcessor付き）
+  // useRecordingControlを使用（USE_NEW_CHUNK_GENERATOR=trueで新しいAudioChunkGenerator + WebMHeaderProcessor）
   const recordingControl = useRecordingControl({
     onRecordingStart: () => {
       console.log('🎙️ RecordingCard: 録音開始コールバック')

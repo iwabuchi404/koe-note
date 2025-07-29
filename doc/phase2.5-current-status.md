@@ -41,7 +41,8 @@ class RealtimeTranscriber {
 ```typescript
 // 実装された高度なシステム
 interface RealTimeSystem {
-  TrueDifferentialChunkGenerator,    // 真の差分チャンク生成
+  AudioChunkGenerator,               // 簡素化されたチャンク生成
+  WebMHeaderProcessor,               // 専門的なWebMヘッダー処理
   ChunkFileWatcher,                  // ファイル監視システム
   FileBasedTranscriptionEngine,      // 高度なエラーハンドリング
   RealtimeTextManager               // 統合テキスト管理
@@ -106,10 +107,16 @@ interface StateArchitecture {
 ### A. リアルタイム文字起こしシステム ✅ 完全実装
 
 #### 実装済みコンポーネント
-1. **TrueDifferentialChunkGenerator** 
-   - 真の差分チャンク生成（新規データのみ抽出）
-   - WebMヘッダー最適化
+1. **AudioChunkGenerator** 
+   - 簡素化されたオーディオチャンク生成
+   - 音声データのバッファリングと時間ベース処理
    - 20秒間隔での自動チャンク作成
+   - 保守性の高い単一責任設計
+
+1.1. **WebMHeaderProcessor**
+   - WebMヘッダーの専門的な処理
+   - DocType修正（matroska → webm）
+   - 最小限ヘッダーの生成
 
 2. **ChunkFileWatcher**
    - テンポラリフォルダの監視

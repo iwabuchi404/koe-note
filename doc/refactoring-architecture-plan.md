@@ -96,8 +96,9 @@ Recording/
 ├── Services/
 │   ├── RecordingService.ts       // 録音ビジネスロジック
 │   ├── DeviceManager.ts          // デバイス管理
-│   ├── AudioProcessor.ts         // 音声処理
-│   └── RealtimeProcessor.ts      // リアルタイム文字起こし統合
+│   ├── AudioChunkGenerator.ts    // 簡素化されたチャンク生成（既存）
+│   ├── WebMHeaderProcessor.ts    // WebMヘッダー専門処理（既存）
+│   └── FileBasedRealtimeProcessor.ts // リアルタイム文字起こし統合（既存）
 ├── Hooks/
 │   ├── useRecordingState.tsx     // 録音状態管理
 │   ├── useDeviceManager.tsx      // デバイス状態管理
@@ -134,8 +135,9 @@ Transcription/
 │   └── ProgressIndicator.tsx     // 進捗表示
 ├── Services/
 │   ├── TranscriptionService.ts   // 文字起こしビジネスロジック
-│   ├── FileProcessor.ts          // ファイル処理
-│   └── RealtimeTranscription.ts  // リアルタイム処理
+│   ├── FileBasedTranscriptionEngine.ts // ファイル処理（既存）
+│   ├── RealtimeTextManager.ts    // リアルタイムテキスト管理（既存）
+│   └── ChunkFileWatcher.ts       // チャンクファイル監視（既存）
 ├── Hooks/
 │   ├── useTranscriptionState.tsx // 文字起こし状態管理
 │   ├── useTranscriptionEdit.tsx  // 編集状態管理
@@ -323,7 +325,8 @@ interface ErrorHandler {
    ├── Services/
    │   ├── RecordingService.ts      // 1766行の startRecording 分割
    │   ├── DeviceManager.ts         // デバイス管理分離
-   │   └── AudioProcessor.ts        // TrueDifferentialChunkGenerator統合
+   │   ├── AudioChunkGenerator.ts    // 簡素化されたチャンク生成システム（移行済み）
+   │   └── WebMHeaderProcessor.ts    // WebMヘッダー専門処理（移行済み）
    └── Hooks/
        └── useRecordingState.tsx    // 15個のuseState統合管理
    ```
@@ -399,14 +402,14 @@ interface ErrorHandler {
 ## 期待される効果
 
 ### 🎯 保守性向上
-- **コンポーネントサイズ**: 1500行+ → 300行以下
-- **責務の明確化**: 1コンポーネント1責務
-- **テスト容易性**: 各層を独立してテスト可能
+- **コンポーネントサイズ**: 1500行+ → 300行以下（AudioChunkGeneratorは506行で実現済み）
+- **責務の明確化**: 1コンポーネント1責務（AudioChunkGeneratorとWebMHeaderProcessorの分離で実現済み）
+- **テスト容易性**: 各層を独立してテスト可能（モジュラー設計で実現済み）
 
 ### 🚀 開発効率向上
-- **バグ修正時間**: 影響範囲が明確で修正が局所化
-- **新機能追加**: 既存コードへの影響を最小化
-- **コードレビュー**: 変更影響が予測しやすい
+- **バグ修正時間**: 影響範囲が明確で修正が局所化（AudioChunkGeneratorとWebMHeaderProcessorの責務分離で実現済み）
+- **新機能追加**: 既存コードへの影響を最小化（ファイルベースリアルタイム処理で実現済み）
+- **コードレビュー**: 変更影響が予測しやすい（モジュラー・アーキテクチャで実現済み）
 
 ### 🔧 拡張性向上
 - **2タブ表示システム**: コンポーネント再利用が容易

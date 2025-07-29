@@ -62,10 +62,12 @@ src/renderer/services/core/
 │   ├── startRecording(config): Promise<RecordingSession>
 │   ├── stopRecording(): Promise<AudioFile>  
 │   └── pauseRecording(): Promise<void>
+│   └── AudioChunkGenerator統合による自動リアルタイムチャンク生成
 
 ├── TranscriptionServiceV2.ts    // 文字起こしビジネスロジックのみ
 │   ├── transcribeFile(file): Promise<TranscriptionResult>
-│   └── transcribeRealtime(stream): Observable<TranscriptionChunk>
+│   ├── FileBasedRealtimeProcessor統合によるリアルタイム文字起こし
+│   └── WebMHeaderProcessor統合による最適化されたWebM処理
 
 └── FileServiceV2.ts             // ファイル操作ビジネスロジックのみ
     ├── saveAudioFile(buffer, filename): Promise<string>
@@ -174,8 +176,13 @@ src/renderer/state/
 // Phase A: 新サービス併用（既存処理は保持）
 const handleStartRecording = async () => {
   try {
-    // 🆕 新サービスでビジネスロジック実行
+    // 🆕 AudioChunkGeneratorとWebMHeaderProcessorを統合した新サービスでビジネスロジック実行
     const result = await RecordingServiceV2.startRecording(config)
+    
+    // 🆕 FileBasedRealtimeProcessorによる自動リアルタイム文字起こし開始
+    if (config.enableRealtimeTranscription) {
+      await FileBasedRealtimeProcessor.start()
+    }
     
     // 🔄 成功時のみ既存の状態更新処理を実行
     // 既存の setIsRecording(true) 等はそのまま保持
@@ -258,9 +265,10 @@ SpeechRecognition.tsx:
 - ✅ デバッグ時の問題特定が容易
 
 ### **3. 開発効率**
-- ✅ 同じ修正を繰り返す必要がなくなる
+- ✅ AudioChunkGeneratorとWebMHeaderProcessorの分離により保守性向上
+- ✅ ファイルベースリアルタイム処理により同じ修正を繰り返す必要がなくなる
 - ✅ バグ修正の影響範囲が明確
-- ✅ 新メンバーも理解しやすいコード構造
+- ✅ 新メンバーも理解しやすいモジュラー設計
 
 ---
 

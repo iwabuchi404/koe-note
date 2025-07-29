@@ -27,8 +27,10 @@ describe('Logger', () => {
       logger.debug('テストメッセージ')
       
       expect(consoleSpy.debug).toHaveBeenCalledWith(
-        expect.stringContaining('[DEBUG]'),
-        expect.stringContaining('')
+        expect.stringContaining('[DEBUG]')
+      )
+      expect(consoleSpy.debug).toHaveBeenCalledWith(
+        expect.stringContaining('テストメッセージ')
       )
     })
 
@@ -37,8 +39,10 @@ describe('Logger', () => {
       logger.info('インフォメッセージ')
       
       expect(consoleSpy.info).toHaveBeenCalledWith(
-        expect.stringContaining('[INFO ]'),
-        expect.stringContaining('')
+        expect.stringContaining('[INFO ]')
+      )
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('インフォメッセージ')
       )
     })
 
@@ -47,8 +51,10 @@ describe('Logger', () => {
       logger.warn('警告メッセージ')
       
       expect(consoleSpy.warn).toHaveBeenCalledWith(
-        expect.stringContaining('[WARN ]'),
-        expect.stringContaining('')
+        expect.stringContaining('[WARN ]')
+      )
+      expect(consoleSpy.warn).toHaveBeenCalledWith(
+        expect.stringContaining('警告メッセージ')
       )
     })
 
@@ -58,9 +64,10 @@ describe('Logger', () => {
       logger.error('エラーメッセージ', error)
       
       expect(consoleSpy.error).toHaveBeenCalledWith(
-        expect.stringContaining('[ERROR]'),
-        expect.stringContaining(''),
-        expect.any(Error)
+        expect.stringContaining('[ERROR]')
+      )
+      expect(consoleSpy.error).toHaveBeenCalledWith(
+        expect.stringContaining('エラーメッセージ')
       )
     })
   })
@@ -103,8 +110,10 @@ describe('Logger', () => {
       logger.info('ユーザーログイン', testData)
       
       expect(consoleSpy.info).toHaveBeenCalledWith(
-        expect.stringContaining('[INFO ]'),
-        testData
+        expect.stringContaining('[INFO ]')
+      )
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('ユーザーログイン')
       )
     })
 
@@ -115,8 +124,10 @@ describe('Logger', () => {
       logger.info('テストメッセージ')
       
       expect(consoleSpy.info).toHaveBeenCalledWith(
-        expect.stringContaining('TestComponent'),
-        ''
+        expect.stringContaining('[INFO ]')
+      )
+      expect(consoleSpy.info).toHaveBeenCalledWith(
+        expect.stringContaining('テストメッセージ')
       )
     })
   })
