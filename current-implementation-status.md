@@ -91,24 +91,35 @@ src/renderer/
 
 #### 4.2 主要実装コンポーネント
 
-##### 1. TrueDifferentialChunkGenerator（真の差分チャンク生成）
-**場所**: `services/` (統合前) → `chunk/core/` (統合後)
+##### 1. AudioChunkGenerator（簡素化されたオーディオチャンク生成システム）
+**場所**: `src/renderer/audio/services/processing/AudioChunkGenerator.ts`
 
 **実装済み機能**:
-- 新規追加された音声データのみを抽出して独立再生可能なWebMファイル生成
-- 時間ベースの自動チャンク生成（20秒間隔）
-- WebMヘッダー修正（DocTypeをmatroskaからwebmに変更）
-- オーバーラップ排除による純粋な差分処理
+- 音声データのバッファリングと時間ベースのチャンク生成
+- 独立再生可能なWebMファイル生成（20秒間隔）
+- WebMHeaderProcessorとの連携によるヘッダー処理
+- 自動チャンク生成とファイル保存機能
+- 単一責任原則に基づいた保守性の高い設計
 
 **設定項目**:
 ```typescript
-interface ChunkGenerationConfig {
+interface ChunkGeneratorConfig {
   intervalSeconds: number;        // 20秒固定
   enableFileGeneration: boolean;  // ファイル生成有効化
   tempFolderPath?: string;       // 一時フォルダパス
   enableAutoGeneration: boolean; // 自動生成有効化
 }
 ```
+
+##### 1.1. WebMHeaderProcessor（WebMヘッダー専門処理）
+**場所**: `src/renderer/audio/services/processing/WebMHeaderProcessor.ts`
+
+**実装済み機能**:
+- WebMヘッダーの抽出と検証
+- DocType修正（matroska → webm）
+- 最小限ヘッダーの生成
+- チャンク用ヘッダーの作成
+- AudioChunkGeneratorから分離された専門クラス
 
 ##### 2. ChunkFileWatcher（チャンクファイル監視）
 **場所**: `chunk/watcher/ChunkFileWatcher.ts`
@@ -165,7 +176,7 @@ type ErrorType =
 ```
 録音開始ボタン押下
   ↓
-TrueDifferentialChunkGenerator.startRecording()
+AudioChunkGenerator.startRecording()
   ↓
 自動チャンク生成開始（20秒間隔）
   ↓
