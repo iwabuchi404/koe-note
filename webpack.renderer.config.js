@@ -3,7 +3,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpack = require('webpack');
 
 module.exports = {
-  target: 'electron-renderer',
+  target: 'web',
   entry: './src/renderer/index.tsx',
   output: {
     path: path.resolve(__dirname, 'dist/renderer'),
@@ -62,7 +62,8 @@ module.exports = {
       directory: path.join(__dirname, 'dist/renderer'),
     },
     port: 3000,
-    hot: true,
+    hot: false,
+    liveReload: false,
     historyApiFallback: true,
   },
   node: {
