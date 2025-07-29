@@ -582,10 +582,24 @@ export class RecordingServiceV2 {
       const recordedChunks: Blob[] = []
 
       // データが利用可能になったときの処理
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorder.ondataavailable = async (event) => {
         console.log('🎙️ RecordingServiceV2: データ受信', event.data.size, 'bytes')
         if (event.data.size > 0) {
           recordedChunks.push(event.data)
+          
+          // リアルタイム文字起こし用に録音中ファイルを随時更新
+          try {
+            const currentBlob = new Blob(recordedChunks, { type: session.config.mimeType })
+            const arrayBuffer = await currentBlob.arrayBuffer()
+            await window.electronAPI.saveFile(arrayBuffer, session.fileName)
+            console.log('📝 RecordingServiceV2: 録音中ファイル更新', {
+              fileName: session.fileName,
+              currentSize: currentBlob.size,
+              chunks: recordedChunks.length
+            })
+          } catch (error) {
+            console.error('📝 RecordingServiceV2: 録音中ファイル更新エラー', error)
+          }
           
           // データコールバック実行（チャンク処理用）
           if (this.onDataAvailable) {

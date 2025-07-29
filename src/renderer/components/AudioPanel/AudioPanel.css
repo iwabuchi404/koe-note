@@ -1,0 +1,389 @@
+/**
+ * 音声パネルのスタイル
+ */
+
+.audio-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ヘッダー */
+.audio-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-name {
+  font-size: 16px;
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.file-duration {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+/* エラーメッセージ */
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-radius: 8px;
+  border: 1px solid var(--color-danger);
+}
+
+.error-icon {
+  font-size: 18px;
+}
+
+/* 音声コントロール */
+.audio-controls {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.playback-controls {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+}
+
+.control-button:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.control-button:disabled {
+  background: var(--color-bg-quaternary);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.control-button.play-pause {
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.control-button.play-pause:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+/* プログレスバー */
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.time-current,
+.time-total {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  min-width: 40px;
+  text-align: center;
+}
+
+.progress-bar {
+  flex: 1;
+}
+
+.progress-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-tertiary);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.progress-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 音量・速度制御 */
+.audio-settings {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.volume-control,
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  min-width: 40px;
+}
+
+.volume-slider {
+  width: 100px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-bg-tertiary);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+}
+
+.volume-value {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 35px;
+}
+
+.speed-select {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 文字起こしセクション */
+.transcription-section {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.transcription-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.transcription-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.transcription-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-accent);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.transcription-button:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.transcription-button:disabled {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+
+/* 文字起こし進捗 */
+.transcription-progress {
+  margin-bottom: 16px;
+}
+
+.progress-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+/* 文字起こしコンテンツ */
+.transcription-content {
+  flex: 1;
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  overflow-y: auto;
+}
+
+.transcription-text {
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.transcription-placeholder {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .audio-panel {
+    padding: 16px;
+    gap: 16px;
+  }
+  
+  .playback-controls {
+    gap: 12px;
+  }
+  
+  .control-button {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+  
+  .control-button.play-pause {
+    width: 56px;
+    height: 56px;
+    font-size: 20px;
+  }
+  
+  .audio-settings {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .volume-control,
+  .speed-control {
+    justify-content: space-between;
+  }
+  
+  .transcription-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .panel-title {
+    font-size: 20px;
+  }
+}
+
+/* ダークモード対応 */
+@media (prefers-color-scheme: dark) {
+  .control-button:hover:not(:disabled) {
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+  }
+  
+  .progress-slider::-webkit-slider-thumb {
+    border-color: var(--color-bg-primary);
+  }
+  
+  .volume-slider::-webkit-slider-thumb {
+    border: 1px solid var(--color-bg-primary);
+  }
+}

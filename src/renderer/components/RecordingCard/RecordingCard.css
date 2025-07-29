@@ -1,0 +1,402 @@
+/**
+ * 録音カード - 統合オブジェクトUI
+ */
+
+.recording-card {
+  background: var(--color-bg-secondary);
+  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  padding: 20px;
+  margin: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+/* エラー表示 */
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.error-icon {
+  font-size: 18px;
+  color: var(--color-danger);
+}
+
+.error-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.error-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-danger);
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.error-close:hover {
+  background: var(--color-danger-hover);
+  transform: scale(1.1);
+}
+
+.recording-card:hover {
+  border-color: var(--color-accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* メインコントロールエリア */
+.recording-main {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+/* 左側: コントロール */
+.recording-control {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.status-display {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-bg-tertiary);
+}
+
+.status-indicator.idle {
+  background: var(--color-text-tertiary);
+}
+
+.status-indicator.recording {
+  background: var(--color-danger);
+  animation: pulse 1.5s infinite;
+}
+
+.status-indicator.warning {
+  background: var(--color-warning);
+}
+
+.status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.recording-time {
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.control-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.main-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.main-button.start {
+  background: var(--color-primary);
+  color: white;
+}
+
+.main-button.start:hover {
+  background: var(--color-primary-hover);
+}
+
+.main-button.recording {
+  background: var(--color-warning);
+  color: white;
+}
+
+.main-button.recording:hover {
+  background: var(--color-warning-hover);
+}
+
+.stop-button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-danger);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stop-button:hover {
+  background: var(--color-danger-hover);
+}
+
+/* 右側: サイド情報 */
+.recording-side {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.audio-level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.level-meter {
+  flex: 1;
+  height: 6px;
+  background: var(--color-bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.level-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-success), var(--color-warning), var(--color-danger));
+  border-radius: 3px;
+  transition: width 0.1s ease;
+}
+
+.level-text {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 35px;
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.settings-toggle {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-toggle:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.settings-toggle.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.settings-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 設定パネル */
+.settings-panel {
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.setting-row label {
+  color: var(--color-text-primary);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.setting-row select {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  flex: 1;
+}
+
+.setting-row select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setting-row input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+/* 文字起こし結果 */
+.transcription-result {
+  background: var(--color-bg-primary);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.processing-indicator {
+  font-size: 12px;
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.processing-indicator::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-accent);
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.result-content {
+  padding: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.transcription-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+.placeholder {
+  font-size: 14px;
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+/* アニメーション */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .recording-card {
+    margin: 12px;
+    padding: 16px;
+  }
+  
+  .recording-main {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .recording-control {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+  
+  .control-buttons {
+    justify-content: center;
+  }
+  
+  .recording-side {
+    justify-content: space-between;
+  }
+  
+  .settings-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .setting-row {
+    justify-content: space-between;
+  }
+  
+  .setting-row label {
+    min-width: auto;
+  }
+}
+
+/* ダークモード対応 */
+@media (prefers-color-scheme: dark) {
+  .recording-card:hover {
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
+  }
+}

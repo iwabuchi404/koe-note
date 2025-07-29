@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react'
 import LeftPanel from '../LeftPanel/LeftPanel'
 import RightPanel from '../RightPanel/RightPanel'
+import TabBar from '../TabBar/TabBar'
+import TabContent from '../TabContent/TabContent'
 
 /**
  * メインレイアウトコンポーネント
@@ -51,7 +53,7 @@ const MainLayout: React.FC = () => {
   }, [isResizing, handleMouseMove, handleMouseUp])
 
   return (
-    <div className="main-layout">
+    <div className="main-layout" data-testid="main-layout">
       <div 
         className="left-panel"
         style={{ width: `${leftPanelWidth}px`, minWidth: `${leftPanelWidth}px`, maxWidth: `${leftPanelWidth}px` }}
@@ -72,8 +74,11 @@ const MainLayout: React.FC = () => {
         }}
       />
       
-      <div className="right-panel" style={{ flex: 1 }}>
-        <RightPanel />
+      <div className="right-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <TabBar />
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <TabContent />
+        </div>
       </div>
     </div>
   )

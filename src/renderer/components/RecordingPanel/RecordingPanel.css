@@ -1,0 +1,369 @@
+/**
+ * 録音パネルのスタイル
+ */
+
+.recording-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ヘッダー */
+.recording-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.recording-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.idle {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.status-badge.recording {
+  background: var(--color-danger);
+  color: white;
+  animation: pulse 1.5s infinite;
+}
+
+.status-badge.paused {
+  background: var(--color-warning);
+  color: white;
+}
+
+/* 録音コントロール */
+.recording-controls {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.control-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.control-button {
+  padding: 10px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.control-button:hover {
+  background: var(--color-bg-hover);
+}
+
+.control-button.start {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.control-button.start:hover {
+  background: var(--color-primary-hover);
+}
+
+.control-button.pause {
+  background: var(--color-warning);
+  color: white;
+  border-color: var(--color-warning);
+}
+
+.control-button.pause:hover {
+  background: var(--color-warning-hover);
+}
+
+.control-button.stop {
+  background: var(--color-danger);
+  color: white;
+  border-color: var(--color-danger);
+}
+
+.control-button.stop:hover {
+  background: var(--color-danger-hover);
+}
+
+.button-icon {
+  font-size: 18px;
+}
+
+/* 録音情報 */
+.recording-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recording-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 18px;
+}
+
+.time-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.time-value {
+  font-family: 'Courier New', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.audio-level {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.level-label {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.level-meter {
+  flex: 1;
+  height: 8px;
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.level-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-success), var(--color-warning), var(--color-danger));
+  border-radius: 4px;
+  transition: width 0.1s ease;
+}
+
+.level-value {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+/* 設定表示 */
+.recording-settings {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+}
+
+.recording-settings h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: var(--color-text-primary);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: 6px;
+}
+
+.setting-label {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  min-width: 80px;
+}
+
+.setting-select {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  min-width: 120px;
+}
+
+.setting-select:disabled {
+  background: var(--color-bg-quaternary);
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+.checkbox-label input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+/* 文字起こしエリア */
+.transcription-area {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  flex: 1;
+  min-height: 150px;
+}
+
+.transcription-area h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transcription-content {
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 150px;
+  border: 1px solid var(--color-border);
+}
+
+.transcription-text {
+  color: var(--color-text-primary);
+  line-height: 1.6;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.transcription-placeholder {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* アニメーション */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .recording-panel {
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .control-button {
+    min-width: auto;
+  }
+  
+  .recording-info {
+    gap: 8px;
+  }
+  
+  .audio-level {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .setting-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  
+  .setting-label {
+    min-width: auto;
+  }
+  
+  .setting-select {
+    min-width: auto;
+  }
+  
+  .panel-title {
+    font-size: 18px;
+  }
+}
+
+/* ダークモード対応 */
+@media (prefers-color-scheme: dark) {
+  .control-button:hover {
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+  }
+  
+  .level-bar {
+    background: linear-gradient(90deg, #4caf50, #ff9800, #f44336);
+  }
+}

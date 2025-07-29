@@ -1,0 +1,269 @@
+/**
+ * タブバーのスタイル
+ */
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  height: 40px;
+  padding: 0 8px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.tab-list {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* タブ基本スタイル */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-right: 2px;
+  min-width: 120px;
+  max-width: 200px;
+  height: 32px;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.tab:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+}
+
+/* アクティブタブ */
+.tab.active {
+  background: var(--color-bg-primary);
+  border-color: var(--color-accent);
+  border-bottom-color: var(--color-bg-primary);
+  z-index: 1;
+}
+
+/* タブの状態別スタイル */
+.tab.recording {
+  border-left: 3px solid var(--color-danger);
+}
+
+.tab.transcribing {
+  border-left: 3px solid var(--color-warning);
+}
+
+.tab.loading {
+  border-left: 3px solid var(--color-info);
+}
+
+.tab.error {
+  border-left: 3px solid var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.tab.playing {
+  border-left: 3px solid var(--color-success);
+}
+
+.tab.editing {
+  border-left: 3px solid var(--color-accent);
+}
+
+/* ドラッグ中のタブ */
+.tab.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+  z-index: 1000;
+}
+
+/* タブアイコン */
+.tab-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+/* タブタイトル */
+.tab-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab.active .tab-title {
+  color: var(--color-accent);
+}
+
+/* ステータスインジケーター */
+.status-indicator {
+  font-size: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  font-weight: bold;
+}
+
+.status-indicator.recording {
+  color: var(--color-danger);
+  animation: pulse 1.5s infinite;
+}
+
+.status-indicator.transcribing {
+  color: var(--color-warning);
+  animation: spin 1s linear infinite;
+}
+
+.status-indicator.loading {
+  color: var(--color-info);
+  animation: spin 1s linear infinite;
+}
+
+.status-indicator.error {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  animation: flash 2s infinite;
+}
+
+/* 閉じるボタン */
+.tab-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: bold;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.tab:hover .tab-close-button {
+  opacity: 1;
+}
+
+.tab-close-button:hover {
+  background: var(--color-danger);
+  color: white;
+}
+
+/* 新しいタブボタン */
+.new-tab-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.new-tab-button:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* アニメーション */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes flash {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .tab {
+    min-width: 80px;
+    max-width: 120px;
+    padding: 6px 8px;
+  }
+  
+  .tab-title {
+    font-size: 12px;
+  }
+  
+  .tab-icon {
+    font-size: 12px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* ダークモード対応 */
+@media (prefers-color-scheme: dark) {
+  .tab {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .tab:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .tab.active {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}

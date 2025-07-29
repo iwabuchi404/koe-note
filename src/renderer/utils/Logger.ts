@@ -40,6 +40,30 @@ export interface LogEntry {
  */
 export class LogFormatter {
   /**
+   * 安全なオブジェクトシリアライゼーション
+   */
+  private static safeStringify(obj: any): string {
+    try {
+      return JSON.stringify(obj, null, 0)
+    } catch (error) {
+      // 循環参照などでJSONシリアライゼーションが失敗した場合
+      try {
+        return JSON.stringify(obj, (key, value) => {
+          if (typeof value === 'object' && value !== null) {
+            if (value.constructor?.name) {
+              return `[${value.constructor.name}]`
+            }
+            return '[Object]'
+          }
+          return value
+        })
+      } catch {
+        return '[非シリアライズ可能オブジェクト]'
+      }
+    }
+  }
+
+  /**
    * コンソール出力用フォーマット
    */
   static formatForConsole(entry: LogEntry): string {
@@ -50,11 +74,11 @@ export class LogFormatter {
     let formatted = `${timestamp} [${level}] ${category} ${entry.message}`
     
     if (entry.context && Object.keys(entry.context).length > 0) {
-      formatted += ` | Context: ${JSON.stringify(entry.context)}`
+      formatted += ` | Context: ${LogFormatter.safeStringify(entry.context)}`
     }
     
     if (entry.data) {
-      formatted += ` | Data: ${JSON.stringify(entry.data)}`
+      formatted += ` | Data: ${LogFormatter.safeStringify(entry.data)}`
     }
     
     return formatted
@@ -137,16 +161,16 @@ export class Logger {
     if (Logger.isDevelopment) {
       switch (entry.level) {
         case LogLevel.DEBUG:
-          console.debug(formatted, entry.data || '')
+          console.debug(formatted)
           break
         case LogLevel.INFO:
-          console.info(formatted, entry.data || '')
+          console.info(formatted)
           break
         case LogLevel.WARN:
-          console.warn(formatted, entry.data || '')
+          console.warn(formatted)
           break
         case LogLevel.ERROR:
-          console.error(formatted, entry.data || '', entry.error || '')
+          console.error(formatted)
           break
       }
     }

@@ -545,6 +545,7 @@ export class TrueDifferentialChunkGenerator {
       
       // ファイル保存機能
       let savedFilePath: string | undefined;
+      console.log(`🔍 ファイル保存チェック: enableFileGeneration=${this.config.enableFileGeneration}, tempFolderPath=${this.config.tempFolderPath}`);
       if (this.config.enableFileGeneration && this.config.tempFolderPath) {
         try {
           savedFilePath = await this.saveChunkToFile(finalChunkBlob, this.chunkCounter, chunkStartTime, actualDuration);
@@ -816,6 +817,7 @@ export class TrueDifferentialChunkGenerator {
       
       // ファイル保存機能
       let savedFilePath: string | undefined;
+      console.log(`🔍 ファイル保存チェック: enableFileGeneration=${this.config.enableFileGeneration}, tempFolderPath=${this.config.tempFolderPath}`);
       if (this.config.enableFileGeneration && this.config.tempFolderPath) {
         try {
           savedFilePath = await this.saveChunkToFile(finalChunkBlob, this.chunkCounter, chunkStartTime, actualDuration);

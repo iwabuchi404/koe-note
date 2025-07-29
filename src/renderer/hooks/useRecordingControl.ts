@@ -26,6 +26,7 @@ export interface RecordingControlCallbacks {
   onRecordingStart?: () => void
   onRecordingStopped?: () => void
   onError?: (error: Error) => void
+  onTranscriptionUpdate?: (transcriptionText: string) => void
 }
 
 /**
@@ -43,6 +44,9 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
   
   // テスト用: リアルタイム文字起こし強制有効化フラグ
   const FORCE_ENABLE_REALTIME_TRANSCRIPTION = true
+  
+  // 文字起こし結果監視用
+  const transcriptionMonitorRef = useRef<NodeJS.Timeout | null>(null)
 
   /**
    * リアルタイム文字起こしシステムの初期化
@@ -138,14 +142,23 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
             isProcessorStarting = true
             
             const settings = await window.electronAPI.loadSettings()
-            const outputFilePath = `${settings.saveFolder}\\${baseFileName}_realtime.rt.txt`
-            const absoluteChunkFolderPath = `${settings.saveFolder}\\${chunkFolderName}`
+            
+            // 実際のチャンクファイルパスから正しいフォルダパスを取得
+            const actualChunkFolderPath = fileInfo.filepath.substring(0, fileInfo.filepath.lastIndexOf('\\'))
+            const actualBaseFileName = actualChunkFolderPath.substring(actualChunkFolderPath.lastIndexOf('\\') + 1).replace('_chunks', '')
+            const outputFilePath = `${actualChunkFolderPath.substring(0, actualChunkFolderPath.lastIndexOf('\\'))}\\${actualBaseFileName}_realtime.rt.txt`
+            
             logger.info('リアルタイム文字起こし開始', { 
-              input: absoluteChunkFolderPath, 
-              output: outputFilePath 
+              input: actualChunkFolderPath, 
+              output: outputFilePath,
+              detectedFromFile: fileInfo.filepath
             })
             
-            await realtimeProcessorRef.current.start(absoluteChunkFolderPath, outputFilePath)
+            await realtimeProcessorRef.current.start(actualChunkFolderPath, outputFilePath)
+            
+            // 文字起こし結果の監視を開始
+            setupTranscriptionMonitoring(outputFilePath)
+            
             logger.info('FileBasedRealtimeProcessor開始完了')
             
             isProcessorStarting = false
@@ -185,6 +198,95 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
     
     return { baseFileName, chunkFolderName }
   }, [callbacks])
+
+  /**
+   * 文字起こし結果を監視して、UIに更新を通知
+   */
+  const setupTranscriptionMonitoring = useCallback(async (outputFilePath: string) => {
+    logger.info('文字起こし結果監視開始', { outputFilePath })
+    
+    // 既存の監視を停止
+    if (transcriptionMonitorRef.current) {
+      clearInterval(transcriptionMonitorRef.current)
+    }
+    
+    let lastFileSize = 0
+    
+    transcriptionMonitorRef.current = setInterval(async () => {
+      try {
+        // ファイルサイズをチェック
+        const currentSize = await window.electronAPI.getFileSize(outputFilePath)
+        
+        if (currentSize > lastFileSize) {
+          lastFileSize = currentSize
+          
+          // ファイル内容を読み取り
+          const fileContentBuffer = await window.electronAPI.readFile(outputFilePath)
+          let fileContent: string;
+          
+          if (fileContentBuffer instanceof Buffer) {
+            fileContent = fileContentBuffer.toString('utf-8');
+          } else if (fileContentBuffer instanceof Uint8Array) {
+            fileContent = new TextDecoder('utf-8').decode(fileContentBuffer);
+          } else if (typeof fileContentBuffer === 'string') {
+            fileContent = fileContentBuffer;
+          } else {
+            logger.warn('予期しないファイル内容形式', { outputFilePath, type: typeof fileContentBuffer });
+            return;
+          }
+          
+          if (fileContent && callbacks?.onTranscriptionUpdate) {
+            logger.debug('文字起こし結果更新', { fileSize: currentSize, contentLength: fileContent.length })
+            
+            // メタデータ部分を除いて本文のみを抽出
+            const textContent = extractTranscriptionText(fileContent)
+            callbacks.onTranscriptionUpdate(textContent)
+          }
+        }
+      } catch (error) {
+        logger.warn('文字起こし結果監視エラー', { outputFilePath }, error instanceof Error ? error : new Error(String(error)))
+      }
+    }, 2000) // 2秒間隔で監視
+    
+  }, [callbacks, logger])
+
+  /**
+   * ファイル内容から実際の文字起こしテキストを抽出
+   */
+  const extractTranscriptionText = useCallback((fileContent: string): string => {
+    try {
+      // 入力値検証
+      if (typeof fileContent !== 'string') {
+        logger.warn('文字起こしテキスト抽出: 無効な入力形式', { type: typeof fileContent });
+        return String(fileContent);
+      }
+      
+      logger.debug('文字起こしテキスト抽出開始', { 
+        contentLength: fileContent.length, 
+        preview: fileContent.substring(0, 200) 
+      });
+      
+      // ## 本文 セクションを探す
+      const mainTextMatch = fileContent.match(/## 本文\s*\n([\s\S]*?)(?:\n##|$)/);
+      if (mainTextMatch && mainTextMatch[1]) {
+        const extractedText = mainTextMatch[1].trim();
+        logger.debug('本文セクション抽出成功', { extractedLength: extractedText.length });
+        return extractedText;
+      }
+      
+      // フォールバック: メタデータヘッダーがない場合はそのまま返す
+      if (!fileContent.includes('## メタデータ')) {
+        logger.debug('メタデータなしファイル、そのまま返す');
+        return fileContent.trim();
+      }
+      
+      logger.debug('本文セクションが見つからない');
+      return '';
+    } catch (error) {
+      logger.warn('文字起こしテキスト抽出エラー', {}, error instanceof Error ? error : new Error(String(error)));
+      return fileContent; // エラー時は元の内容をそのまま返す
+    }
+  }, [logger])
 
   /**
    * 録音開始（統合版）
@@ -261,6 +363,13 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
       if (trueDiffGeneratorRef.current) {
         trueDiffGeneratorRef.current.stopRecording()
         logger.info('チャンク生成停止完了')
+      }
+      
+      // 文字起こし監視停止
+      if (transcriptionMonitorRef.current) {
+        clearInterval(transcriptionMonitorRef.current)
+        transcriptionMonitorRef.current = null
+        logger.info('文字起こし監視停止完了')
       }
       
       logger.info('録音停止成功')
@@ -342,6 +451,13 @@ export const useRecordingControl = (callbacks?: RecordingControlCallbacks) => {
         logger.error('TrueDifferentialChunkGenerator停止エラー', error instanceof Error ? error : undefined, error)
       }
       trueDiffGeneratorRef.current = null
+    }
+    
+    // 文字起こし監視停止
+    if (transcriptionMonitorRef.current) {
+      clearInterval(transcriptionMonitorRef.current)
+      transcriptionMonitorRef.current = null
+      logger.debug('文字起こし監視停止完了')
     }
     
     logger.info('クリーンアップ完了')

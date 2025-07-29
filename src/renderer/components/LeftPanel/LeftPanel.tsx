@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useAppContext, AudioFile } from '../../App'
+import { useTabContext } from '../../contexts/TabContext'
+import { TabType } from '../../types/TabTypes'
 import SettingsModal from '../SettingsModal/SettingsModal'
 
 // 時間フォーマット関数
@@ -17,6 +19,7 @@ const formatDuration = (seconds: number): string => {
  */
 const LeftPanel: React.FC = () => {
   const { selectedFile, setSelectedFile, setTranscriptionDisplayData, fileList, setFileList, recordingFile } = useAppContext()
+  const { createTab } = useTabContext()
   const [selectedFolder, setSelectedFolder] = useState<string>('')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
@@ -50,17 +53,6 @@ const LeftPanel: React.FC = () => {
               transcriptionPath,
               isRecording: isCurrentlyRecording || false
             }
-            console.log(`📁 ファイル処理結果 (${file.filename}):`, {
-              hasTranscriptionFile,
-              transcriptionPath,
-              duration: file.duration,
-              format: file.format,
-              isRecording: result.isRecording,
-              recordingFileId: recordingFile?.id,
-              recordingFilename: recordingFile?.filename,
-              fileId: file.id,
-              filepath: file.filepath
-            })
             return result
           } catch (error) {
             console.error(`文字起こしファイル確認エラー (${file.filename}):`, error)
@@ -77,12 +69,6 @@ const LeftPanel: React.FC = () => {
       setFileList(extendedFiles)
       console.log('ファイル一覧取得完了:', extendedFiles.length, '件')
       console.log('文字起こしファイル付き:', extendedFiles.filter(f => f.hasTranscriptionFile).length, '件')
-      console.log('ファイル一覧の詳細:', extendedFiles.map(f => ({
-        filename: f.filename,
-        hasTranscriptionFile: f.hasTranscriptionFile,
-        duration: f.duration,
-        format: f.format
-      })))
     } catch (error) {
       console.error('ファイル一覧取得エラー:', error)
       setFileList([])
@@ -233,6 +219,33 @@ const LeftPanel: React.FC = () => {
       setSelectedFile(selectedFileData)
       console.log('ファイル選択:', selectedFileData.filename)
       
+      // プレイヤータブを作成（音声・テキスト統合）
+      if (selectedFileData.format === 'rt.txt') {
+        // 文字起こしテキストファイル
+        createTab(TabType.PLAYER, {
+          filePath: selectedFileData.filepath,
+          fileName: selectedFileData.filename,
+          fileType: 'transcription'
+        })
+      } else if (['webm', 'mp3', 'wav', 'm4a', 'flac'].includes(selectedFileData.format || '')) {
+        // 音声ファイル
+        createTab(TabType.PLAYER, {
+          filePath: selectedFileData.filepath,
+          fileName: selectedFileData.filename,
+          fileType: 'audio',
+          duration: selectedFileData.duration,
+          hasTranscriptionFile: selectedFileData.hasTranscriptionFile,
+          transcriptionPath: selectedFileData.transcriptionPath
+        })
+      } else {
+        // その他のテキストファイル
+        createTab(TabType.PLAYER, {
+          filePath: selectedFileData.filepath,
+          fileName: selectedFileData.filename,
+          fileType: 'text'
+        })
+      }
+      
       // .rt.txt ファイルの場合、右パネルに内容を表示
       if (selectedFileData.format === 'rt.txt') {
         try {
@@ -368,7 +381,7 @@ const LeftPanel: React.FC = () => {
         }
       }
     }
-  }, [fileList, setSelectedFile, setTranscriptionDisplayData])
+  }, [fileList, setSelectedFile, setTranscriptionDisplayData, createTab])
 
   // ファイル削除ハンドラー
   const handleFileDelete = useCallback(async (filepath: string) => {
@@ -474,7 +487,7 @@ const LeftPanel: React.FC = () => {
         )}
 
         {/* ファイル一覧 */}
-        <div className="file-tree">
+        <div className="file-tree" data-testid="file-list">
           {fileList.length === 0 ? (
             <div className="p-sm text-secondary" style={{ fontSize: '12px' }}>
               {selectedFolder ? '音声ファイルがありません' : 'フォルダを選択してください'}
@@ -484,7 +497,7 @@ const LeftPanel: React.FC = () => {
               <div key={file.id}>
                 {/* 音声ファイル */}
                 <div
-                  className={`file-tree__item ${selectedFileId === file.id ? 'file-tree__item--active' : ''}`}
+                  className={`file-tree__item ${selectedFileId === file.id ? 'file-tree__item--active' : ''} file-item`}
                   onClick={() => handleFileSelect(file.id)}
                   onContextMenu={(e) => {
                     e.preventDefault()
@@ -501,6 +514,7 @@ const LeftPanel: React.FC = () => {
                     opacity: (recordingFile && file.id === recordingFile.id) ? 0.7 : 1,
                     border: (recordingFile && file.id === recordingFile.id) ? '1px dashed var(--color-warning)' : 'none'
                   }}
+                  data-testid="file-item"
                 >
                   <span className="file-tree__icon">
                     {(recordingFile && file.id === recordingFile.id) ? '🔴' : 

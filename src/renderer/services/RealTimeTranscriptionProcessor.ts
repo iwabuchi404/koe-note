@@ -159,7 +159,16 @@ export class RealTimeTranscriptionProcessor {
    * 新しいデータをチェックして処理
    */
   private async checkAndProcessNewData(): Promise<void> {
-    if (!this.isProcessing) return;
+    console.log('🕐 RealTimeTranscriptionProcessor: 定期処理実行', { 
+      isProcessing: this.isProcessing, 
+      audioFilePath: this.audioFilePath,
+      lastProcessedOffset: this.lastProcessedOffset 
+    });
+    
+    if (!this.isProcessing) {
+      console.log('❌ RealTimeTranscriptionProcessor: 処理停止中のため早期リターン');
+      return;
+    }
 
     // 処理中フラグの古いエントリをクリーンアップ (5分以上経過したもの)
     this.cleanupOldProcessingFlags();
@@ -178,18 +187,25 @@ export class RealTimeTranscriptionProcessor {
 
     try {
       // 現在のファイルサイズを確認
+      console.log('📊 RealTimeTranscriptionProcessor: ファイルサイズ取得開始', this.audioFilePath);
       const currentFileSize = await window.electronAPI.getFileSize(this.audioFilePath);
       
-      this.logger.debug('ファイルサイズチェック', {
+      console.log('📊 RealTimeTranscriptionProcessor: ファイルサイズチェック', {
         currentFileSize,
         lastProcessedOffset: this.lastProcessedOffset,
-        sizeIncrease: currentFileSize - this.lastProcessedOffset
+        sizeIncrease: currentFileSize - this.lastProcessedOffset,
+        filePath: this.audioFilePath
       });
       
       // ファイルサイズが増加している場合のみ処理
       if (currentFileSize > this.lastProcessedOffset && currentFileSize > TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE) {
         const dataIncrease = currentFileSize - this.lastProcessedOffset;
-        this.logger.debug('新しいデータ検出', { dataIncrease });
+        console.log('🆕 RealTimeTranscriptionProcessor: 新しいデータ検出', { 
+          dataIncrease,
+          currentFileSize,
+          lastProcessedOffset: this.lastProcessedOffset,
+          minFileSize: TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE
+        });
         
         // 推定時間を計算（概算: 1秒あたり約16KB）
         const estimatedDuration = Math.max(dataIncrease / TRANSCRIPTION_CONFIG.REALTIME.BYTES_PER_SECOND, 1);
@@ -203,7 +219,7 @@ export class RealTimeTranscriptionProcessor {
         const actualMinTime = isFirstChunk ? Math.min(minProcessingTime, this.chunkSize) : minProcessingTime;
         
         if (estimatedDuration >= actualMinTime) {
-          this.logger.info('処理開始条件満たしました', {
+          console.log('✅ RealTimeTranscriptionProcessor: 処理開始条件満たしました', {
             estimatedDuration: estimatedDuration.toFixed(1),
             minTime: actualMinTime,
             chunkDuration,
@@ -211,17 +227,24 @@ export class RealTimeTranscriptionProcessor {
           });
           await this.processNewChunk(currentFileSize, chunkDuration);
         } else {
-          this.logger.debug('データ蓄積待機中', {
+          console.log('⏳ RealTimeTranscriptionProcessor: データ蓄積待機中', {
             estimatedDuration: estimatedDuration.toFixed(1),
             minTime: actualMinTime,
             isFirstChunk
           });
         }
-      } else if (currentFileSize <= TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE) {
-        this.logger.debug('ファイルサイズ小さく録音開始直後の可能性');
+      } else {
+        console.log('📉 RealTimeTranscriptionProcessor: 処理条件未達成', {
+          currentFileSize,
+          lastProcessedOffset: this.lastProcessedOffset,
+          minFileSize: TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE,
+          sizeCondition: currentFileSize > this.lastProcessedOffset,
+          minSizeCondition: currentFileSize > TRANSCRIPTION_CONFIG.REALTIME.MIN_FILE_SIZE
+        });
       }
       
     } catch (error) {
+      console.error('❌ RealTimeTranscriptionProcessor: 新しいデータチェック中エラー', error);
       this.logger.error('新しいデータチェック中エラー', error instanceof Error ? error : undefined, error);
     }
   }

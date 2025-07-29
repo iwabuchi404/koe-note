@@ -131,11 +131,36 @@ export class ChunkFileWatcher {
     try {
       console.log(`🔍 ChunkFileWatcher: ファイル監視チェック開始 - フォルダ: ${this.watchFolder}`)
       // フォルダ内のファイル一覧を取得
-      const files = await window.electronAPI.getFileList(this.watchFolder);
+      console.log(`🔍 getFileList呼び出し前 - パス: ${this.watchFolder}`)
+      
+      // パス区切り文字を正規化（バックスラッシュをスラッシュに）
+      const normalizedPath = this.watchFolder.replace(/\\/g, '/');
+      console.log(`🔍 正規化後パス: ${normalizedPath}`)
+      
+      // 両方のパス形式を試す
+      let files: any[] = [];
+      try {
+        files = await window.electronAPI.getFileList(this.watchFolder);
+        console.log(`🔍 オリジナルパスでの結果:`, files)
+      } catch (error) {
+        console.log(`🔍 オリジナルパスでエラー:`, error)
+        try {
+          files = await window.electronAPI.getFileList(normalizedPath);
+          console.log(`🔍 正規化パスでの結果:`, files)
+        } catch (error2) {
+          console.log(`🔍 正規化パスでもエラー:`, error2)
+        }
+      }
+      
       console.log(`📁 ChunkFileWatcher: ${files.length}個のファイル検出`)
       
       if (files.length > 0) {
         console.log(`📋 検出されたファイル:`, files.map(f => f.filename).join(', '))
+        // チャンクファイル判定のデバッグ
+        files.forEach(file => {
+          const isChunk = this.isChunkFile(file.filename)
+          console.log(`🔍 ファイル判定: ${file.filename} → ${isChunk ? 'チャンクファイル' : '非チャンクファイル'}`)
+        })
       }
       
       for (const file of files) {
@@ -192,15 +217,15 @@ export class ChunkFileWatcher {
    * チャンクファイル判定
    */
   private isChunkFile(filename: string): boolean {
-    // timerange_chunk_、truediff_chunk_、differential_chunk_に対応
-    return /^(timerange_chunk_|truediff_chunk_|differential_chunk_)\d{3}\.webm$/.test(filename);
+    // timerange_chunk_、truediff_chunk_、differential_chunk_、chunk_に対応
+    return /^(timerange_chunk_|truediff_chunk_|differential_chunk_|chunk_)\d{3}\.webm$/.test(filename);
   }
 
   /**
    * チャンクファイル名をパース
    */
   private parseChunkFilename(filename: string, fullPath: string): ChunkFileInfo | null {
-    // timerange_chunk_XXX.webm、truediff_chunk_XXX.webm、differential_chunk_XXX.webmに対応
+    // timerange_chunk_XXX.webm、truediff_chunk_XXX.webm、differential_chunk_XXX.webm、chunk_XXX.webmに対応
     const timerangeMatch = filename.match(/^timerange_chunk_(\d{3})\.webm$/);
     if (timerangeMatch) {
       const sequenceNumber = parseInt(timerangeMatch[1], 10);
@@ -232,6 +257,21 @@ export class ChunkFileWatcher {
     const differentialMatch = filename.match(/^differential_chunk_(\d{3})\.webm$/);
     if (differentialMatch) {
       const sequenceNumber = parseInt(differentialMatch[1], 10);
+      return {
+        filename,
+        fullPath,
+        sequenceNumber,
+        timestamp: Date.now(),
+        size: 0, // 後で設定
+        isReady: false,
+        startTimeSeconds: (sequenceNumber - 1) * 20 // 20秒間隔想定
+      };
+    }
+    
+    // chunk_XXX.webm パターンに対応
+    const chunkMatch = filename.match(/^chunk_(\d{3})\.webm$/);
+    if (chunkMatch) {
+      const sequenceNumber = parseInt(chunkMatch[1], 10);
       return {
         filename,
         fullPath,

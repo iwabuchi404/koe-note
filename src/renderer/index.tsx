@@ -6,6 +6,7 @@ if (typeof (globalThis as any).global === 'undefined') {
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { setupMockElectronAPI } from './utils/MockElectronAPI';
 
 // グローバルエラーハンドリング
 window.addEventListener('error', (event) => {
@@ -23,9 +24,11 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled Promise Rejection:', event.reason);
 });
 
-// Electronの環境チェック
+// Electronの環境チェックとモックAPIの設定
 if (!window.electronAPI) {
   console.error('Electron API が利用できません。Electronアプリケーション内で実行してください。');
+  console.log('ブラウザ環境用のモックAPIを設定中...');
+  setupMockElectronAPI();
 } else {
   console.log('Electron API が正常に読み込まれました');
 }

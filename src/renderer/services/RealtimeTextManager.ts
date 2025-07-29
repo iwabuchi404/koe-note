@@ -403,7 +403,14 @@ export class RealtimeTextManager {
       
       // ファイル名にパスが含まれている場合は、ファイル名部分のみを抽出
       const baseFileName = fileName.includes('/') ? fileName.split('/').pop() : fileName;
-      const rtFileName = (baseFileName || fileName).replace(/\.txt$/, '').replace(/\.webm$/, '') + '.rt.txt';
+      
+      // 既に.rt.txtが含まれている場合は追加しない
+      let rtFileName: string;
+      if ((baseFileName || fileName).endsWith('.rt.txt')) {
+        rtFileName = baseFileName || fileName;
+      } else {
+        rtFileName = (baseFileName || fileName).replace(/\.txt$/, '').replace(/\.webm$/, '') + '.rt.txt';
+      }
       
       console.log(`📝 ファイル名抽出: fullPath="${fullPath}", fileName="${fileName}", baseFileName="${baseFileName}", rtFileName="${rtFileName}"`);
       

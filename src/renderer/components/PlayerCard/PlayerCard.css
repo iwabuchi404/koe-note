@@ -1,0 +1,451 @@
+/**
+ * プレイヤーカード - 統合オブジェクトUI
+ */
+
+.player-card {
+  background: var(--color-bg-secondary);
+  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  padding: 20px;
+  margin: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+.player-card:hover {
+  border-color: var(--color-accent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+/* ファイル情報ヘッダー */
+.file-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.file-info {
+  flex: 1;
+}
+
+.file-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-type {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.controls-toggle {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controls-toggle:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.controls-toggle.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+/* メッセージ表示 */
+.message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.message.error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+}
+
+.message-icon {
+  font-size: 16px;
+}
+
+/* 音声プレイヤー */
+.audio-player {
+  margin-bottom: 20px;
+}
+
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.play-button {
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.play-button:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.05);
+}
+
+.time-display {
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  min-width: 100px;
+}
+
+.seek-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.seek-bar::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+}
+
+.audio-controls {
+  display: flex;
+  gap: 20px;
+  padding: 12px 16px;
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-control input[type="range"] {
+  width: 100px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-primary);
+  outline: none;
+}
+
+.volume-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
+/* 文字起こしセクション */
+.transcription-section {
+  background: var(--color-bg-tertiary);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.transcription-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.transcription-header h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+}
+
+.transcribe-button {
+  padding: 8px 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.transcribe-button:hover {
+  background: var(--color-primary-hover);
+}
+
+.transcription-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--color-bg-primary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
+}
+
+.transcription-result {
+  background: var(--color-bg-primary);
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.transcription-result pre {
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+/* テキストエディターセクション */
+.text-editor-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.editor-header h3 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+}
+
+.edit-toggle {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.edit-toggle:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.edit-toggle.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.save-button {
+  padding: 8px 12px;
+  border: 1px solid var(--color-success);
+  border-radius: 6px;
+  background: var(--color-success);
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.save-button:hover {
+  background: var(--color-success-hover);
+  border-color: var(--color-success-hover);
+}
+
+.text-content {
+  flex: 1;
+  background: var(--color-bg-primary);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-editor {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  padding: 16px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.text-editor::placeholder {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.text-viewer {
+  flex: 1;
+  padding: 16px;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+}
+
+.save-indicator {
+  padding: 8px 12px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border-top: 1px solid var(--color-border);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* スクロールバーカスタマイズ */
+.transcription-result,
+.text-viewer {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.transcription-result::-webkit-scrollbar,
+.text-viewer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.transcription-result::-webkit-scrollbar-track,
+.text-viewer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.transcription-result::-webkit-scrollbar-thumb,
+.text-viewer::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+.transcription-result::-webkit-scrollbar-thumb:hover,
+.text-viewer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .player-card {
+    margin: 12px;
+    padding: 16px;
+    height: calc(100vh - 100px);
+  }
+  
+  .file-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .playback-controls {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .play-button {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+  
+  .audio-controls {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .transcription-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  
+  .editor-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+}

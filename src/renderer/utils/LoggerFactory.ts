@@ -23,6 +23,9 @@ export const LogCategories = {
   UI_FILE_LIST: 'UI.FileList',
   UI_SETTINGS: 'UI.Settings',
   
+  // タブシステム
+  TAB_SYSTEM: 'Tab.System',
+  
   // フック
   HOOK_RECORDING_CONTROL: 'Hook.RecordingControl',
   HOOK_DEVICE_MANAGER: 'Hook.DeviceManager',
@@ -108,6 +111,37 @@ export class LoggerFactory {
 
     LoggerFactory.initialized = true
 
+    // デバッグ用にグローバル関数を公開
+    if (typeof window !== 'undefined') {
+      (window as any).setLogLevel = (level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SILENT') => {
+        const logLevel = LogLevel[level as keyof typeof LogLevel]
+        LoggerFactory.setLogLevel(logLevel)
+        console.log(`✅ ログレベルを ${level} に変更しました`)
+      }
+      
+      (window as any).getLogLevel = () => {
+        const currentLevel = LoggerFactory.getCurrentLogLevel()
+        const levelName = LogLevel[currentLevel]
+        console.log(`📊 現在のログレベル: ${levelName}`)
+        return levelName
+      }
+      
+      (window as any).showLogHelp = () => {
+        console.log(`
+📋 ログレベル変更コマンド:
+- setLogLevel('DEBUG')  - デバッグレベル（全てのログを表示）
+- setLogLevel('INFO')   - 情報レベル（情報以上を表示） 
+- setLogLevel('WARN')   - 警告レベル（警告以上を表示）
+- setLogLevel('ERROR')  - エラーレベル（エラーのみ表示）
+- setLogLevel('SILENT') - サイレント（ログ出力なし）
+- getLogLevel()         - 現在のログレベルを確認
+- showLogHelp()         - このヘルプを表示
+        `)
+      }
+      
+      console.log('📋 ログレベル変更機能が利用可能です。showLogHelp() でヘルプを表示できます。')
+    }
+
     // 初期化ログ
     const appLogger = LoggerFactory.getLogger(LogCategories.APP)
     appLogger.info('LoggerFactory初期化完了', {
@@ -180,6 +214,22 @@ export class LoggerFactory {
       level: isDev ? LogLevel.DEBUG : LogLevel.WARN,
       isDevelopment: isDev
     }
+  }
+
+  /**
+   * 動的にログレベルを変更
+   */
+  static setLogLevel(level: LogLevel): void {
+    Logger.setLevel(level)
+    const appLogger = LoggerFactory.getLogger(LogCategories.APP)
+    appLogger.info('ログレベル変更', { newLevel: LogLevel[level] })
+  }
+
+  /**
+   * 現在のログレベルを取得
+   */
+  static getCurrentLogLevel(): LogLevel {
+    return (Logger as any).globalLevel || LogLevel.INFO
   }
 
   /**

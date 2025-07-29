@@ -3,6 +3,7 @@ import './styles/global.css'
 import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
 import { SettingsProvider } from './contexts/SettingsContext'
+import { TabProvider } from './contexts/TabContext'
 import { LoggerFactory, LogCategories } from './utils/LoggerFactory'
 import { initializeLogger, enableLoggerDebugMode } from './utils/LoggerInitializer'
 
@@ -127,12 +128,14 @@ const App: React.FC = () => {
 
   return (
     <SettingsProvider>
-      <AppContext.Provider value={contextValue}>
-        <div className="app">
-          <TitleBar />
-          <MainLayout />
-        </div>
-      </AppContext.Provider>
+      <TabProvider>
+        <AppContext.Provider value={contextValue}>
+          <div className="app">
+            <TitleBar />
+            <MainLayout />
+          </div>
+        </AppContext.Provider>
+      </TabProvider>
     </SettingsProvider>
   )
 }

@@ -82,7 +82,12 @@ export class FileBasedRealtimeProcessor {
     }
     
     // 各コンポーネントを初期化
-    this.chunkWatcher = new ChunkFileWatcher();
+    this.chunkWatcher = new ChunkFileWatcher({
+      watchIntervalMs: this.config.fileCheckInterval,
+      fileStabilityCheckDelay: 500,
+      minFileSize: 1000,
+      enableRealtimeTranscription: true
+    });
     
     this.transcriptionEngine = new FileBasedTranscriptionEngine({
       maxRetryCount: this.config.maxRetryCount,

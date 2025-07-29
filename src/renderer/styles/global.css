@@ -276,7 +276,7 @@ html, body {
 .btn {
   padding: var(--spacing-sm) var(--spacing-md);
   border: var(--border-width) solid var(--color-border);
-  border-radius: var(--border-radius);
+  border-radius: 4px;
   background-color: var(--color-bg-tertiary);
   color: var(--color-text-primary);
   font-family: var(--font-family-ui);
