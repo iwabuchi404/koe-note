@@ -8,6 +8,9 @@ import {
 import { useAppContext } from '../../App';
 import { ChunkTranscriptionManager } from '../../services/ChunkTranscriptionManager';
 import { TRANSCRIPTION_CONFIG } from '../../config/transcriptionConfig';
+import ServerControlSection from '../Transcription/ServerControl/ServerControlSection';
+import ChunkSettingsPanel from '../Transcription/ChunkSettings/ChunkSettingsPanel';
+import TranscriptionProgressPanel from '../Transcription/TranscriptionProgress/TranscriptionProgressPanel';
 
 interface SpeechRecognitionControlProps {
   selectedFile: AudioFile | null;
@@ -491,100 +494,14 @@ const SpeechRecognitionControl: React.FC<SpeechRecognitionControlProps> = ({
       gap: 'var(--spacing-md)',
       background: 'var(--color-bg-primary)'
     }}>
-      {/* サーバー制御とモデル選択（左右並び） */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 'var(--spacing-lg)',
-        justifyContent: 'space-between'
-      }}>
-        {/* サーバー制御（左側） */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 'var(--spacing-md)' 
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 'var(--spacing-sm)' 
-          }}>
-            <span style={{ 
-              fontSize: 'var(--font-size-sm)', 
-              color: 'var(--color-text-secondary)' 
-            }}>
-              サーバー状態:
-            </span>
-            <span style={{ 
-              fontSize: 'var(--font-size-sm)', 
-              color: serverStatus.isRunning ? 'var(--color-success)' : 'var(--color-error)',
-              fontWeight: 'var(--font-weight-medium)'
-            }}>
-              {serverStatus.isRunning ? '🟢 起動中' : '🔴 停止中'}
-            </span>
-          </div>
-
-          <div style={{ 
-            display: 'flex', 
-            gap: 'var(--spacing-sm)' 
-          }}>
-            <button
-              onClick={handleStartServer}
-              disabled={serverStatus.isRunning}
-              className="btn btn--success"
-              style={{
-                fontSize: 'var(--font-size-sm)',
-                padding: '6px 12px',
-                opacity: serverStatus.isRunning ? 0.5 : 1
-              }}
-            >
-              起動
-            </button>
-            <button
-              onClick={handleStopServer}
-              disabled={!serverStatus.isRunning}
-              className="btn btn--error"
-              style={{
-                fontSize: 'var(--font-size-sm)',
-                padding: '6px 12px',
-                opacity: !serverStatus.isRunning ? 0.5 : 1
-              }}
-            >
-              停止
-            </button>
-          </div>
-        </div>
-
-        {/* モデル選択（右側） */}
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 'var(--spacing-md)' 
-        }}>
-          <label style={{ 
-            fontSize: 'var(--font-size-sm)', 
-            color: 'var(--color-text-secondary)',
-            minWidth: '80px'
-          }}>
-            モデル:
-          </label>
-          <select
-            value={selectedModel}
-            onChange={(e) => handleModelChange(e.target.value)}
-            disabled={isChangingModel || isTranscribing}
-            className="select"
-            style={{
-              fontSize: 'var(--font-size-sm)',
-              padding: '6px 8px',
-              minWidth: '200px'
-            }}
-          >
-            <option value="small">kotoba-whisper-small (高速)</option>
-            <option value="kotoba-tech/kotoba-whisper-v2.0-faster">kotoba-whisper-medium (高精度)</option>
-            <option value="large-v2">kotoba-whisper-large-v2 (最高精度)</option>
-          </select>
-        </div>
-      </div>
+      {/* サーバー制御とモデル選択 */}
+      <ServerControlSection
+        currentModel={selectedModel}
+        onModelChange={handleModelChange}
+        isChangingModel={isChangingModel}
+        onServerStart={handleStartServer}
+        onServerStop={handleStopServer}
+      />
 
       {/* 音声認識実行 */}
       <div>
@@ -689,280 +606,21 @@ const SpeechRecognitionControl: React.FC<SpeechRecognitionControlProps> = ({
         )}
       </div>
 
-      {/* 通常文字起こし進捗表示 */}
-      {transcriptionProgress && (
-        <div style={{
-          padding: 'var(--spacing-md)',
-          backgroundColor: 'rgba(255, 204, 2, 0.1)',
-          border: '1px solid var(--color-warning)',
-          borderRadius: 'var(--border-radius)'
-        }}>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'var(--font-size-sm)',
-            color: 'var(--color-text-primary)'
-          }}>
-            {transcriptionProgress}
-          </p>
-        </div>
-      )}
-
-      {/* チャンク分割文字起こし進捗表示 */}
-      {chunkProgress.isTranscribing && (
-        <div style={{
-          padding: 'var(--spacing-md)',
-          backgroundColor: 'rgba(0, 123, 255, 0.1)',
-          border: '1px solid var(--color-accent)',
-          borderRadius: 'var(--border-radius)',
-          marginTop: 'var(--spacing-sm)'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            marginBottom: 'var(--spacing-sm)'
-          }}>
-            <span style={{ 
-              fontSize: 'var(--font-size-sm)',
-              fontWeight: 'var(--font-weight-medium)',
-              color: 'var(--color-text-primary)'
-            }}>
-              ⚡ チャンク分割処理中
-            </span>
-            <span style={{ 
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)'
-            }}>
-              {chunkProgress.processedChunks} / {chunkProgress.totalChunks} チャンク
-            </span>
-          </div>
-          
-          {/* 進捗バー */}
-          <div style={{
-            width: '100%',
-            height: '8px',
-            backgroundColor: 'var(--color-bg-tertiary)',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            marginBottom: 'var(--spacing-sm)'
-          }}>
-            <div style={{
-              width: `${chunkProgress.totalChunks > 0 ? (chunkProgress.processedChunks / chunkProgress.totalChunks) * 100 : 0}%`,
-              height: '100%',
-              backgroundColor: 'var(--color-accent)',
-              transition: 'width 0.3s ease'
-            }} />
-          </div>
-          
-          {/* 詳細情報 */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-text-secondary)'
-          }}>
-            <span>
-              現在処理中: チャンク {chunkProgress.currentProcessingChunk}
-            </span>
-            <span>
-              推定残り時間: {chunkProgress.estimatedTimeRemaining > 0 ? 
-                `${Math.ceil(chunkProgress.estimatedTimeRemaining)}秒` : 
-                '計算中...'}
-            </span>
-          </div>
-          
-          {chunkProgress.failedChunks > 0 && (
-            <div style={{
-              marginTop: 'var(--spacing-sm)',
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-error)'
-            }}>
-              ⚠️ 失敗したチャンク: {chunkProgress.failedChunks}個
-            </div>
-          )}
-        </div>
-      )}
+      {/* 文字起こし進捗表示 */}
+      <TranscriptionProgressPanel
+        progress={chunkProgress}
+        transcriptionProgress={transcriptionProgress}
+        error={error}
+        isTranscribing={isTranscribing || chunkProgress.isTranscribing}
+      />
 
       {/* チャンク分割設定パネル */}
-      <div style={{
-        padding: 'var(--spacing-md)',
-        backgroundColor: 'var(--color-bg-tertiary)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--border-radius)',
-        marginTop: 'var(--spacing-sm)'
-      }}>
-        <div style={{
-          fontSize: 'var(--font-size-sm)',
-          fontWeight: 'var(--font-weight-medium)',
-          color: 'var(--color-text-primary)',
-          marginBottom: 'var(--spacing-sm)'
-        }}>
-          ⚙️ チャンク分割設定
-        </div>
-        
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 'var(--spacing-sm)',
-          marginBottom: 'var(--spacing-sm)'
-        }}>
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              marginBottom: '2px'
-            }}>
-              チャンクサイズ
-            </label>
-            <select
-              value={chunkSettings.chunkSize}
-              onChange={(e) => updateChunkSettings({ chunkSize: parseInt(e.target.value) })}
-              disabled={chunkProgress.isTranscribing}
-              className="select"
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                padding: '4px 6px',
-                width: '100%'
-              }}
-            >
-              <option value={10}>10秒</option>
-              <option value={15}>15秒</option>
-              <option value={20}>20秒</option>
-              <option value={30}>30秒</option>
-            </select>
-          </div>
-          
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              marginBottom: '2px'
-            }}>
-              オーバーラップ
-            </label>
-            <select
-              value={chunkSettings.overlapSize}
-              onChange={(e) => updateChunkSettings({ overlapSize: parseInt(e.target.value) })}
-              disabled={chunkProgress.isTranscribing}
-              className="select"
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                padding: '4px 6px',
-                width: '100%'
-              }}
-            >
-              <option value={0.5}>0.5秒</option>
-              <option value={1}>1秒</option>
-              <option value={2}>2秒</option>
-              <option value={3}>3秒</option>
-            </select>
-          </div>
-        </div>
-        
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: 'var(--spacing-sm)'
-        }}>
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              marginBottom: '2px'
-            }}>
-              並列処理数
-            </label>
-            <select
-              value={chunkSettings.maxConcurrency}
-              onChange={(e) => updateChunkSettings({ maxConcurrency: parseInt(e.target.value) })}
-              disabled={chunkProgress.isTranscribing}
-              className="select"
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                padding: '4px 6px',
-                width: '100%'
-              }}
-            >
-              <option value={1}>1チャンク</option>
-              <option value={2}>2チャンク</option>
-              <option value={3}>3チャンク</option>
-            </select>
-          </div>
-          
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              marginBottom: '2px'
-            }}>
-              品質モード
-            </label>
-            <select
-              value={chunkSettings.qualityMode}
-              onChange={(e) => updateChunkSettings({ qualityMode: e.target.value as 'speed' | 'balance' | 'accuracy' })}
-              disabled={chunkProgress.isTranscribing}
-              className="select"
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                padding: '4px 6px',
-                width: '100%'
-              }}
-            >
-              <option value="speed">速度優先</option>
-              <option value="balance">バランス</option>
-              <option value="accuracy">精度優先</option>
-            </select>
-          </div>
-        </div>
-        
-        <div style={{
-          marginTop: 'var(--spacing-sm)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--spacing-sm)'
-        }}>
-          <input
-            type="checkbox"
-            id="autoScroll"
-            checked={chunkSettings.enableAutoScroll}
-            onChange={(e) => updateChunkSettings({ enableAutoScroll: e.target.checked })}
-            disabled={chunkProgress.isTranscribing}
-            style={{ margin: 0 }}
-          />
-          <label 
-            htmlFor="autoScroll"
-            style={{
-              fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-text-secondary)',
-              cursor: chunkProgress.isTranscribing ? 'not-allowed' : 'pointer'
-            }}
-          >
-            自動スクロール
-          </label>
-        </div>
-      </div>
+      <ChunkSettingsPanel
+        settings={chunkSettings}
+        onSettingsChange={updateChunkSettings}
+        disabled={chunkProgress.isTranscribing}
+      />
 
-      {/* エラー表示 */}
-      {error && (
-        <div style={{
-          padding: 'var(--spacing-md)',
-          backgroundColor: 'rgba(244, 71, 71, 0.1)',
-          border: '1px solid var(--color-error)',
-          borderRadius: 'var(--border-radius)'
-        }}>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'var(--font-size-sm)', 
-            color: 'var(--color-error)'
-          }}>
-            {error}
-          </p>
-        </div>
-      )}
 
       {/* 上書き確認モーダル */}
       {showOverwriteModal && (
