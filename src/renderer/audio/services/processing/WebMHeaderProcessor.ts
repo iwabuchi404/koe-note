@@ -11,6 +11,7 @@
  */
 
 import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory';
+import { SimpleBlockAligner, AlignmentResult } from './SimpleBlockAligner';
 
 export interface WebMHeaderInfo {
   fullHeader: Uint8Array;
@@ -28,6 +29,24 @@ export interface WebMProcessingResult {
 export class WebMHeaderProcessor {
   private logger = LoggerFactory.getLogger(LogCategories.AUDIO_WEBM_PROCESSOR);
   private cachedHeaderInfo: WebMHeaderInfo | null = null;
+  private simpleBlockAligner: SimpleBlockAligner;
+  
+  // 保守的アライメント設定（生音声データ対応版 - 実データ分析版）
+  private readonly ENABLE_ALIGNMENT = true; // アライメント機能の有効化
+  private readonly SAFE_TRIM_THRESHOLD = 300; // 実データ分析に基づく閾値（160-940バイト範囲の中央値）
+  private readonly DETECTION_ONLY_MODE = false; // 検出のみモード（実際のトリミングを無効化）
+
+  constructor() {
+    console.log('🔧 WebMHeaderProcessor: コンストラクタ開始');
+    this.simpleBlockAligner = new SimpleBlockAligner(true);
+    console.log('🔧 WebMHeaderProcessor: SimpleBlockAligner作成完了');
+    this.logger.info('WebMHeaderProcessor初期化完了 - 保守的アライメント統合', {
+      enableAlignment: this.ENABLE_ALIGNMENT,
+      safeTrimThreshold: this.SAFE_TRIM_THRESHOLD,
+      detectionOnlyMode: this.DETECTION_ONLY_MODE
+    });
+    console.log('🔧 WebMHeaderProcessor: 初期化完了');
+  }
 
   /**
    * 最初のチャンクからWebMヘッダーを抽出
@@ -266,7 +285,137 @@ export class WebMHeaderProcessor {
   }
 
   /**
-   * チャンク用のヘッダー付きBlobを作成
+   * 生音声データのアライメント処理
+   */
+  async alignAudioData(rawAudioData: Uint8Array): Promise<Uint8Array> {
+    if (!this.ENABLE_ALIGNMENT || rawAudioData.length === 0) {
+      console.log('🎯 アライメントスキップ', { enableAlignment: this.ENABLE_ALIGNMENT, dataSize: rawAudioData.length });
+      return rawAudioData;
+    }
+
+    try {
+      console.log('🎯 生音声データアライメント開始', { dataSize: rawAudioData.length });
+      const alignmentResult = this.simpleBlockAligner.alignChunkToSimpleBlock(rawAudioData);
+      console.log('🎯 生音声データアライメント結果', {
+        trimmedBytes: alignmentResult.trimmedBytes,
+        confidence: alignmentResult.confidence,
+        simpleBlockFound: alignmentResult.simpleBlockFound
+      });
+
+      // 保守的アライメント判定
+      let useAlignedData = false;
+      let reason = '';
+
+      if (this.DETECTION_ONLY_MODE) {
+        reason = '検出のみモード - 元データを使用';
+      } else if (alignmentResult.trimmedBytes > this.SAFE_TRIM_THRESHOLD) {
+        reason = `トリミング量が閾値超過 (${alignmentResult.trimmedBytes} > ${this.SAFE_TRIM_THRESHOLD}) - 元データを使用`;
+      } else if (alignmentResult.confidence < 0.6) {
+        reason = `信頼度が低い (${alignmentResult.confidence.toFixed(3)} < 0.6) - 元データを使用`;
+      } else if (!alignmentResult.simpleBlockFound) {
+        reason = 'SimpleBlock未検出 - 元データを使用';
+      } else if (alignmentResult.diagnostics.recommendedAction === 'reject_chunk') {
+        reason = 'チャンク品質不良 - 元データを使用';
+      } else {
+        useAlignedData = true;
+        reason = '保守的アライメント適用';
+      }
+
+      console.log('🎯 生音声データアライメント判定結果', {
+        useAlignedData,
+        reason,
+        alignmentApplied: useAlignedData
+      });
+
+      return useAlignedData ? alignmentResult.alignedData : rawAudioData;
+
+    } catch (error) {
+      this.logger.error('生音声データアライメントエラー - 元データを使用', error instanceof Error ? error : undefined, error);
+      return rawAudioData;
+    }
+  }
+
+  /**
+   * 保守的アライメントを適用したヘッダー付きチャンク作成（非推奨）
+   */
+  createAlignedHeaderedChunk(chunkData: Uint8Array, useMinimal: boolean = false): Blob {
+    console.log('🎯 createAlignedHeaderedChunk呼び出し', { dataSize: chunkData.length, useMinimal });
+    
+    if (!this.ENABLE_ALIGNMENT) {
+      console.log('🎯 アライメント無効 - 通常処理に移行');
+      return this.createHeaderedChunk(chunkData, useMinimal);
+    }
+
+    try {
+      console.log('🎯 SimpleBlockAligner呼び出し開始', { dataSize: chunkData.length });
+      const alignmentResult = this.simpleBlockAligner.alignChunkToSimpleBlock(chunkData);
+      console.log('🎯 SimpleBlockAligner呼び出し完了', { 
+        trimmedBytes: alignmentResult.trimmedBytes,
+        confidence: alignmentResult.confidence,
+        simpleBlockFound: alignmentResult.simpleBlockFound 
+      });
+      
+      console.log('🎯 SimpleBlockアライメント詳細', {
+        originalSize: chunkData.length,
+        alignedSize: alignmentResult.alignedData.length,
+        trimmedBytes: alignmentResult.trimmedBytes,
+        confidence: alignmentResult.confidence.toFixed(3),
+        simpleBlockFound: alignmentResult.simpleBlockFound,
+        recommendedAction: alignmentResult.diagnostics.recommendedAction,
+        alignmentApplied: false // 初期値、後で更新
+      });
+      this.logger.info('SimpleBlockアライメント詳細', {
+        originalSize: chunkData.length,
+        alignedSize: alignmentResult.alignedData.length,
+        trimmedBytes: alignmentResult.trimmedBytes,
+        confidence: alignmentResult.confidence.toFixed(3),
+        simpleBlockFound: alignmentResult.simpleBlockFound,
+        recommendedAction: alignmentResult.diagnostics.recommendedAction,
+        alignmentApplied: false // 初期値、後で更新
+      });
+
+      // 保守的アライメント判定
+      let useAlignedData = false;
+      let reason = '';
+
+      if (this.DETECTION_ONLY_MODE) {
+        reason = '検出のみモード - 元データを使用';
+      } else if (alignmentResult.trimmedBytes > this.SAFE_TRIM_THRESHOLD) {
+        reason = `トリミング量が閾値超過 (${alignmentResult.trimmedBytes} > ${this.SAFE_TRIM_THRESHOLD}) - 元データを使用`;
+      } else if (alignmentResult.confidence < 0.6) {
+        reason = `信頼度が低い (${alignmentResult.confidence.toFixed(3)} < 0.6) - 元データを使用`;
+      } else if (!alignmentResult.simpleBlockFound) {
+        reason = 'SimpleBlock未検出 - 元データを使用';
+      } else if (alignmentResult.diagnostics.recommendedAction === 'reject_chunk') {
+        reason = 'チャンク品質不良 - 元データを使用';
+      } else {
+        useAlignedData = true;
+        reason = '保守的アライメント適用';
+      }
+
+      // 判定結果をログに記録
+      console.log('🎯 保守的アライメント判定結果', {
+        useAlignedData,
+        reason,
+        alignmentApplied: useAlignedData
+      });
+      this.logger.info('保守的アライメント判定結果', {
+        useAlignedData,
+        reason,
+        alignmentApplied: useAlignedData
+      });
+
+      const finalData = useAlignedData ? alignmentResult.alignedData : chunkData;
+      return this.createHeaderedChunk(finalData, useMinimal);
+
+    } catch (error) {
+      this.logger.error('アライメント処理エラー - 元データを使用', error instanceof Error ? error : undefined, error);
+      return this.createHeaderedChunk(chunkData, useMinimal);
+    }
+  }
+
+  /**
+   * チャンク用のヘッダー付きBlobを作成（従来版）
    */
   createHeaderedChunk(chunkData: Uint8Array, useMinimal: boolean = false): Blob {
     try {

@@ -80,7 +80,11 @@ export const LogCategories = {
   // チャンクシステム
   CHUNK_PROCESSOR: 'Chunk.Processor',
   CHUNK_MANAGER: 'Chunk.Manager',
-  CHUNK_WATCHER: 'Chunk.Watcher'
+  CHUNK_WATCHER: 'Chunk.Watcher',
+  
+  // SimpleBlockアライメント
+  SIMPLEBLOCK_ALIGNER: 'Audio.SimpleBlockAligner',
+  WEBM_CHUNK_VALIDATOR: 'Audio.WebMChunkValidator'
 } as const
 
 export type LogCategory = typeof LogCategories[keyof typeof LogCategories]

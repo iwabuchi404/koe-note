@@ -257,10 +257,17 @@ export class AudioChunkGenerator {
         finalChunk = combinedBlob;
         this.logger.debug('1チャンク目: 元データを使用');
       } else {
-        // 2チャンク目以降はヘッダーを付加
-        const chunkData = new Uint8Array(await combinedBlob.arrayBuffer());
-        finalChunk = this.webmProcessor.createHeaderedChunk(chunkData, false);
-        this.logger.debug('2チャンク目以降: ヘッダー付加完了');
+        // 2チャンク目以降: 正しい処理順序（生音声データ → アライメント → ヘッダー追加）
+        const rawAudioData = new Uint8Array(await combinedBlob.arrayBuffer());
+        this.logger.debug('生音声データ取得', { size: rawAudioData.length });
+        
+        // 1. 生音声データのアライメント処理
+        const alignedAudioData = await this.webmProcessor.alignAudioData(rawAudioData);
+        this.logger.debug('音声データアライメント完了', { originalSize: rawAudioData.length, alignedSize: alignedAudioData.length });
+        
+        // 2. アライメント済み音声データにヘッダー追加
+        finalChunk = this.webmProcessor.createHeaderedChunk(alignedAudioData, false);
+        this.logger.debug('2チャンク目以降: 正しい順序処理完了（生音声→アライメント→ヘッダー追加）');
       }
 
       // バッファクリア
