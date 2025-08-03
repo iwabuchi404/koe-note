@@ -44,6 +44,8 @@ const TabBar: React.FC = () => {
         return '🏠'
       case TabType.RECORDING:
         return status === TabStatus.RECORDING ? '⏺️' : '🎙️'
+      case TabType.ADVANCED_RECORDING:
+        return status === TabStatus.RECORDING ? '🔴' : '🚀'
       case TabType.PLAYER:
         return status === TabStatus.PLAYING ? '▶️' : status === TabStatus.EDITING ? '✏️' : '📄'
       default:

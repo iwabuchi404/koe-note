@@ -1754,4 +1754,63 @@ ipcMain.handle('audio:loadPartialFile', async (event, audioFilePath: string): Pr
   }
 });
 
+// テキストファイル保存ハンドラー（新録音システム用）
+ipcMain.handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {
+  try {
+    writeLog(`テキストファイル保存: ${filePath}`);
+    
+    // ディレクトリを作成（存在しない場合）
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+      writeLog(`ディレクトリ作成: ${directory}`);
+    }
+    
+    // ファイル保存
+    fs.writeFileSync(filePath, content, 'utf8');
+    writeLog(`テキストファイル保存完了: ${filePath}`);
+    
+    return true;
+  } catch (error) {
+    writeLog(`テキストファイル保存エラー: ${error}`);
+    return false;
+  }
+});
+
+// バイナリファイル保存ハンドラー（新録音システム用）
+ipcMain.handle('file:saveToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
+  try {
+    writeLog(`バイナリファイル保存: ${filePath}`);
+    
+    // ディレクトリを作成（存在しない場合）
+    const directory = path.dirname(filePath);
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+      writeLog(`ディレクトリ作成: ${directory}`);
+    }
+    
+    // ファイル保存
+    fs.writeFileSync(filePath, buffer);
+    writeLog(`バイナリファイル保存完了: ${filePath} (${buffer.length} bytes)`);
+    
+    return true;
+  } catch (error) {
+    writeLog(`バイナリファイル保存エラー: ${error}`);
+    return false;
+  }
+});
+
+// 作業ディレクトリ取得ハンドラー
+ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
+  try {
+    // デスクトップのVoiceRecordingsフォルダをデフォルトとして返す
+    const workingDirectory = path.join(app.getPath('desktop'), 'VoiceRecordings');
+    writeLog(`作業ディレクトリ取得: ${workingDirectory}`);
+    return workingDirectory;
+  } catch (error) {
+    writeLog(`作業ディレクトリ取得エラー: ${error}`);
+    return './recordings';
+  }
+});
+
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）

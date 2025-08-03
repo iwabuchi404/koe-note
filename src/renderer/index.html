@@ -65,6 +65,22 @@
         }
     </script>
     
+    <!-- lamejs: グローバルスコープに読み込み（ビルドツール最適化を回避） -->
+    <script src="../lame.min.js"></script>
+    <script>
+        // lamejs読み込み確認
+        console.log('🎵 lame.min.js読み込み後の確認:', {
+            lamejs: typeof lamejs,
+            Mp3Encoder: typeof lamejs?.Mp3Encoder,
+            keys: lamejs ? Object.keys(lamejs) : 'undefined'
+        });
+        
+        // エラー時の詳細情報
+        if (typeof lamejs === 'undefined') {
+            console.error('🎵 lamejs が定義されていません！lame.min.jsの読み込みに失敗した可能性があります。');
+        }
+    </script>
+    
     <script src="renderer.js"></script>
 </body>
 </html>

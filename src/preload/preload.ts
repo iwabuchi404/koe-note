@@ -7,6 +7,8 @@ export interface ElectronAPI {
   
   // ファイル操作
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => Promise<string>;
+  saveFileToPath: (filePath: string, data: ArrayBuffer | Blob) => Promise<boolean>;
+  saveTextFile: (filePath: string, content: string) => Promise<boolean>;
   getFileList: (folderPath: string) => Promise<AudioFile[]>;
   deleteFile: (filePath: string) => Promise<boolean>;
   loadAudioFile: (filePath: string) => Promise<string | null>;
@@ -14,6 +16,8 @@ export interface ElectronAPI {
   getFileSize: (filePath: string) => Promise<number>;
   getDiskSpace: (dirPath: string) => Promise<{ free: number; total: number }>;
   readFile: (filePath: string) => Promise<Buffer>;
+  getWorkingDirectory: () => Promise<string>;
+  showSaveDialog: (options: { defaultPath: string, filters: Array<{ name: string, extensions: string[] }> }) => Promise<string | null>;
   
   // 設定
   loadSettings: () => Promise<AppSettings>;
@@ -202,6 +206,17 @@ const electronAPI: ElectronAPI = {
   // ファイル操作
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => 
     ipcRenderer.invoke('file:save', Buffer.from(buffer), filename, subfolder),
+  saveFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
+    let buffer: ArrayBuffer;
+    if (data instanceof Blob) {
+      buffer = await data.arrayBuffer();
+    } else {
+      buffer = data;
+    }
+    return ipcRenderer.invoke('file:saveToPath', filePath, Buffer.from(buffer));
+  },
+  saveTextFile: (filePath: string, content: string) => 
+    ipcRenderer.invoke('file:saveText', filePath, content),
   getFileList: (folderPath: string) => 
     ipcRenderer.invoke('file:getList', folderPath),
   deleteFile: (filePath: string) => 
@@ -216,6 +231,10 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('file:getDiskSpace', dirPath),
   readFile: (filePath: string) => 
     ipcRenderer.invoke('file:read', filePath),
+  getWorkingDirectory: () =>
+    ipcRenderer.invoke('file:getWorkingDirectory'),
+  showSaveDialog: (options: { defaultPath: string, filters: Array<{ name: string, extensions: string[] }> }) =>
+    ipcRenderer.invoke('dialog:showSaveDialog', options),
   
   // 設定
   loadSettings: () => 

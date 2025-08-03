@@ -36,6 +36,8 @@ export class TranscriptionWebSocketService {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectDelay: number = 2000; // 2秒
+  private pendingChunks: Map<string, number> = new Map(); // timestamp -> chunkNumber のマッピング
+  private lastSentChunkNumber: number = 0; // 最後に送信したチャンク番号（フォールバック用）
   
   // イベントコールバック
   private onConnectionChange: (connected: boolean) => void;
@@ -146,8 +148,21 @@ export class TranscriptionWebSocketService {
         
       case 'chunk_progress':
         // チャンク処理進捗
+        let progressChunkNumber = data.chunkNumber || 0;
+        
+        // 進捗でもchunkNumber=0の場合は推定（ただし削除はしない）
+        if (progressChunkNumber === 0 && this.pendingChunks.size > 0) {
+          const oldestEntry = Array.from(this.pendingChunks.entries())
+            .sort(([timestampA], [timestampB]) => parseInt(timestampA) - parseInt(timestampB))[0];
+          
+          if (oldestEntry) {
+            progressChunkNumber = oldestEntry[1];
+            console.log('🔗 進捗: 最古のチャンク番号を推定:', { chunkNumber: progressChunkNumber, status: data.status });
+          }
+        }
+        
         this.onTranscriptionProgress({
-          chunkNumber: data.chunkNumber || 0,
+          chunkNumber: progressChunkNumber,
           status: data.status,
           message: data.message
         });
@@ -155,15 +170,59 @@ export class TranscriptionWebSocketService {
         
       case 'chunk_result':
         // チャンク文字起こし結果
+        console.log('🔗 文字起こし結果受信:', data.result?.text || '(空文字)', { serverData: data });
+        
         if (data.status === 'completed' && data.result) {
+          // segmentsからtextを生成（サーバーがtextを返さない場合の対策）
+          let resultText = data.result.text || '';
+          if (!resultText && data.result.segments && data.result.segments.length > 0) {
+            resultText = data.result.segments
+              .map((segment: any) => segment.text)
+              .filter((text: string) => text && text.trim())
+              .join(' ')
+              .trim();
+          }
+          
+          // chunkNumberを特定（timestampベースのフォールバック）
+          let chunkNumber = data.chunkNumber || 0;
+          
+          // サーバーがchunkNumber=0を返す場合、pendingChunksから最も古いものを取得
+          if (chunkNumber === 0) {
+            console.log('🔗 chunkNumber=0のため、pendingChunksから推定:', { pendingChunks: Array.from(this.pendingChunks.entries()) });
+            
+            if (this.pendingChunks.size > 0) {
+              // 最も古いタイムスタンプ（最初に送信されたチャンク）を取得
+              const oldestEntry = Array.from(this.pendingChunks.entries())
+                .sort(([timestampA], [timestampB]) => parseInt(timestampA) - parseInt(timestampB))[0];
+              
+              if (oldestEntry) {
+                chunkNumber = oldestEntry[1];
+                this.pendingChunks.delete(oldestEntry[0]);
+                console.log('🔗 最古のチャンク番号を使用:', { chunkNumber, timestamp: oldestEntry[0] });
+              } else {
+                // フォールバックとして最後に送信したチャンク番号を使用
+                chunkNumber = this.lastSentChunkNumber;
+                console.log('🔗 フォールバック: 最後のチャンク番号を使用:', chunkNumber);
+              }
+            }
+          } else if (data.timestamp) {
+            // chunkNumberが正常に返された場合、対応するタイムスタンプを削除
+            const mappedChunkNumber = this.pendingChunks.get(data.timestamp.toString());
+            if (mappedChunkNumber !== undefined) {
+              this.pendingChunks.delete(data.timestamp.toString());
+            }
+          }
+          
           const result: TranscriptionResult = {
-            chunkNumber: data.chunkNumber || 0,
-            text: data.result.text || '',
+            chunkNumber,
+            text: resultText,
             segments: data.result.segments || [],
             timestamp: Date.now()
           };
+          console.log('🔗 変換後の結果:', result);
           this.onTranscriptionResult(result);
         } else {
+          console.log('🔗 文字起こし失敗:', data);
           this.onTranscriptionProgress({
             chunkNumber: data.chunkNumber || 0,
             status: 'failed',
@@ -221,7 +280,11 @@ export class TranscriptionWebSocketService {
         timestamp: chunk.timestamp
       };
       
-      console.log(`🔗 チャンク#${chunk.chunkNumber}を送信 (${(chunk.audioData.size / 1024).toFixed(1)}KB)`);
+      // chunkNumberとtimestampのマッピングを保存
+      this.pendingChunks.set(chunk.timestamp.toString(), chunk.chunkNumber);
+      this.lastSentChunkNumber = chunk.chunkNumber; // 最後に送信したチャンク番号を記録
+      
+      console.log(`🔗 チャンク#${chunk.chunkNumber}を送信 (${(chunk.audioData.size / 1024).toFixed(1)}KB)`, { chunkNumber: chunk.chunkNumber, timestamp: chunk.timestamp, pendingChunks: this.pendingChunks.size });
       this.ws.send(JSON.stringify(message));
       
       return true;

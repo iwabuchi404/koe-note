@@ -27,8 +27,16 @@ const MainControlPanel: React.FC = () => {
   // ワークフローオプション定義
   const workflowOptions: WorkflowOption[] = [
     {
+      action: WorkflowAction.ADVANCED_RECORD_WITH_TRANSCRIPTION,
+      title: '🚀 録音、文字起こし（新）',
+      description: 'AudioWorklet + lamejs録音 + リアルタイム文字起こし',
+      icon: '🚀',
+      shortcut: 'Ctrl+Shift+R',
+      color: 'success'
+    },
+    {
       action: WorkflowAction.RECORD_WITH_TRANSCRIPTION,
-      title: '🎙️ 録音開始',
+      title: '🎙️ 録音開始（従来）',
       description: '音声録音を開始（文字起こし設定可能）',
       icon: '🎙️',
       shortcut: 'Ctrl+R',
@@ -55,6 +63,26 @@ const MainControlPanel: React.FC = () => {
     logger.info('ワークフロー開始', { action })
 
     switch (action) {
+      case WorkflowAction.ADVANCED_RECORD_WITH_TRANSCRIPTION:
+        // 新録音システムタブを作成
+        createTab(TabType.ADVANCED_RECORDING, {
+          recordingSettings: {
+            source: 'microphone',
+            deviceId: undefined,
+            chunkSize: 64,  // 64KB
+            chunkDuration: 3.0, // 3秒
+            chunkSizeMode: 'duration', // 秒数指定をデフォルトに
+            format: 'mp3'
+          },
+          transcriptionSettings: {
+            enabled: true,
+            serverUrl: 'ws://localhost:8770',
+            language: 'ja',
+            model: 'small'
+          }
+        })
+        break
+
       case WorkflowAction.RECORD_WITH_TRANSCRIPTION:
         // 録音タブを作成（デフォルトは文字起こしON）
         createTab(TabType.RECORDING, { 
