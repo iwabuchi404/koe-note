@@ -10,6 +10,8 @@ import { TabStatus } from '../../types/TabTypes'
 import { useDeviceManager } from '../../hooks/useDeviceManager'
 import { useSettings } from '../../contexts/SettingsContext'
 import { useRecordingControl } from '../../hooks/useRecordingControl'
+import { ToneRecorderTest } from '../ToneRecorderTest/ToneRecorderTest'
+import { AudioWorkletTest } from '../AudioWorkletTest/AudioWorkletTest'
 import './RecordingCard.css'
 
 interface RecordingCardProps {
@@ -18,6 +20,32 @@ interface RecordingCardProps {
 }
 
 const RecordingCard: React.FC<RecordingCardProps> = ({ tabId, data }) => {
+  // AudioWorklet WAV テストモードの場合は専用コンポーネントを表示
+  if (data?.isToneTest) {
+    return (
+      <div className="recording-card" data-testid="tone-test-card">
+        <div className="test-header">
+          <h3>🎶 AudioWorklet WAV録音テスト</h3>
+          <p>AudioWorkletNode使用、WAV録音テスト</p>
+        </div>
+        <ToneRecorderTest />
+      </div>
+    )
+  }
+
+  // AudioWorklet + lamejs テストモードの場合は専用コンポーネントを表示
+  if (data?.isAudioWorkletTest) {
+    return (
+      <div className="recording-card" data-testid="audioworklet-test-card">
+        <div className="test-header">
+          <h3>🔬 AudioWorklet + MP3録音テスト</h3>
+          <p>AudioWorklet + lamejsリアルタイムMP3エンコード</p>
+        </div>
+        <AudioWorkletTest />
+      </div>
+    )
+  }
+
   const { updateTab } = useTabContext()
   const deviceManager = useDeviceManager()
   const { settings } = useSettings()

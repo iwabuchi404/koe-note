@@ -70,10 +70,12 @@
     "dayjs": "^1.11.10",
     "events": "^3.3.0",
     "fix-webm-duration": "^1.0.6",
+    "lamejs": "^1.2.1",
     "process": "^0.11.10",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hotkeys-hook": "^4.4.1",
+    "tone": "^15.2.7",
     "util": "^0.12.5",
     "ws": "^8.18.3"
   },

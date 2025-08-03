@@ -159,6 +159,24 @@ const MainControlPanel: React.FC = () => {
             <div className="card-description">既存のテキストファイルを開いて編集</div>
           </div>
         </div>
+        
+        {/* AudioWorklet WAV テストカード */}
+        <div className="action-card info" onClick={() => createTab(TabType.RECORDING, { isToneTest: true })}>
+          <div className="card-icon">🎶</div>
+          <div className="card-content">
+            <div className="card-title">🎵 AudioWorklet WAV テスト</div>
+            <div className="card-description">AudioWorkletNode対応、WAV録音テスト</div>
+          </div>
+        </div>
+        
+        {/* AudioWorklet + lamejs テストカード */}
+        <div className="action-card success" onClick={() => createTab(TabType.RECORDING, { isAudioWorkletTest: true })}>
+          <div className="card-icon">🔬</div>
+          <div className="card-content">
+            <div className="card-title">🎵 AudioWorklet + MP3 テスト</div>
+            <div className="card-description">AudioWorklet + lamejsリアルタイムMP3録音テスト</div>
+          </div>
+        </div>
       </div>
 
       {/* 情報カード */}

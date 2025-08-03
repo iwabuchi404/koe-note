@@ -1,0 +1,306 @@
+/* ToneRecorderTest.module.css - Tone.js + lamejs テストコンポーネント用スタイル */
+
+.container {
+  background-color: #2D2D2D;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 10px 0;
+  border: 1px solid #444;
+}
+
+.header {
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #444;
+}
+
+.header h3 {
+  margin: 0 0 5px 0;
+  color: #FFFFFF;
+  font-size: 18px;
+}
+
+.description {
+  margin: 0;
+  color: #CCCCCC;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.error {
+  background-color: #FF4444;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 5px;
+}
+
+.status {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #1E1E1E;
+  border-radius: 5px;
+  flex-wrap: wrap;
+}
+
+.statusItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.label {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 2px;
+}
+
+.value {
+  font-size: 14px;
+  font-weight: bold;
+  color: #FFFFFF;
+}
+
+.value.recording {
+  color: #FF6B6B;
+  animation: pulse 1.5s ease-in-out infinite alternate;
+}
+
+.value.idle {
+  color: #4ECDC4;
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1.0;
+  }
+}
+
+/* 音声ソース選択 */
+.sourceSelection {
+  margin: 15px 0;
+  padding: 15px;
+  background-color: #1E1E1E;
+  border-radius: 5px;
+  border: 1px solid #444;
+}
+
+.sourceSelection h4 {
+  margin: 0 0 10px 0;
+  color: #FFFFFF;
+  font-size: 16px;
+}
+
+.sourceOptions {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.sourceOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #CCCCCC;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.sourceOption:hover {
+  background-color: #333;
+}
+
+.sourceOption input[type="radio"] {
+  accent-color: #4ECDC4;
+}
+
+.sourceOption input[type="radio"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sourceOption span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.desktopSourceInfo {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #2A2A2A;
+  border-radius: 4px;
+  border-left: 3px solid #4ECDC4;
+}
+
+.infoText {
+  margin: 0;
+  font-size: 13px;
+  color: #CCCCCC;
+  line-height: 1.4;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 120px;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.startButton {
+  background-color: #4ECDC4;
+  color: #1E1E1E;
+}
+
+.startButton:hover:not(:disabled) {
+  background-color: #45B7B8;
+  transform: translateY(-1px);
+}
+
+.stopButton {
+  background-color: #FF6B6B;
+  color: #FFFFFF;
+}
+
+.stopButton:hover:not(:disabled) {
+  background-color: #FF5252;
+  transform: translateY(-1px);
+}
+
+.clearButton {
+  background-color: #FFA726;
+  color: #1E1E1E;
+}
+
+.clearButton:hover:not(:disabled) {
+  background-color: #FF9800;
+  transform: translateY(-1px);
+}
+
+.logContainer {
+  margin-top: 15px;
+}
+
+.logContainer h4 {
+  margin: 0 0 10px 0;
+  color: #FFFFFF;
+  font-size: 16px;
+}
+
+.logArea {
+  background-color: #0D1117;
+  border: 1px solid #30363D;
+  border-radius: 5px;
+  padding: 10px;
+  height: 200px;
+  overflow-y: auto;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.logEntry {
+  color: #E6EDF3;
+  margin-bottom: 2px;
+  word-wrap: break-word;
+  line-height: 1.4;
+}
+
+/* ログエントリーの色分け */
+.logEntry:contains("エラー") {
+  color: #FF6B6B;
+}
+
+.logEntry:contains("成功") {
+  color: #4ECDC4;
+}
+
+.logEntry:contains("MP3チャンク受信") {
+  color: #95E1D3;
+}
+
+.logEntry:contains("開始") {
+  color: #FFE066;
+}
+
+.logEntry:contains("完了") {
+  color: #A8E6CF;
+}
+
+/* スクロールバーのスタイル */
+.logArea::-webkit-scrollbar {
+  width: 8px;
+}
+
+.logArea::-webkit-scrollbar-track {
+  background: #0D1117;
+}
+
+.logArea::-webkit-scrollbar-thumb {
+  background: #30363D;
+  border-radius: 4px;
+}
+
+.logArea::-webkit-scrollbar-thumb:hover {
+  background: #484F58;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .status {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .statusItem {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    min-width: auto;
+    width: 100%;
+  }
+  
+  .controls {
+    flex-direction: column;
+  }
+  
+  .button {
+    min-width: auto;
+    width: 100%;
+  }
+}

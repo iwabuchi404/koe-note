@@ -1,0 +1,547 @@
+/* AudioWorkletTest コンポーネントのスタイル */
+
+.container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #0f4c75;
+}
+
+.header h2 {
+  margin: 0 0 10px 0;
+  font-size: 28px;
+  color: #00d4ff;
+  text-shadow: 0 2px 4px rgba(0, 212, 255, 0.3);
+}
+
+.header p {
+  margin: 0;
+  color: #b0b0b0;
+  font-size: 16px;
+}
+
+/* 設定パネル */
+.settingsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 25px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 音声ソース選択 */
+.sourceSelector {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.sourceSelector label {
+  font-weight: 600;
+  color: #00d4ff;
+  font-size: 16px;
+}
+
+.sourceSelector select {
+  padding: 8px 15px;
+  background: #2a2a4e;
+  color: #ffffff;
+  border: 1px solid #0f4c75;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+.sourceSelector select:focus {
+  outline: none;
+  border-color: #00d4ff;
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+/* コントロールボタン */
+.controls {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.controls button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 140px;
+}
+
+.startButton {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.startButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #218838, #1da598);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.stopButton {
+  background: linear-gradient(135deg, #dc3545, #e74c3c);
+  color: white;
+}
+
+.stopButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c82333, #dc2626);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.clearButton {
+  background: linear-gradient(135deg, #6c757d, #5a6268);
+  color: white;
+}
+
+.clearButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a6268, #495057);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+}
+
+.controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* エラーパネル */
+.errorPanel {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+  color: white;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #a71e2a;
+}
+
+.errorPanel h3 {
+  margin: 0 0 10px 0;
+  font-size: 18px;
+}
+
+.errorPanel p {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
+
+/* 統計パネル */
+.statsPanel {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.statsPanel h3 {
+  margin: 0 0 15px 0;
+  color: #00d4ff;
+  font-size: 18px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.statsGrid div {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  border-left: 3px solid #00d4ff;
+}
+
+/* チャンクパネル */
+.chunksPanel {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.chunkHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.chunkHeader h3 {
+  margin: 0;
+  color: #00d4ff;
+  font-size: 18px;
+}
+
+.downloadAllButton {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.downloadAllButton:hover {
+  background: linear-gradient(135deg, #0056b3, #004085);
+  transform: translateY(-1px);
+}
+
+.chunkList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.chunkItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border-left: 3px solid #28a745;
+}
+
+.chunkInfo {
+  display: flex;
+  gap: 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+}
+
+.chunkInfo span:first-child {
+  color: #00d4ff;
+  font-weight: 600;
+}
+
+.downloadButton {
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.downloadButton:hover {
+  background: linear-gradient(135deg, #218838, #1da598);
+  transform: translateY(-1px);
+}
+
+/* ログパネル */
+.logPanel {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logPanel h3 {
+  margin: 0 0 15px 0;
+  color: #00d4ff;
+  font-size: 18px;
+}
+
+.logContent {
+  background: #1a1a1a;
+  border-radius: 6px;
+  padding: 15px;
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #333;
+}
+
+.logItem {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e0e0e0;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.logItem:last-child {
+  margin-bottom: 0;
+}
+
+/* スクロールバーのスタイル */
+.logContent::-webkit-scrollbar,
+.chunkList::-webkit-scrollbar {
+  width: 8px;
+}
+
+.logContent::-webkit-scrollbar-track,
+.chunkList::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.logContent::-webkit-scrollbar-thumb,
+.chunkList::-webkit-scrollbar-thumb {
+  background: #00d4ff;
+  border-radius: 4px;
+}
+
+.logContent::-webkit-scrollbar-thumb:hover,
+.chunkList::-webkit-scrollbar-thumb:hover {
+  background: #0099cc;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .container {
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  .header h2 {
+    font-size: 24px;
+  }
+  
+  .controls {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .controls button {
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .settingsPanel {
+    padding: 15px;
+  }
+
+  .sourceSelector {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .chunkHeader {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .chunkItem {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .chunkInfo {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 文字起こし選択 */
+.transcriptionSelector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transcriptionSelector label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #00d4ff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.transcriptionSelector input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #00d4ff;
+}
+
+/* 文字起こし結果パネル */
+.transcriptionPanel {
+  background: rgba(0, 212, 255, 0.1);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.transcriptionPanel h3 {
+  margin: 0 0 15px 0;
+  color: #00d4ff;
+  font-size: 18px;
+}
+
+.transcriptionContent {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.transcriptionItem {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 15px;
+  border-left: 3px solid #00d4ff;
+}
+
+.transcriptionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #b0b0b0;
+}
+
+.transcriptionText {
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.transcriptionSegments {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.segment {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  font-size: 13px;
+  padding: 5px 0;
+}
+
+.segmentTime {
+  color: #00d4ff;
+  font-family: 'Courier New', monospace;
+  min-width: 120px;
+  font-weight: 600;
+}
+
+.segmentText {
+  color: #e0e0e0;
+  flex: 1;
+}
+
+.segmentConfidence {
+  color: #28a745;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  min-width: 60px;
+}
+
+/* 文字起こし進捗パネル */
+.progressPanel {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 25px;
+}
+
+.progressPanel h3 {
+  margin: 0 0 15px 0;
+  color: #ffc107;
+  font-size: 18px;
+}
+
+.progressContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.progressItem {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.progressStatus {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  min-width: 80px;
+  text-align: center;
+}
+
+.progressStatus.processing {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.progressStatus.completed {
+  background: rgba(40, 167, 69, 0.2);
+  color: #28a745;
+}
+
+.progressStatus.failed {
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+}
+
+.progressMessage {
+  color: #b0b0b0;
+  font-style: italic;
+}
