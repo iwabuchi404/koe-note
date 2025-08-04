@@ -9,7 +9,6 @@ export { AudioMixingService } from './services/core/AudioMixingService'
 export { MicrophoneMonitor } from './services/core/MicrophoneMonitorService'
 
 // 音声処理サービス
-export { AudioChunkProcessor } from './services/processing/AudioChunkProcessor'
 export { AudioDiagnostics } from './services/processing/AudioDiagnostics'
 
 // 音声フック

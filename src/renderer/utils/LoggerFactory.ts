@@ -47,6 +47,7 @@ export const LogCategories = {
   
   // 文字起こし処理
   TRANSCRIPTION_ENGINE: 'Transcription.Engine',
+  TRANSCRIPTION_WEBSOCKET: 'Transcription.WebSocket',
   TRANSCRIPTION_REALTIME: 'Transcription.Realtime',
   TRANSCRIPTION_FILE_BASED: 'Transcription.FileBased',
   TRANSCRIPTION_QUEUE: 'Transcription.Queue',

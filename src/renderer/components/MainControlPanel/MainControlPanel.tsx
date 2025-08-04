@@ -29,18 +29,10 @@ const MainControlPanel: React.FC = () => {
     {
       action: WorkflowAction.ADVANCED_RECORD_WITH_TRANSCRIPTION,
       title: '🎙️ 録音、文字起こし',
-      description: '新録音システム',
-      icon: '🎙️',
-      shortcut: 'Ctrl+Shift+R',
-      color: 'success'
-    },
-    {
-      action: WorkflowAction.RECORD_WITH_TRANSCRIPTION,
-      title: '🎙️ 録音開始（従来）',
-      description: '音声録音を開始（文字起こし設定可能）',
+      description: '音声録音とリアルタイム文字起こし',
       icon: '🎙️',
       shortcut: 'Ctrl+R',
-      color: 'primary'
+      color: 'success'
     },
     {
       action: WorkflowAction.TRANSCRIBE_FILE,
@@ -83,17 +75,6 @@ const MainControlPanel: React.FC = () => {
         })
         break
 
-      case WorkflowAction.RECORD_WITH_TRANSCRIPTION:
-        // 録音タブを作成（デフォルトは文字起こしON）
-        createTab(TabType.RECORDING, { 
-          isRealTimeTranscription: true,
-          recordingSettings: {
-            source: 'microphone',
-            quality: 'high',
-            model: 'medium'
-          }
-        })
-        break
 
       case WorkflowAction.TRANSCRIBE_FILE:
         // ファイル選択ダイアログを開く（プレイヤータブで開く）
@@ -185,24 +166,6 @@ const MainControlPanel: React.FC = () => {
           <div className="card-content">
             <div className="card-title">テキストを開く</div>
             <div className="card-description">既存のテキストファイルを開いて編集</div>
-          </div>
-        </div>
-        
-        {/* AudioWorklet WAV テストカード */}
-        <div className="action-card info" onClick={() => createTab(TabType.RECORDING, { isToneTest: true })}>
-          <div className="card-icon">🎶</div>
-          <div className="card-content">
-            <div className="card-title">🎵 AudioWorklet WAV テスト</div>
-            <div className="card-description">AudioWorkletNode対応、WAV録音テスト</div>
-          </div>
-        </div>
-        
-        {/* AudioWorklet + lamejs テストカード */}
-        <div className="action-card success" onClick={() => createTab(TabType.RECORDING, { isAudioWorkletTest: true })}>
-          <div className="card-icon">🔬</div>
-          <div className="card-content">
-            <div className="card-title">🎵 AudioWorklet + MP3 テスト</div>
-            <div className="card-description">AudioWorklet + lamejsリアルタイムMP3録音テスト</div>
           </div>
         </div>
       </div>

@@ -6,7 +6,6 @@
 export enum TabType {
   WELCOME = 'welcome',           // ウェルカムスクリーン（初期状態）
   PLAYER = 'player',            // テキスト/音声プレイヤータブ（ファイル選択時）
-  RECORDING = 'recording',       // 録音・文字起こしタブ（録音開始時）
   ADVANCED_RECORDING = 'advanced_recording'  // 新録音システム（AudioWorklet + lamejs + リアルタイム文字起こし）
 }
 
@@ -29,24 +28,11 @@ export interface TabData {
   status: TabStatus
   isActive: boolean
   isClosable: boolean
-  data?: any                    // タブ固有のデータ
+  data?: AdvancedRecordingTabData | PlayerTabData | Record<string, unknown>  // タブ固有のデータ
   createdAt: Date
   lastAccessedAt: Date
 }
 
-// 録音タブ固有のデータ
-export interface RecordingTabData {
-  startTime: Date
-  duration: number
-  audioLevel: number
-  isRealTimeTranscription: boolean
-  transcriptionText: string
-  recordingSettings: {
-    source: 'microphone' | 'desktop' | 'mix'
-    quality: 'low' | 'medium' | 'high'
-    model: 'small' | 'medium' | 'large'
-  }
-}
 
 // 新録音システム専用のタブデータ
 export interface AdvancedRecordingTabData {
@@ -131,8 +117,6 @@ export interface PlayerTabData {
 
 // ワークフローのアクション
 export enum WorkflowAction {
-  RECORD_WITH_TRANSCRIPTION = 'record_with_transcription',
-  RECORD_ONLY = 'record_only',
   TRANSCRIBE_FILE = 'transcribe_file',
   OPEN_AUDIO_FILE = 'open_audio_file',
   OPEN_TEXT_FILE = 'open_text_file',
@@ -158,14 +142,23 @@ export interface WorkflowSettings {
 // タブマネージャーのアクション
 export interface TabManagerAction {
   type: 'CREATE_TAB' | 'CLOSE_TAB' | 'ACTIVATE_TAB' | 'UPDATE_TAB' | 'REORDER_TABS'
-  payload: any
+  payload: {
+    tabId?: string
+    updates?: Partial<TabData>
+    fromIndex?: number
+    toIndex?: number
+    type?: TabType
+    title?: string
+    data?: AdvancedRecordingTabData | PlayerTabData | Record<string, unknown>
+    isClosable?: boolean
+  }
 }
 
 // タブコンテキストの型
 export interface TabContextType {
   tabs: TabData[]
   activeTabId: string | null
-  createTab: (type: TabType, data?: any) => string
+  createTab: (type: TabType, data?: AdvancedRecordingTabData | PlayerTabData | Record<string, unknown>) => string
   closeTab: (tabId: string) => void
   activateTab: (tabId: string) => void
   updateTab: (tabId: string, updates: Partial<TabData>) => void

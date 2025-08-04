@@ -5,6 +5,8 @@
  * リアルタイム文字起こし結果を受信するWebSocketサービス
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
+
 export interface TranscriptionChunk {
   chunkNumber: number;
   audioData: Blob;
@@ -38,6 +40,7 @@ export class TranscriptionWebSocketService {
   private reconnectDelay: number = 2000; // 2秒
   private pendingChunks: Map<string, number> = new Map(); // timestamp -> chunkNumber のマッピング
   private lastSentChunkNumber: number = 0; // 最後に送信したチャンク番号（フォールバック用）
+  private logger = LoggerFactory.getLogger(LogCategories.TRANSCRIPTION_WEBSOCKET);
   
   // イベントコールバック
   private onConnectionChange: (connected: boolean) => void;
@@ -66,13 +69,13 @@ export class TranscriptionWebSocketService {
    */
   async connect(): Promise<boolean> {
     try {
-      console.log('🔗 Whisperサーバーに接続中:', this.serverUrl);
+      this.logger.info('Whisperサーバーに接続中', { serverUrl: this.serverUrl });
       
       this.ws = new WebSocket(this.serverUrl);
       
       // 接続成功
       this.ws.onopen = () => {
-        console.log('🔗 Whisperサーバーに接続成功');
+        this.logger.info('Whisperサーバーに接続成功');
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.onConnectionChange(true);
@@ -91,7 +94,7 @@ export class TranscriptionWebSocketService {
       
       // 接続切断
       this.ws.onclose = (event) => {
-        console.log('🔗 Whisperサーバー接続切断:', event.code, event.reason);
+        this.logger.info('Whisperサーバー接続切断', { code: event.code, reason: event.reason });
         this.isConnected = false;
         this.onConnectionChange(false);
         
@@ -139,11 +142,11 @@ export class TranscriptionWebSocketService {
    * サーバーメッセージ処理
    */
   private handleServerMessage(data: any): void {
-    console.log('🔗 サーバーメッセージ受信:', data.type);
+    this.logger.info('サーバーメッセージ受信', { type: data.type });
     
     switch (data.type) {
       case 'connection':
-        console.log('🔗 接続確認メッセージ:', data.message);
+        this.logger.info('接続確認メッセージ', { message: data.message });
         break;
         
       case 'chunk_progress':
@@ -157,7 +160,7 @@ export class TranscriptionWebSocketService {
           
           if (oldestEntry) {
             progressChunkNumber = oldestEntry[1];
-            console.log('🔗 進捗: 最古のチャンク番号を推定:', { chunkNumber: progressChunkNumber, status: data.status });
+            this.logger.info('進捗: 最古のチャンク番号を推定', { chunkNumber: progressChunkNumber, status: data.status });
           }
         }
         
@@ -170,7 +173,7 @@ export class TranscriptionWebSocketService {
         
       case 'chunk_result':
         // チャンク文字起こし結果
-        console.log('🔗 文字起こし結果受信:', data.result?.text || '(空文字)', { serverData: data });
+        this.logger.info('文字起こし結果受信', { text: data.result?.text || '(空文字)', serverData: data });
         
         if (data.status === 'completed' && data.result) {
           // segmentsからtextを生成（サーバーがtextを返さない場合の対策）
@@ -188,7 +191,7 @@ export class TranscriptionWebSocketService {
           
           // サーバーがchunkNumber=0を返す場合、pendingChunksから最も古いものを取得
           if (chunkNumber === 0) {
-            console.log('🔗 chunkNumber=0のため、pendingChunksから推定:', { pendingChunks: Array.from(this.pendingChunks.entries()) });
+            this.logger.info('chunkNumber=0のため、pendingChunksから推定', { pendingChunks: Array.from(this.pendingChunks.entries()) });
             
             if (this.pendingChunks.size > 0) {
               // 最も古いタイムスタンプ（最初に送信されたチャンク）を取得
@@ -198,11 +201,11 @@ export class TranscriptionWebSocketService {
               if (oldestEntry) {
                 chunkNumber = oldestEntry[1];
                 this.pendingChunks.delete(oldestEntry[0]);
-                console.log('🔗 最古のチャンク番号を使用:', { chunkNumber, timestamp: oldestEntry[0] });
+                this.logger.info('最古のチャンク番号を使用', { chunkNumber, timestamp: oldestEntry[0] });
               } else {
                 // フォールバックとして最後に送信したチャンク番号を使用
                 chunkNumber = this.lastSentChunkNumber;
-                console.log('🔗 フォールバック: 最後のチャンク番号を使用:', chunkNumber);
+                this.logger.info('フォールバック: 最後のチャンク番号を使用', { chunkNumber });
               }
             }
           } else if (data.timestamp) {

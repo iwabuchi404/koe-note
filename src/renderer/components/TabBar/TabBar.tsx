@@ -42,8 +42,6 @@ const TabBar: React.FC = () => {
     switch (type) {
       case TabType.WELCOME:
         return '🏠'
-      case TabType.RECORDING:
-        return status === TabStatus.RECORDING ? '⏺️' : '🎙️'
       case TabType.ADVANCED_RECORDING:
         return status === TabStatus.RECORDING ? '🔴' : '🚀'
       case TabType.PLAYER:

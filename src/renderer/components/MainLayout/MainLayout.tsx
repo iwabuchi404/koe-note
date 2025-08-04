@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react'
 import LeftPanel from '../LeftPanel/LeftPanel'
-import RightPanel from '../RightPanel/RightPanel'
 import TabBar from '../TabBar/TabBar'
 import TabContent from '../TabContent/TabContent'
 

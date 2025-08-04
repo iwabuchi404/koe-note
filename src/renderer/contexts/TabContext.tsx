@@ -8,7 +8,9 @@ import {
   TabType, 
   TabStatus, 
   TabContextType, 
-  TabManagerAction 
+  TabManagerAction,
+  AdvancedRecordingTabData,
+  PlayerTabData
 } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 
@@ -20,6 +22,9 @@ const tabReducer = (state: TabData[], action: TabManagerAction): TabData[] => {
   switch (action.type) {
     case 'CREATE_TAB': {
       const { type, title, data, isClosable = true, tabId } = action.payload
+      if (!type || !title) {
+        throw new Error('CREATE_TAB requires type and title')
+      }
       const newTab: TabData = {
         id: tabId || `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type,
@@ -62,6 +67,9 @@ const tabReducer = (state: TabData[], action: TabManagerAction): TabData[] => {
 
     case 'REORDER_TABS': {
       const { fromIndex, toIndex } = action.payload
+      if (fromIndex === undefined || toIndex === undefined) {
+        throw new Error('REORDER_TABS requires fromIndex and toIndex')
+      }
       const newTabs = [...state]
       const [removed] = newTabs.splice(fromIndex, 1)
       newTabs.splice(toIndex, 0, removed)
@@ -85,13 +93,13 @@ export const TabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const activeTabId = tabs.find(tab => tab.isActive)?.id || null
 
   // タブ作成（固定2タブ構成）
-  const createTab = useCallback((type: TabType, data?: any): string => {
+  const createTab = useCallback((type: TabType, data?: AdvancedRecordingTabData | PlayerTabData | Record<string, unknown>): string => {
     const title = generateTabTitle(type, data)
     const newTabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     
-    if (type === TabType.RECORDING || type === TabType.ADVANCED_RECORDING) {
+    if (type === TabType.ADVANCED_RECORDING) {
       // タブ1（録音・文字起こし）を更新または作成
-      const existingTab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING || tab.type === TabType.ADVANCED_RECORDING)
+      const existingTab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.ADVANCED_RECORDING)
       if (existingTab1) {
         // 既存のタブ1を録音タブに更新
         dispatch({
@@ -160,7 +168,7 @@ export const TabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatch({ type: 'CLOSE_TAB', payload: { tabId } })
 
     // プレイヤータブが閉じられた場合、タブ1をアクティブにする
-    const tab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING || tab.type === TabType.ADVANCED_RECORDING)
+    const tab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.ADVANCED_RECORDING)
     if (tab1) {
       activateTab(tab1.id)
     }
@@ -229,16 +237,14 @@ export const useTabContext = (): TabContextType => {
 }
 
 // タブタイトル生成ヘルパー
-const generateTabTitle = (type: TabType, data?: any): string => {
+const generateTabTitle = (type: TabType, data?: AdvancedRecordingTabData | PlayerTabData | Record<string, unknown>): string => {
   switch (type) {
     case TabType.WELCOME:
       return 'Welcome'
-    case TabType.RECORDING:
-      return '録音'
     case TabType.ADVANCED_RECORDING:
       return '新録音システム'
     case TabType.PLAYER:
-      return data?.fileName || 'プレイヤー'
+      return (data as PlayerTabData)?.fileName || 'プレイヤー'
     default:
       return 'タブ'
   }

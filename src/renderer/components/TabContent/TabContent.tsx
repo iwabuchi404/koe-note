@@ -5,9 +5,8 @@
 
 import React from 'react'
 import { useTabContext } from '../../contexts/TabContext'
-import { TabType } from '../../types/TabTypes'
+import { TabType, AdvancedRecordingTabData, PlayerTabData } from '../../types/TabTypes'
 import MainControlPanel from '../MainControlPanel/MainControlPanel'
-import RecordingCard from '../RecordingCard/RecordingCard'
 import PlayerCard from '../PlayerCard/PlayerCard'
 import AdvancedRecordingCard from '../AdvancedRecording/AdvancedRecordingCard'
 
@@ -40,24 +39,18 @@ const TabContent: React.FC = () => {
         </div>
       )
     
-    case TabType.RECORDING:
-      return (
-        <div style={containerStyle}>
-          <RecordingCard tabId={activeTab.id} data={activeTab.data} />
-        </div>
-      )
     
     case TabType.PLAYER:
       return (
         <div style={{ ...containerStyle, padding: '0' }}>
-          <PlayerCard tabId={activeTab.id} data={activeTab.data} />
+          <PlayerCard tabId={activeTab.id} data={activeTab.data as PlayerTabData} />
         </div>
       )
     
     case TabType.ADVANCED_RECORDING:
       return (
         <div style={{ ...containerStyle, padding: '0' }}>
-          <AdvancedRecordingCard tabId={activeTab.id} data={activeTab.data} />
+          <AdvancedRecordingCard tabId={activeTab.id} data={activeTab.data as AdvancedRecordingTabData} />
         </div>
       )
     
