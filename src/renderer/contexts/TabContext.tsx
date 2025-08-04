@@ -89,9 +89,9 @@ export const TabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const title = generateTabTitle(type, data)
     const newTabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     
-    if (type === TabType.RECORDING) {
+    if (type === TabType.RECORDING || type === TabType.ADVANCED_RECORDING) {
       // タブ1（録音・文字起こし）を更新または作成
-      const existingTab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING)
+      const existingTab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING || tab.type === TabType.ADVANCED_RECORDING)
       if (existingTab1) {
         // 既存のタブ1を録音タブに更新
         dispatch({
@@ -160,7 +160,7 @@ export const TabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     dispatch({ type: 'CLOSE_TAB', payload: { tabId } })
 
     // プレイヤータブが閉じられた場合、タブ1をアクティブにする
-    const tab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING)
+    const tab1 = tabs.find(tab => tab.type === TabType.WELCOME || tab.type === TabType.RECORDING || tab.type === TabType.ADVANCED_RECORDING)
     if (tab1) {
       activateTab(tab1.id)
     }
@@ -235,6 +235,8 @@ const generateTabTitle = (type: TabType, data?: any): string => {
       return 'Welcome'
     case TabType.RECORDING:
       return '録音'
+    case TabType.ADVANCED_RECORDING:
+      return '新録音システム'
     case TabType.PLAYER:
       return data?.fileName || 'プレイヤー'
     default:

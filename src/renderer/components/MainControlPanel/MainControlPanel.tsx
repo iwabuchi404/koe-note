@@ -28,9 +28,9 @@ const MainControlPanel: React.FC = () => {
   const workflowOptions: WorkflowOption[] = [
     {
       action: WorkflowAction.ADVANCED_RECORD_WITH_TRANSCRIPTION,
-      title: '🚀 録音、文字起こし（新）',
-      description: 'AudioWorklet + lamejs録音 + リアルタイム文字起こし',
-      icon: '🚀',
+      title: '🎙️ 録音、文字起こし',
+      description: '新録音システム',
+      icon: '🎙️',
       shortcut: 'Ctrl+Shift+R',
       color: 'success'
     },
