@@ -125,6 +125,7 @@ export const useAdvancedRecording = (
     setRecordingData(prev => ({
       ...prev,
       duration,
+      audioLevel: stats.audioLevel, // 実際の音量レベルを使用
       stats: {
         totalChunks: stats.chunksGenerated,
         totalDataSize: stats.totalDataSize,
@@ -236,6 +237,7 @@ export const useAdvancedRecording = (
       setRecordingData(prev => ({
         ...prev,
         isRecording: true,
+        audioLevel: 0,
         startTime: new Date(),
         chunks: [],
         errors: []
@@ -262,9 +264,22 @@ export const useAdvancedRecording = (
 
       const finalBlob = await audioWorkletServiceRef.current.stop()
       
+      // 未処理チャンクをキャンセル処理
       setRecordingData(prev => ({
         ...prev,
-        isRecording: false
+        isRecording: false,
+        audioLevel: 0,
+        chunks: prev.chunks.map(chunk => {
+          // 録音停止時に未処理状態のチャンクをキャンセル
+          if (chunk.transcriptionStatus === 'pending' || chunk.transcriptionStatus === 'processing') {
+            return {
+              ...chunk,
+              transcriptionStatus: 'failed' as const,
+              transcriptionText: '録音停止によりキャンセル'
+            }
+          }
+          return chunk
+        })
       }))
 
       // サービスクリーンアップ

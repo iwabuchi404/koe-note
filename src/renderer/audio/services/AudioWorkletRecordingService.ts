@@ -29,6 +29,7 @@ export interface RecordingStats {
   totalDataSize: number;
   currentBitrate: number;
   processedSamples: number;
+  audioLevel: number; // 0.0-1.0 の音量レベル
 }
 
 export interface TranscriptionConfig {
@@ -68,6 +69,11 @@ export class AudioWorkletRecordingService {
   
   // 統計更新タイマー
   private statsTimer: NodeJS.Timeout | null = null;
+  
+  // 音量レベル解析
+  private analyserNode: AnalyserNode | null = null;
+  private audioLevelData: Uint8Array | null = null;
+  private currentAudioLevel: number = 0;
 
   constructor(
     onChunkReadyCallback: (event: ChunkReadyEvent) => void,
@@ -256,7 +262,15 @@ export class AudioWorkletRecordingService {
       // 音声ストリームをAudioWorkletに接続
       this.stream = stream;
       this.sourceNode = this.audioContext.createMediaStreamSource(stream);
-      this.sourceNode.connect(this.workletNode);
+      
+      // 音量レベル解析用AnalyserNode作成
+      this.analyserNode = this.audioContext.createAnalyser();
+      this.analyserNode.fftSize = 256;
+      this.audioLevelData = new Uint8Array(this.analyserNode.frequencyBinCount);
+      
+      // 接続: SourceNode -> AnalyserNode -> WorkletNode
+      this.sourceNode.connect(this.analyserNode);
+      this.analyserNode.connect(this.workletNode);
       
       console.log('🎵 音声ストリーム接続完了');
 
@@ -273,6 +287,9 @@ export class AudioWorkletRecordingService {
       
       // 統計更新開始
       this.startStatsUpdates();
+      
+      // 音量レベル更新開始
+      this.startAudioLevelUpdates();
       
       // 文字起こし機能の初期化
       if (this.transcriptionConfig?.enabled) {
@@ -635,9 +652,14 @@ export class AudioWorkletRecordingService {
       this.onChunkReady(chunkEvent);
       
       // 文字起こしサーバーにチャンクを送信（非同期で実行）
-      this.sendChunkForTranscription(chunkEvent).catch(error => {
-        console.error('🎵 文字起こしチャンク送信エラー:', error);
-      });
+      // 録音中のみ送信
+      if (this.isRecording) {
+        this.sendChunkForTranscription(chunkEvent).catch(error => {
+          console.error('🎵 文字起こしチャンク送信エラー:', error);
+        });
+      } else {
+        console.log('🎵 録音停止中のためチャンク送信をスキップ:', chunkEvent.chunkNumber);
+      }
       
       // バッファクリア
       this.mp3Buffer = [];
@@ -659,12 +681,34 @@ export class AudioWorkletRecordingService {
           chunksGenerated: this.chunkCount,
           totalDataSize: this.totalDataSize,
           currentBitrate: this.calculateCurrentBitrate(),
-          processedSamples: this.processedSamples
+          processedSamples: this.processedSamples,
+          audioLevel: this.currentAudioLevel
         };
         
         this.onStatsUpdate(stats);
       }
     }, 1000); // 1秒間隔
+  }
+
+  /**
+   * 音量レベル更新開始
+   */
+  private startAudioLevelUpdates(): void {
+    const updateAudioLevel = () => {
+      if (this.isRecording && this.analyserNode && this.audioLevelData) {
+        this.analyserNode.getByteFrequencyData(this.audioLevelData);
+        
+        // 平均音量レベルを計算 (0-255 -> 0.0-1.0)
+        const average = this.audioLevelData.reduce((sum, value) => sum + value, 0) / this.audioLevelData.length;
+        this.currentAudioLevel = average / 255;
+        
+        // 次のフレームで再実行
+        requestAnimationFrame(updateAudioLevel);
+      }
+    };
+    
+    // 初回実行
+    requestAnimationFrame(updateAudioLevel);
   }
 
   /**
@@ -700,7 +744,10 @@ export class AudioWorkletRecordingService {
           }
         }
         
-        // 残りのデータをチャンクとして生成
+        // 録音停止フラグを設定（最終チャンク送信を禁止）
+        this.isRecording = false;
+        
+        // 残りのデータをチャンクとして生成（文字起こし送信はスキップ）
         if (this.mp3Buffer.length > 0) {
           this.flushChunk();
         }
@@ -751,11 +798,21 @@ export class AudioWorkletRecordingService {
         this.workletNode = null;
       }
       
+      // AnalyserNode切断
+      if (this.analyserNode) {
+        this.analyserNode.disconnect();
+        this.analyserNode = null;
+      }
+      
       // SourceNode切断
       if (this.sourceNode) {
         this.sourceNode.disconnect();
         this.sourceNode = null;
       }
+      
+      // 音量レベルデータクリア
+      this.audioLevelData = null;
+      this.currentAudioLevel = 0;
       
       // ストリーム停止
       if (this.stream) {
@@ -799,7 +856,8 @@ export class AudioWorkletRecordingService {
       chunksGenerated: this.chunkCount,
       totalDataSize: this.totalDataSize,
       currentBitrate: this.calculateCurrentBitrate(),
-      processedSamples: this.processedSamples
+      processedSamples: this.processedSamples,
+      audioLevel: this.currentAudioLevel
     };
   }
 
