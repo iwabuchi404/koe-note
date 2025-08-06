@@ -1,0 +1,414 @@
+/**
+ * MetadataPanel コンポーネント用スタイル
+ */
+
+.metadata-panel {
+  border-bottom: 1px solid var(--vscode-border);
+  background-color: var(--vscode-bg-secondary);
+  transition: all 0.2s ease;
+  overflow: visible;
+  /* 高さの初期値を設定 */
+  height: auto;
+  min-height: 44px;
+}
+
+.metadata-panel.collapsed {
+  height: auto;
+  min-height: 44px;
+}
+
+.metadata-panel.expanded {
+  height: auto;
+  min-height: 120px;
+}
+
+/* コンパクト表示用スタイル */
+.metadata-panel.compact-metadata {
+  border-bottom: 1px solid var(--vscode-border);
+  height: auto !important;
+  min-height: 44px !important;
+}
+
+.metadata-panel.compact-metadata.collapsed {
+  height: auto !important;
+  min-height: 44px !important;
+  max-height: none;
+}
+
+.metadata-panel.compact-metadata.expanded {
+  height: auto !important;
+  min-height: 80px !important;
+  max-height: 300px;
+}
+
+.metadata-panel.compact-metadata .metadata-toggle {
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--vscode-bg-primary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.metadata-panel.compact-metadata .metadata-toggle:hover {
+  border-color: var(--vscode-accent);
+  background-color: var(--vscode-bg-hover);
+}
+
+.metadata-panel.compact-metadata .summary {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* デバッグ用 - height: 0 問題の修正 */
+.metadata-panel *, 
+.metadata-panel.compact-metadata * {
+  box-sizing: border-box;
+}
+
+.metadata-panel.compact-metadata {
+  /* 高さが 0 にならないように強制設定 */
+  display: block !important;
+  visibility: visible !important;
+  overflow: visible !important;
+}
+
+.metadata-panel.compact-metadata .metadata-content {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  height: auto;
+  display: block;
+}
+
+.metadata-panel.compact-metadata .metadata-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.metadata-panel.compact-metadata .metadata-section {
+  padding: 12px;
+  border-radius: 4px;
+}
+
+.metadata-panel.compact-metadata .section-title {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  padding-bottom: 6px;
+}
+
+.metadata-panel.compact-metadata .metadata-items {
+  gap: 6px;
+}
+
+.metadata-panel.compact-metadata .metadata-item {
+  font-size: 12px;
+}
+
+.metadata-panel.compact-metadata .metadata-item .label {
+  min-width: 80px;
+}
+
+.metadata-panel.compact-metadata .speakers-list .speaker-tag {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* 折りたたみボタン */
+.metadata-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--vscode-text-secondary);
+  cursor: pointer;
+  padding: 12px 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.metadata-toggle:hover {
+  color: var(--vscode-text-primary);
+  background-color: var(--vscode-bg-hover);
+}
+
+.metadata-toggle:focus {
+  outline: 1px solid var(--vscode-accent);
+  outline-offset: -1px;
+}
+
+.metadata-toggle .arrow {
+  transition: transform 0.2s ease;
+  font-size: 12px;
+  color: var(--vscode-text-tertiary);
+  display: inline-block;
+}
+
+.metadata-toggle .arrow.collapsed {
+  transform: rotate(0deg);
+}
+
+.metadata-toggle .arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.metadata-toggle .summary {
+  margin-left: auto;
+  font-size: var(--vscode-font-size-sm);
+  color: var(--vscode-text-tertiary);
+  opacity: 0.8;
+}
+
+/* メタデータコンテンツ */
+.metadata-content {
+  padding: 16px 20px 20px;
+  background-color: var(--vscode-bg-secondary);
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+/* セクション */
+.metadata-section {
+  background-color: var(--vscode-bg-primary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 6px;
+  padding: 16px;
+  transition: border-color 0.15s ease;
+}
+
+.metadata-section:hover {
+  border-color: var(--vscode-border-light);
+}
+
+.section-title {
+  margin: 0 0 12px 0;
+  font-size: var(--vscode-font-size);
+  font-weight: 600;
+  color: var(--vscode-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vscode-border);
+}
+
+/* メタデータアイテム */
+.metadata-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metadata-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 0;
+  border-radius: 3px;
+  transition: background-color 0.15s ease;
+}
+
+.metadata-item:hover {
+  background-color: var(--vscode-bg-hover);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.metadata-item .label {
+  font-size: var(--vscode-font-size-sm);
+  color: var(--vscode-text-secondary);
+  font-weight: 500;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.metadata-item .value {
+  font-size: var(--vscode-font-size-sm);
+  color: var(--vscode-text-primary);
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+/* 話者リスト */
+.speakers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.speaker-tag {
+  background-color: var(--vscode-accent);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: var(--vscode-font-size-sm);
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.speaker-tag:hover {
+  background-color: var(--vscode-accent-hover);
+}
+
+/* 特殊な値の色分け */
+.metadata-item .value.success {
+  color: var(--vscode-success);
+}
+
+.metadata-item .value.warning {
+  color: var(--vscode-warning);
+}
+
+.metadata-item .value.error {
+  color: var(--vscode-error);
+}
+
+.metadata-item .value.info {
+  color: var(--vscode-info);
+}
+
+/* 品質インジケーター */
+.quality-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quality-score {
+  font-weight: 600;
+}
+
+/* 統計値のハイライト */
+.stat-highlight {
+  font-weight: 600;
+  color: var(--vscode-text-accent);
+}
+
+/* アニメーション */
+.metadata-content {
+  animation: vscode-fade-in 0.2s ease-out;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .metadata-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .metadata-content {
+    padding: 12px 16px 16px;
+  }
+  
+  .metadata-section {
+    padding: 12px;
+  }
+  
+  .metadata-item .label {
+    min-width: 80px;
+    font-size: var(--vscode-font-size-sm);
+  }
+  
+  .metadata-item .value {
+    font-size: var(--vscode-font-size-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .metadata-item {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .metadata-item .label {
+    min-width: auto;
+    font-weight: 600;
+  }
+  
+  .speakers-list {
+    gap: 4px;
+  }
+  
+  .speaker-tag {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+}
+
+/* 印刷スタイル */
+@media print {
+  .metadata-toggle {
+    display: none;
+  }
+  
+  .metadata-panel {
+    height: auto !important;
+    border: 1px solid #000;
+  }
+  
+  .metadata-content {
+    background: white;
+    color: black;
+  }
+  
+  .metadata-section {
+    background: white;
+    border: 1px solid #ccc;
+    break-inside: avoid;
+  }
+  
+  .section-title {
+    color: black;
+    border-bottom-color: #ccc;
+  }
+  
+  .metadata-item .label {
+    color: #666;
+  }
+  
+  .metadata-item .value {
+    color: black;
+  }
+}
+
+/* ダークテーマでの調整 */
+.vscode-dark .metadata-panel {
+  border-bottom-color: var(--vscode-border);
+}
+
+.vscode-dark .metadata-section {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ライトテーマでの調整 */
+.vscode-light .metadata-section {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 高コントラストモード */
+@media (prefers-contrast: high) {
+  .metadata-section {
+    border-width: 2px;
+  }
+  
+  .metadata-toggle {
+    border: 1px solid var(--vscode-border);
+  }
+  
+  .speaker-tag {
+    border: 1px solid currentColor;
+  }
+}

@@ -55,7 +55,16 @@ const MainLayout: React.FC = () => {
     <div className="main-layout" data-testid="main-layout">
       <div 
         className="left-panel"
-        style={{ width: `${leftPanelWidth}px`, minWidth: `${leftPanelWidth}px`, maxWidth: `${leftPanelWidth}px` }}
+        style={{ 
+          width: `${leftPanelWidth}px`, 
+          minWidth: `${leftPanelWidth}px`, 
+          maxWidth: `${leftPanelWidth}px`,
+          backgroundColor: 'var(--color-bg-secondary)',
+          borderRight: '1px solid var(--color-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
       >
         <LeftPanel />
       </div>

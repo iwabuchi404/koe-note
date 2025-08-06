@@ -1,11 +1,12 @@
 /**
  * AdvancedRecordingCard - 新録音システム用カードコンポーネント
  * AudioWorklet + lamejs + リアルタイム文字起こしシステム
+ * グローバル録音状態を使用してタブ切り替え時も状態を維持
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import { AdvancedRecordingTabData } from '../../types/TabTypes'
-import { useAdvancedRecording, AdvancedRecordingConfig } from '../../hooks/useAdvancedRecording'
+import { useRecordingContext, AdvancedRecordingConfig } from '../../contexts/RecordingContext'
 import { AudioChunkCalculator } from '../../utils/AudioChunkCalculator'
 import './AdvancedRecordingCard.css'
 
@@ -20,52 +21,37 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
   const [statsExpanded, setStatsExpanded] = useState(false)
   const [chunksExpanded, setChunksExpanded] = useState(false)
 
-  // 初期設定の準備
-  const initialConfig: AdvancedRecordingConfig = {
-    recordingSettings: data.recordingSettings || {
-      source: 'microphone',
-      deviceId: undefined,
-      chunkSize: 64,
-      chunkDuration: 3.0,
-      chunkSizeMode: 'duration',
-      format: 'mp3'
-    },
-    transcriptionSettings: data.transcriptionSettings || {
-      enabled: true,
-      serverUrl: 'ws://localhost:8770',
-      language: 'ja',
-      model: 'small'
-    }
-  }
-
-
-  // 新録音システムHook
+  // グローバル録音状態を使用
   const {
     recordingData,
     isRecording,
-    startRecording,
+    startRecording: globalStartRecording,
     stopRecording,
     updateConfig,
     downloadChunk,
     downloadAllChunks,
-    saveWithPreset,
     getTotalDuration,
     getTotalDataSize,
     getChunksCount,
     getErrorsCount,
     getTranscriptionCount,
     hasTranscriptionData
-  } = useAdvancedRecording(initialConfig, {
-    onError: (error) => {
-      console.error('🚀 AdvancedRecording エラー:', error)
-    },
-    onChunkReady: (chunk) => {
-      console.log('🚀 AdvancedRecording チャンク生成:', chunk)
-    },
-    onTranscriptionResult: (result) => {
-      console.log('🚀 AdvancedRecording 文字起こし結果:', result)
+  } = useRecordingContext()
+
+  // 録音開始（グローバル状態を使用）
+  const startRecording = useCallback(async () => {
+    const config: AdvancedRecordingConfig = {
+      recordingSettings: recordingData.recordingSettings,
+      transcriptionSettings: recordingData.transcriptionSettings
     }
-  })
+    
+    try {
+      await globalStartRecording(config)
+      console.log('🚀 AdvancedRecording 録音開始完了')
+    } catch (error) {
+      console.error('🚀 AdvancedRecording 録音開始エラー:', error)
+    }
+  }, [globalStartRecording, recordingData.recordingSettings, recordingData.transcriptionSettings])
 
 
 

@@ -14,10 +14,12 @@ import { useAppContext } from '../../App'
 import ChunkTranscriptionDisplay from '../ChunkTranscriptionDisplay/ChunkTranscriptionDisplay'
 
 // 分離されたコンポーネント群のインポート
-import { TranscriptionViewer } from '../Transcription/Display'
-import { useTranscriptionEditor } from '../Transcription/Editor'
 import { TranscriptionExporter, CopyButton } from '../Transcription/Operations'
 import { TranscriptionProgressIndicator } from '../Transcription/Control'
+
+// 新しいTextDisplayシステム
+import { TextDisplayViewer } from '../common/TextDisplay'
+import { TranscriptionAdapter } from '../common/TextDisplay/adapters/TranscriptionAdapter'
 
 interface SpeechRecognitionProps {
   selectedFile: AudioFile | null
@@ -35,13 +37,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
   const [transcriptionResult, setTranscriptionResult] = useState<TranscriptionResult | null>(null)
   const [showChunkDisplay, setShowChunkDisplay] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-
-  // 編集機能の統合
-  const editor = useTranscriptionEditor({
-    transcriptionResult,
-    onTranscriptionUpdate: setTranscriptionResult,
-    onSaveTranscription: handleSaveTranscription
-  })
+  const [textContent, setTextContent] = useState<string>('')
 
   // 文字起こし完了イベントリスナー
   useEffect(() => {
@@ -82,10 +78,49 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     }
   }, [setTranscriptionDisplayData])
 
+  // テキストコンテンツ生成
+  const generateTextContent = (): string => {
+    const result = transcriptionDisplayData || transcriptionResult
+    if (!result) return ''
+    
+    return TranscriptionAdapter.generateFileContent(
+      result,
+      selectedFile?.filename,
+      currentModel
+    )
+  }
+  
+  // ファイルパス取得
+  const getFilePath = (): string => {
+    if (!selectedFile) return 'transcription.txt'
+    
+    const baseName = selectedFile.filename.replace(/\.[^/.]+$/, '')
+    return `${baseName}_transcription.txt`
+  }
+  
+  // コンテンツ変更ハンドラー
+  const handleContentChange = (newContent: string) => {
+    setTextContent(newContent)
+  }
+  
   // 保存処理
-  async function handleSaveTranscription() {
-    // この処理は TranscriptionExporter に委譲
-    console.log('保存処理は TranscriptionExporter で実行されます')
+  const handleSaveTranscription = async (content: string): Promise<boolean> => {
+    try {
+      if (!selectedFile) return false
+      
+      const transcriptionPath = getFilePath()
+      const success = await window.electronAPI.saveTextFile(transcriptionPath, content)
+      
+      if (success) {
+        console.log('文字起こし結果が保存されました:', transcriptionPath)
+        await updateFileList()
+      }
+      
+      return success
+    } catch (error) {
+      console.error('保存エラー:', error)
+      return false
+    }
   }
 
   // ファイル一覧更新処理
@@ -128,8 +163,6 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
       flexDirection: 'column',
       backgroundColor: 'var(--color-bg-primary)'
     }}>
-      {/* 編集ツールバー */}
-      {editor.toolbar}
 
       {/* 進捗表示 */}
       <TranscriptionProgressIndicator
@@ -152,18 +185,29 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
       {/* メイン表示エリア */}
       {!showChunkDisplay && (
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <TranscriptionViewer
-            transcriptionResult={transcriptionResult}
-            transcriptionDisplayData={transcriptionDisplayData}
-            modifiedSegments={editor.modifiedSegments}
-            editedSegmentTexts={editor.editedSegmentTexts}
-            editingSegmentId={editor.editingSegmentId}
-            editingText={editor.editingText}
-            onSegmentDoubleClick={editor.handleSegmentDoubleClick}
-            onTextChange={editor.handleTextChange}
-            onSaveEdit={editor.handleSaveEdit}
-            onKeyDown={editor.handleKeyDown}
-          />
+          {(transcriptionResult || transcriptionDisplayData) ? (
+            <TextDisplayViewer
+              content={generateTextContent()}
+              filePath={getFilePath()}
+              onContentChange={handleContentChange}
+              onSave={handleSaveTranscription}
+              showLineNumbers={true}
+              showMetadata={true}
+              initialMode="view"
+              className="transcription-display"
+            />
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: 'var(--color-text-secondary)',
+              fontSize: 'var(--font-size-md)'
+            }}>
+              文字起こし結果がありません
+            </div>
+          )}
         </div>
       )}
 

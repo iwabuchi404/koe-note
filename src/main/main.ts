@@ -740,28 +740,19 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
     }
 
     const files = fs.readdirSync(folderPath);
-    const audioFiles = files
-      .filter(file => file.endsWith('.webm') || file.endsWith('.wav') || file.endsWith('.mp3') || file.endsWith('.rt.txt'))
-      .map(file => {
-        const filePath = path.join(folderPath, file);
-        const stats = fs.statSync(filePath);
-        const fileExtension = path.extname(file).slice(1);
-        
-        // .rt.txt ファイルの場合の特別な処理
-        if (file.endsWith('.rt.txt')) {
-          return {
-            id: file,
-            filename: file,
-            filepath: filePath,
-            format: 'rt.txt' as any,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            duration: 0, // リアルタイム文字起こしファイルは再生時間なし
-            isRealtimeTranscription: true, // リアルタイム文字起こしファイルであることを示すフラグ
-          };
-        }
-        
-        // 音声ファイルの場合の処理
+    
+    // ファイルをカテゴリ別に分類
+    const audioFiles: any[] = [];
+    const textFiles: any[] = [];
+    const transcriptionFiles: any[] = [];
+    
+    files.forEach(file => {
+      const filePath = path.join(folderPath, file);
+      const stats = fs.statSync(filePath);
+      const fileExtension = path.extname(file).slice(1);
+      
+      if (file.endsWith('.webm') || file.endsWith('.wav') || file.endsWith('.mp3')) {
+        // 音声ファイル
         const format = fileExtension as 'webm' | 'wav' | 'mp3';
         
         // メタデータファイルから正確なduration情報を取得
@@ -779,25 +770,145 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
             actualDuration = 0;
           }
         } else {
-          // メタデータファイルがない場合は0（再生時にHTMLAudioElementで取得）
           actualDuration = 0;
           writeLog(`No metadata file found for ${file}`);
         }
         
-        return {
+        audioFiles.push({
           id: file,
           filename: file,
           filepath: filePath,
           format: format,
           size: stats.size,
           createdAt: stats.birthtime,
-          duration: actualDuration, // 正確なduration（秒）
-          isRealtimeTranscription: false, // 音声ファイルはリアルタイム文字起こしファイルではない
-        };
-      })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); // 新しい順
+          duration: actualDuration,
+          isRealtimeTranscription: false,
+          isAudioFile: true
+        });
+      } else if (file.endsWith('.rt.txt')) {
+        // リアルタイム文字起こしファイル
+        textFiles.push({
+          id: file,
+          filename: file,
+          filepath: filePath,
+          format: 'rt.txt' as any,
+          size: stats.size,
+          createdAt: stats.birthtime,
+          duration: 0,
+          isRealtimeTranscription: true,
+        });
+      } else if (file.endsWith('_transcription.txt')) {
+        // 新録音システムの文字起こしファイル
+        transcriptionFiles.push({
+          id: file,
+          filename: file,
+          filepath: filePath,
+          format: 'txt' as any,
+          size: stats.size,
+          createdAt: stats.birthtime,
+          duration: 0,
+          isTranscriptionFile: true,
+          baseFileName: file.replace('_transcription.txt', '') // ベースファイル名
+        });
+      } else if (file.endsWith('.txt') || file.endsWith('.md')) {
+        // 一般的なテキストファイル
+        textFiles.push({
+          id: file,
+          filename: file,
+          filepath: filePath,
+          format: file.endsWith('.md') ? 'md' : 'txt' as any,
+          size: stats.size,
+          createdAt: stats.birthtime,
+          duration: 0,
+          isRealtimeTranscription: false,
+          isTextFile: true,
+        });
+      }
+    });
 
-    return audioFiles;
+    // 音声ファイルと文字起こしファイルのペアリング処理
+    const pairedFiles: any[] = [];
+    const processedAudioFiles = new Set<string>();
+    const processedTranscriptionFiles = new Set<string>();
+    
+    // 音声ファイルごとに対応する文字起こしファイルを検索
+    audioFiles.forEach(audioFile => {
+      if (processedAudioFiles.has(audioFile.filename)) return;
+      
+      const baseFileName = path.parse(audioFile.filename).name; // 拡張子を除いたファイル名
+      
+      // デバッグログを削除してシンプルに
+      
+      // 対応する文字起こしファイルを検索
+      const matchingTranscription = transcriptionFiles.find(transcFile => 
+        transcFile.baseFileName === baseFileName && !processedTranscriptionFiles.has(transcFile.filename)
+      );
+      
+      if (matchingTranscription) {
+        // ペアファイルとして統合
+        pairedFiles.push({
+          ...audioFile,
+          id: audioFile.filename, // 音声ファイル名を主キーとする
+          hasTranscriptionFile: true,
+          transcriptionPath: matchingTranscription.filepath,
+          transcriptionSize: matchingTranscription.size,
+          isPairedFile: true // ペアファイルフラグ
+        });
+        
+        processedAudioFiles.add(audioFile.filename);
+        processedTranscriptionFiles.add(matchingTranscription.filename);
+        
+        writeLog(`ペアファイル作成: ${audioFile.filename} <-> ${matchingTranscription.filename}`);
+      } else {
+        // 単独の音声ファイル
+        pairedFiles.push({
+          ...audioFile,
+          hasTranscriptionFile: false,
+          isPairedFile: false
+        });
+        processedAudioFiles.add(audioFile.filename);
+      }
+    });
+    
+    // 未処理の文字起こしファイルを単独で追加
+    transcriptionFiles.forEach(transcFile => {
+      if (!processedTranscriptionFiles.has(transcFile.filename)) {
+        pairedFiles.push({
+          id: transcFile.filename,
+          filename: transcFile.filename,
+          filepath: transcFile.filepath,
+          format: 'txt' as any,
+          size: transcFile.size,
+          createdAt: transcFile.createdAt,
+          duration: 0,
+          isTextFile: true,
+          isTranscriptionFile: true,
+          isPairedFile: false
+        });
+      }
+    });
+    
+    // 一般的なテキストファイルを追加
+    textFiles.forEach(textFile => {
+      pairedFiles.push(textFile);
+    });
+
+    // 作成日時順でソート（新しい順）
+    const sortedFiles = pairedFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    writeLog(`ファイル一覧取得完了: 合計${sortedFiles.length}件 (ペア:${sortedFiles.filter(f => f.isPairedFile).length}件)`);
+    
+    // デバッグ：ペアファイルの詳細をログ出力
+    const pairedFilesList = sortedFiles.filter(f => f.isPairedFile);
+    if (pairedFilesList.length > 0) {
+      writeLog(`🎯 ペアファイル詳細:`);
+      pairedFilesList.forEach(file => {
+        writeLog(`  - ${file.filename} | transcriptionPath: ${file.transcriptionPath} | size: ${file.transcriptionSize}`);
+      });
+    }
+    
+    return sortedFiles;
+    
   } catch (error) {
     console.error('ファイル一覧取得エラー:', error);
     return [];
@@ -1442,7 +1553,7 @@ ipcMain.handle('aichat:getPath', async (event, audioFilePath: string): Promise<s
 // ヘルパー関数
 function getTranscriptionPath(audioFilePath: string): string {
   const parsedPath = path.parse(audioFilePath);
-  return path.join(parsedPath.dir, `${parsedPath.name}.trans.txt`);
+  return path.join(parsedPath.dir, `${parsedPath.name}_transcription.txt`);
 }
 
 function getAIChatPath(audioFilePath: string): string {

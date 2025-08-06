@@ -1,0 +1,319 @@
+/**
+ * TextDisplayViewer メインコンポーネントのスタイル
+ * 全体的なレイアウトとテーマを管理
+ */
+
+/* メインコンテナ */
+.text-display-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  font-family: var(--vscode-font-family, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  overflow: hidden;
+}
+
+/* ツールバー */
+.display-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--vscode-editorGroupHeader-tabsBackground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  min-height: 40px;
+  flex-shrink: 0;
+}
+
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-center {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ファイル情報 */
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--vscode-tab-activeForeground);
+}
+
+.unsaved-indicator {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* メインコンテンツエリア */
+.display-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* メタデータパネル */
+.metadata-panel {
+  width: 300px;
+  min-width: 250px;
+  max-width: 400px;
+  border-right: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-sideBar-background);
+  flex-shrink: 0;
+}
+
+.metadata-panel.collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* メインコンテンツ */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.main-viewer,
+.main-editor {
+  flex: 1;
+  height: 100%;
+}
+
+/* フッター */
+.display-footer {
+  flex-shrink: 0;
+  background-color: var(--vscode-statusBar-background);
+  border-top: 1px solid var(--vscode-statusBar-border, var(--vscode-panel-border));
+}
+
+.selection-helper {
+  margin: 0;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 1024px) {
+  .metadata-panel {
+    width: 250px;
+    min-width: 200px;
+  }
+  
+  .toolbar-center .file-info {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .display-toolbar {
+    padding: 6px 8px;
+    min-height: 36px;
+  }
+  
+  .toolbar-center {
+    display: none;
+  }
+  
+  .metadata-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 10;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .metadata-panel.open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .display-toolbar {
+    flex-wrap: wrap;
+    min-height: auto;
+  }
+  
+  .toolbar-left,
+  .toolbar-right {
+    gap: 4px;
+  }
+  
+  .toolbar-right {
+    order: 3;
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+}
+
+/* ダークテーマ特別対応 */
+.vscode-dark {
+  --text-display-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --text-display-border: rgba(255, 255, 255, 0.1);
+}
+
+.vscode-dark .metadata-panel {
+  box-shadow: var(--text-display-shadow);
+}
+
+/* ライトテーマ特別対応 */
+.vscode-light {
+  --text-display-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --text-display-border: rgba(0, 0, 0, 0.1);
+}
+
+.vscode-light .metadata-panel {
+  box-shadow: var(--text-display-shadow);
+}
+
+/* ハイコントラストテーマ対応 */
+.vscode-high-contrast .display-toolbar,
+.vscode-high-contrast .metadata-panel,
+.vscode-high-contrast .display-footer {
+  border-color: var(--vscode-focusBorder);
+  border-width: 1px;
+}
+
+/* フォーカス管理 */
+.text-display-viewer:focus-within .display-toolbar {
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+/* ローディング状態 */
+.text-display-viewer.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.text-display-viewer.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border: 2px solid var(--vscode-progressBar-background);
+  border-top-color: var(--vscode-focusBorder);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* エラー状態 */
+.text-display-viewer.error {
+  border: 2px solid var(--vscode-inputValidation-errorBorder, #f14c4c);
+}
+
+.text-display-viewer.error .display-toolbar {
+  background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #ffffff);
+}
+
+/* アニメーション設定 */
+.metadata-panel,
+.main-content {
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+/* アクセシビリティ対応 */
+@media (prefers-reduced-motion: reduce) {
+  .metadata-panel,
+  .main-content,
+  .text-display-viewer.loading::after {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* プリント対応 */
+@media print {
+  .text-display-viewer {
+    background: white;
+    color: black;
+    height: auto;
+  }
+  
+  .display-toolbar,
+  .display-footer {
+    display: none;
+  }
+  
+  .metadata-panel {
+    position: static;
+    width: auto;
+    border: none;
+    background: transparent;
+    page-break-after: always;
+  }
+  
+  .main-content {
+    width: 100%;
+    height: auto;
+  }
+}
+
+/* カスタムスクロールバー（メインエリア用） */
+.text-display-viewer ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.text-display-viewer ::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.1));
+}
+
+.text-display-viewer ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 4px;
+}
+
+.text-display-viewer ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.6));
+}
+
+/* フルスクリーンモード */
+.text-display-viewer.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  background-color: var(--vscode-editor-background);
+}
+
+/* ツールチップの基本スタイル */
+[title] {
+  cursor: help;
+}
+
+/* セレクション強調表示 */
+.text-display-viewer ::selection {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.3));
+  color: var(--vscode-editor-selectionForeground);
+}

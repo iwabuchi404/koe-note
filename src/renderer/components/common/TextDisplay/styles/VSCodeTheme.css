@@ -1,0 +1,273 @@
+/**
+ * VSCode風テーマスタイル
+ * Dark/Lightテーマ対応
+ */
+
+/* VSCode Dark テーマ */
+.vscode-dark {
+  --vscode-bg-primary: #1e1e1e;
+  --vscode-bg-secondary: #252526;
+  --vscode-bg-tertiary: #2d2d30;
+  --vscode-bg-hover: #2a2d2e;
+  --vscode-bg-active: #094771;
+  --vscode-bg-selection: #264f78;
+  
+  --vscode-text-primary: #cccccc;
+  --vscode-text-secondary: #969696;
+  --vscode-text-tertiary: #6a6a6a;
+  --vscode-text-accent: #4fc1ff;
+  --vscode-text-link: #3794ff;
+  
+  --vscode-border: #3e3e42;
+  --vscode-border-light: #464647;
+  --vscode-accent: #007acc;
+  --vscode-accent-hover: #1177bb;
+  
+  /* シンタックスカラー */
+  --vscode-keyword: #569cd6;
+  --vscode-string: #ce9178;
+  --vscode-number: #b5cea8;
+  --vscode-comment: #6a9955;
+  --vscode-function: #dcdcaa;
+  
+  /* 状態カラー */
+  --vscode-error: #f14c4c;
+  --vscode-warning: #ffcc02;
+  --vscode-success: #89d185;
+  --vscode-info: #3794ff;
+  
+  /* 行番号 */
+  --vscode-line-number: #857e6b;
+  --vscode-line-number-active: #c6c6c6;
+  
+  /* スクロールバー */
+  --vscode-scrollbar-track: transparent;
+  --vscode-scrollbar-thumb: #424242;
+  --vscode-scrollbar-thumb-hover: #4f4f4f;
+}
+
+/* VSCode Light テーマ */
+.vscode-light {
+  --vscode-bg-primary: #ffffff;
+  --vscode-bg-secondary: #f3f3f3;
+  --vscode-bg-tertiary: #e8e8e8;
+  --vscode-bg-hover: #f0f0f0;
+  --vscode-bg-active: #cce7ff;
+  --vscode-bg-selection: #add6ff;
+  
+  --vscode-text-primary: #000000;
+  --vscode-text-secondary: #6c6c6c;
+  --vscode-text-tertiary: #8e8e8e;
+  --vscode-text-accent: #0066cc;
+  --vscode-text-link: #006ab1;
+  
+  --vscode-border: #c8c8c8;
+  --vscode-border-light: #d4d4d4;
+  --vscode-accent: #0078d4;
+  --vscode-accent-hover: #106ebe;
+  
+  /* シンタックスカラー */
+  --vscode-keyword: #0000ff;
+  --vscode-string: #a31515;
+  --vscode-number: #098658;
+  --vscode-comment: #008000;
+  --vscode-function: #795e26;
+  
+  /* 状態カラー */
+  --vscode-error: #e51400;
+  --vscode-warning: #bf8803;
+  --vscode-success: #007100;
+  --vscode-info: #1a85ff;
+  
+  /* 行番号 */
+  --vscode-line-number: #237893;
+  --vscode-line-number-active: #0b216f;
+  
+  /* スクロールバー */
+  --vscode-scrollbar-track: transparent;
+  --vscode-scrollbar-thumb: #c1c1c1;
+  --vscode-scrollbar-thumb-hover: #a8a8a8;
+}
+
+/* フォント設定 */
+.vscode-theme {
+  --vscode-font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', 'Monaco', 'Inconsolata', 'Consolas', 'Courier New', monospace;
+  --vscode-font-size: 14px;
+  --vscode-font-size-sm: 12px;
+  --vscode-font-size-lg: 16px;
+  --vscode-line-height: 1.5;
+  --vscode-letter-spacing: 0.5px;
+}
+
+/* 基本レイアウト */
+.vscode-container {
+  background-color: var(--vscode-bg-primary);
+  color: var(--vscode-text-primary);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* スクロールバースタイル */
+.vscode-scrollable {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vscode-scrollbar-thumb) var(--vscode-scrollbar-track);
+}
+
+.vscode-scrollable::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.vscode-scrollable::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbar-track);
+}
+
+.vscode-scrollable::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbar-thumb);
+  border-radius: 7px;
+  border: 3px solid var(--vscode-bg-primary);
+}
+
+.vscode-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbar-thumb-hover);
+}
+
+.vscode-scrollable::-webkit-scrollbar-corner {
+  background: var(--vscode-bg-primary);
+}
+
+/* ボタンスタイル */
+.vscode-button {
+  background-color: var(--vscode-accent);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 3px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.vscode-button:hover {
+  background-color: var(--vscode-accent-hover);
+}
+
+.vscode-button:active {
+  background-color: var(--vscode-accent);
+  transform: translateY(1px);
+}
+
+.vscode-button.outline {
+  background-color: transparent;
+  color: var(--vscode-text-primary);
+  border: 1px solid var(--vscode-border);
+}
+
+.vscode-button.outline:hover {
+  background-color: var(--vscode-bg-hover);
+}
+
+/* 入力フィールドスタイル */
+.vscode-input {
+  background-color: var(--vscode-bg-secondary);
+  color: var(--vscode-text-primary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.vscode-input:focus {
+  border-color: var(--vscode-accent);
+}
+
+/* セレクション */
+.vscode-selection {
+  background-color: var(--vscode-bg-selection);
+  color: var(--vscode-text-primary);
+}
+
+/* ホバー効果 */
+.vscode-hover:hover {
+  background-color: var(--vscode-bg-hover);
+}
+
+/* アクティブ状態 */
+.vscode-active {
+  background-color: var(--vscode-bg-active);
+  color: var(--vscode-text-primary);
+}
+
+/* 区切り線 */
+.vscode-divider {
+  border-top: 1px solid var(--vscode-border);
+  margin: 8px 0;
+}
+
+/* パネル */
+.vscode-panel {
+  background-color: var(--vscode-bg-secondary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+/* ツールバー */
+.vscode-toolbar {
+  background-color: var(--vscode-bg-tertiary);
+  border-bottom: 1px solid var(--vscode-border);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* アニメーション */
+@keyframes vscode-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vscode-fade-in {
+  animation: vscode-fade-in 0.2s ease-out;
+}
+
+/* ダークモード優先 */
+@media (prefers-color-scheme: dark) {
+  .vscode-theme:not(.vscode-light) {
+    @extend .vscode-dark;
+  }
+}
+
+/* アクセシビリティ */
+@media (prefers-reduced-motion: reduce) {
+  .vscode-button,
+  .vscode-input,
+  .vscode-fade-in {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* 高コントラストモード */
+@media (prefers-contrast: high) {
+  .vscode-theme {
+    --vscode-border: #ffffff;
+    --vscode-text-primary: #ffffff;
+    --vscode-bg-primary: #000000;
+  }
+}

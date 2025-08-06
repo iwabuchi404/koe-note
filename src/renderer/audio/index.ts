@@ -8,8 +8,6 @@
 export { AudioMixingService } from './services/core/AudioMixingService'
 export { MicrophoneMonitor } from './services/core/MicrophoneMonitorService'
 
-// 音声処理サービス
-export { AudioDiagnostics } from './services/processing/AudioDiagnostics'
 
 // 音声フック
 export { useAudioPlayer } from './hooks/useAudioPlayer'

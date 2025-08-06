@@ -1,0 +1,378 @@
+/**
+ * TranscriptionViewer コンポーネントのスタイル
+ * VSCode風の行番号付きテキスト表示
+ */
+
+/* メインコンテナ */
+.transcription-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+  font-size: var(--vscode-editor-font-size, 14px);
+  line-height: var(--vscode-editor-line-height, 1.5);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* コンテンツエリア - 行番号とテキストを左右に配置 */
+.transcription-content {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  /* スクロール同期のために高さを明示的に設定 */
+  height: 100%;
+}
+
+/* 行番号カラム */
+.transcription-viewer .transcription-line-numbers {
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+  border-right: 1px solid var(--vscode-panel-border);
+  padding: 8px 0;
+  min-width: 60px;
+  max-width: 60px;
+  flex-shrink: 0 !important;
+  user-select: none;
+  /* スクロール同期のためにY軸スクロールを有効にする - 他のスタイルを上書き */
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  /* 競合している可能性のある hidden スタイルを強制上書き */
+  overflow: visible !important;
+  overflow-y: auto !important;
+  position: relative;
+  max-height: 100%;
+  /* スクロールバーを非表示にする */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.transcription-line-number {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  min-height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  padding: 2px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vscode-editorLineNumber-foreground);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  /* スクロール同期のための高さ一致 */
+  line-height: var(--vscode-editor-line-height, 1.5);
+}
+
+.transcription-line-number:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-editorLineNumber-activeForeground);
+}
+
+.transcription-line-number.active {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-editorLineNumber-activeForeground);
+}
+
+.transcription-line-number.selected {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.3));
+  color: var(--vscode-editor-selectionForeground, #ffffff);
+}
+
+/* テキストコンテンツエリア - 行番号と本文を左右に配置 */
+.transcription-viewer .text-content,
+.player-card .transcription-viewer .text-content,
+.text-display-viewer .transcription-viewer .text-content {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
+/* 本文エリア */
+.transcription-viewer .transcription-main-text-area {
+  flex: 1 !important;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0;
+  /* スクロール同期のために最大高さを設定 */
+  max-height: 100%;
+  position: relative;
+}
+
+/* 文字起こし行 */
+.transcription-line {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  min-height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  padding: 2px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-left: 3px solid transparent;
+  position: relative;
+  box-sizing: border-box;
+  /* スクロール同期のための高さ一致 */
+  line-height: var(--vscode-editor-line-height, 1.5);
+}
+
+.transcription-line:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.05));
+}
+
+.transcription-line.active {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.08));
+  border-left-color: var(--vscode-focusBorder, #007acc);
+}
+
+.transcription-line.selected {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.2));
+  border-left-color: var(--vscode-editor-selectionBackground, #007acc);
+}
+
+/* タイムスタンプカラム */
+.timestamp-column {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 120px;
+  margin-right: 16px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vscode-descriptionForeground);
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+
+.timestamp {
+  font-family: var(--vscode-editor-font-family, monospace);
+  letter-spacing: 0.3px;
+}
+
+.time-separator {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+/* テキストカラム */
+.text-column {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+/* 話者ラベル */
+.speaker-label {
+  font-weight: 600;
+  color: var(--vscode-symbolIcon-classForeground, #d4a85a);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+/* セグメントテキスト */
+.segment-text {
+  flex: 1;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+/* 編集済みマーカー */
+.edited-marker {
+  font-size: 12px;
+  margin-left: 8px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* 検索ハイライト */
+.search-highlight {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(234, 92, 0, 0.33));
+  color: var(--vscode-editor-findMatchForeground);
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+/* フッター */
+.transcription-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.segment-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selection-count {
+  color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+  font-weight: 500;
+}
+
+/* スクロールバースタイル */
+.transcription-content ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.transcription-content ::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.1));
+}
+
+.transcription-content ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 4px;
+}
+
+.transcription-content ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.6));
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .transcription-line-numbers {
+    min-width: 50px;
+  }
+  
+  .transcription-line-number {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  
+  .timestamp-column {
+    min-width: 100px;
+    margin-right: 12px;
+    font-size: 10px;
+  }
+  
+  .transcription-line {
+    padding: 2px 8px;
+  }
+  
+  .transcription-footer {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+}
+
+/* ダークテーマ特別対応 */
+.vscode-dark .transcription-line.selected {
+  background-color: rgba(0, 122, 204, 0.25);
+}
+
+.vscode-dark .transcription-line-number.selected {
+  background-color: rgba(0, 122, 204, 0.35);
+}
+
+/* ライトテーマ特別対応 */
+.vscode-light .transcription-line.selected {
+  background-color: rgba(0, 122, 204, 0.15);
+}
+
+.vscode-light .transcription-line-number.selected {
+  background-color: rgba(0, 122, 204, 0.25);
+}
+
+/* ハイコントラストテーマ対応 */
+.vscode-high-contrast .transcription-line {
+  border-left-width: 2px;
+}
+
+.vscode-high-contrast .transcription-line.selected {
+  border-left-width: 4px;
+  background-color: transparent;
+  outline: 2px solid var(--vscode-focusBorder);
+}
+
+/* スクロール同期の特別設定 */
+.transcription-viewer .transcription-line-numbers {
+  /* JavaScriptでスクロール位置を制御するため、スムーズスクロールを無効化 */
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+}
+
+/* 行番号エリアのスクロールバーを非表示にする */
+.transcription-viewer .transcription-line-numbers::-webkit-scrollbar {
+  display: none;
+}
+
+.transcription-viewer .transcription-main-text-area {
+  /* スムーズスクロールを無効化してスクロール同期を確実にする */
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+}
+
+/* セレクション状態のアニメーション */
+.transcription-line.selected,
+.transcription-line-number.selected {
+  animation: fadeInSelection 0.2s ease-out;
+}
+
+@keyframes fadeInSelection {
+  from {
+    background-color: transparent;
+  }
+  to {
+    background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.2));
+  }
+}
+
+/* アクセシビリティ対応 */
+@media (prefers-reduced-motion: reduce) {
+  .transcription-line,
+  .transcription-line-number,
+  .transcription-line.selected,
+  .transcription-line-number.selected {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* フォーカス状態 */
+.transcription-viewer:focus-within .transcription-line:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+/* プリント対応 */
+@media print {
+  .transcription-viewer {
+    border: none;
+    background: white;
+    color: black;
+    font-family: 'Times New Roman', serif;
+  }
+  
+  .transcription-line-numbers {
+    background: transparent;
+    border-right: 1px solid #ccc;
+  }
+  
+  .transcription-line {
+    break-inside: avoid;
+  }
+  
+  .transcription-footer {
+    display: none;
+  }
+}

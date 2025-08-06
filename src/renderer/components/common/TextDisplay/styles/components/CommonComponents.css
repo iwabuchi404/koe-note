@@ -1,0 +1,377 @@
+/**
+ * 共通コンポーネント用スタイル
+ * ModeToggle, CopyButton, SelectionHelper
+ */
+
+/* ===== MODE TOGGLE ===== */
+.mode-toggle-group {
+  display: flex;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--vscode-bg-secondary);
+}
+
+.mode-toggle-button {
+  background-color: transparent;
+  color: var(--vscode-text-secondary);
+  border: none;
+  padding: 8px 14px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid var(--vscode-border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.mode-toggle-button:last-child {
+  border-right: none;
+}
+
+.mode-toggle-button:hover:not(:disabled) {
+  background-color: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.mode-toggle-button.active {
+  background-color: var(--vscode-accent);
+  color: white;
+  font-weight: 600;
+}
+
+.mode-toggle-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-toggle-button .icon {
+  font-size: 14px;
+}
+
+.mode-toggle-button .label {
+  font-weight: 500;
+}
+
+.mode-toggle-button .unsaved-indicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  background-color: var(--vscode-warning);
+  border-radius: 50%;
+  font-size: 8px;
+  line-height: 1;
+}
+
+/* ===== COPY BUTTON ===== */
+.copy-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.copy-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.copy-button .icon {
+  font-size: 14px;
+}
+
+.copy-button .label {
+  font-weight: 500;
+}
+
+.copy-button .selection-info {
+  color: var(--vscode-text-tertiary);
+  font-size: var(--vscode-font-size-sm);
+  margin-left: 4px;
+}
+
+/* コピーボタンのサイズバリエーション */
+.copy-button-small {
+  padding: 4px 8px;
+  font-size: var(--vscode-font-size-sm);
+}
+
+.copy-button-small .icon {
+  font-size: 12px;
+}
+
+.copy-button-medium {
+  padding: 6px 12px;
+  font-size: var(--vscode-font-size-sm);
+}
+
+.copy-button-large {
+  padding: 8px 16px;
+  font-size: var(--vscode-font-size);
+}
+
+/* コピーボタンのバリエーション */
+.copy-button-selection {
+  /* 選択部分コピー用のスタイル */
+}
+
+.copy-button-full-text {
+  /* 全文コピー用のスタイル */
+}
+
+.copy-button-segments {
+  /* セグメントコピー用のスタイル */
+}
+
+/* ===== SELECTION HELPER ===== */
+.selection-helper {
+  background-color: var(--vscode-bg-tertiary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  padding: 12px;
+  margin: 8px 0;
+}
+
+.selection-helper.no-selection {
+  opacity: 0.7;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.selection-details {
+  flex: 1;
+  min-width: 200px;
+}
+
+.selected-text-preview {
+  display: block;
+  font-style: italic;
+  color: var(--vscode-text-primary);
+  margin-bottom: 4px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.selection-stats {
+  display: flex;
+  gap: 12px;
+  font-size: var(--vscode-font-size-sm);
+  color: var(--vscode-text-secondary);
+}
+
+.selection-stats .stat {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.selection-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.info-text {
+  color: var(--vscode-text-secondary);
+  font-style: italic;
+}
+
+/* 選択されたセグメント詳細 */
+.selected-segments {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-border);
+}
+
+.segments-header {
+  margin-bottom: 8px;
+}
+
+.header-text {
+  font-size: var(--vscode-font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-text-primary);
+}
+
+.segments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segment-item {
+  background-color: var(--vscode-bg-primary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: var(--vscode-font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segment-id {
+  color: var(--vscode-text-accent);
+  font-weight: 600;
+}
+
+.segment-time {
+  color: var(--vscode-text-secondary);
+  font-family: var(--vscode-font-family);
+}
+
+.segment-speaker {
+  color: var(--vscode-text-primary);
+  font-weight: 500;
+  background-color: var(--vscode-accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+/* ===== アニメーション ===== */
+.selection-helper {
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== レスポンシブ対応 ===== */
+@media (max-width: 768px) {
+  .selection-info {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .selection-actions {
+    justify-content: center;
+  }
+  
+  .mode-toggle-button {
+    min-width: 60px;
+    padding: 6px 10px;
+  }
+  
+  .mode-toggle-button .label {
+    display: none;
+  }
+  
+  .copy-button .label {
+    display: none;
+  }
+  
+  .segments-list {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .segment-item {
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 480px) {
+  .selection-helper {
+    padding: 8px;
+    margin: 4px 0;
+  }
+  
+  .selection-actions {
+    gap: 4px;
+  }
+  
+  .selection-actions .vscode-button {
+    padding: 4px 8px;
+    font-size: var(--vscode-font-size-sm);
+  }
+  
+  .copy-button-small .label,
+  .copy-button-medium .label {
+    display: none;
+  }
+}
+
+/* ===== 高コントラストモード ===== */
+@media (prefers-contrast: high) {
+  .mode-toggle-button {
+    border-width: 2px;
+  }
+  
+  .selection-helper {
+    border-width: 2px;
+  }
+  
+  .segment-item {
+    border-width: 2px;
+  }
+}
+
+/* ===== 印刷スタイル ===== */
+@media print {
+  .mode-toggle-group,
+  .copy-button,
+  .selection-actions {
+    display: none;
+  }
+  
+  .selected-text-preview {
+    font-style: normal;
+    font-weight: bold;
+  }
+  
+  .selection-helper {
+    background: white;
+    border: 1px solid #ccc;
+  }
+}
+
+/* ===== アクセシビリティ ===== */
+@media (prefers-reduced-motion: reduce) {
+  .mode-toggle-button,
+  .copy-button,
+  .selection-helper,
+  .segment-item {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* フォーカス状態 */
+.mode-toggle-button:focus,
+.copy-button:focus,
+.selection-actions button:focus {
+  outline: 2px solid var(--vscode-accent);
+  outline-offset: 2px;
+}
+
+/* ホバー状態の詳細 */
+.segment-item:hover {
+  background-color: var(--vscode-bg-hover);
+  border-color: var(--vscode-border-light);
+}

@@ -1,0 +1,608 @@
+/**
+ * TextDisplayViewer メインスタイル
+ * VSCode風レイアウトとコンポーネント統合
+ */
+
+@import './VSCodeTheme.css';
+
+/* メインコンテナ */
+.text-display-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.text-display-viewer.full-width {
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ヘッダーバー */
+.text-display-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--vscode-border);
+  background-color: var(--vscode-bg-tertiary);
+}
+
+.text-display-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text-display-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ファイル名表示 */
+.text-display-filename {
+  font-weight: 600;
+  color: var(--vscode-text-primary);
+  font-size: var(--vscode-font-size);
+}
+
+.text-display-filename .file-icon {
+  margin-right: 6px;
+  opacity: 0.8;
+}
+
+/* モード切り替えボタン */
+.mode-toggle-group {
+  display: flex;
+  border: 1px solid var(--vscode-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--vscode-bg-secondary);
+}
+
+.mode-toggle-button {
+  background-color: transparent;
+  color: var(--vscode-text-secondary);
+  border: none;
+  padding: 8px 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid var(--vscode-border);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.mode-toggle-button:last-child {
+  border-right: none;
+}
+
+.mode-toggle-button:hover {
+  background-color: var(--vscode-bg-hover);
+  color: var(--vscode-text-primary);
+}
+
+.mode-toggle-button.active {
+  background-color: var(--vscode-accent);
+  color: white;
+  box-shadow: inset 0 0 0 1px var(--vscode-accent);
+}
+
+.mode-toggle-button.active::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--vscode-accent-bright);
+}
+
+.mode-toggle-button .icon {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.mode-toggle-button.active .icon {
+  opacity: 1;
+}
+
+/* 未保存変更インジケーター */
+.unsaved-indicator {
+  color: var(--vscode-warning);
+  font-size: 8px;
+  margin-left: 4px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.mode-toggle-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mode-toggle-button:disabled:hover {
+  background-color: transparent;
+  color: var(--vscode-text-secondary);
+}
+
+/* アクションボタン */
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--vscode-font-size-sm);
+}
+
+.action-button .icon {
+  font-size: 14px;
+}
+
+/* メタデータパネル */
+.metadata-panel {
+  border-bottom: 1px solid var(--vscode-border);
+  background-color: var(--vscode-bg-secondary);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.metadata-panel.collapsed {
+  height: 0;
+  border-bottom: none;
+}
+
+.metadata-panel.expanded {
+  height: auto;
+  min-height: 120px;
+}
+
+.metadata-content {
+  padding: 16px;
+}
+
+.metadata-toggle {
+  background: none;
+  border: none;
+  color: var(--vscode-text-secondary);
+  cursor: pointer;
+  padding: 8px 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s ease;
+}
+
+.metadata-toggle:hover {
+  color: var(--vscode-text-primary);
+}
+
+.metadata-toggle .arrow {
+  transition: transform 0.2s ease;
+}
+
+.metadata-toggle.expanded .arrow {
+  transform: rotate(90deg);
+}
+
+.metadata-toggle .summary {
+  margin-left: auto;
+  font-size: var(--vscode-font-size-xs);
+  color: var(--vscode-text-tertiary);
+  opacity: 0.8;
+}
+
+/* メタデータグリッド */
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.metadata-section {
+  background-color: var(--vscode-bg-primary);
+  border: 1px solid var(--vscode-border);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.metadata-section .section-title {
+  font-size: var(--vscode-font-size);
+  font-weight: 600;
+  color: var(--vscode-text-primary);
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metadata-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metadata-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--vscode-font-size-sm);
+  line-height: 1.4;
+}
+
+.metadata-item .label {
+  color: var(--vscode-text-secondary);
+  font-weight: 500;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.metadata-item .value {
+  color: var(--vscode-text-primary);
+  text-align: right;
+  font-family: var(--vscode-font-family);
+  font-weight: 400;
+  word-break: break-word;
+}
+
+/* 話者タグ */
+.speakers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.speaker-tag {
+  background-color: var(--vscode-accent);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: var(--vscode-font-size-xs);
+  font-weight: 500;
+}
+
+/* メインコンテンツエリア */
+.text-display-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 表示モード */
+.view-mode-container {
+  flex: 1;
+  overflow-y: auto;
+  background-color: var(--vscode-bg-primary);
+}
+
+/* 編集モード */
+.edit-mode-container {
+  flex: 1;
+  overflow: hidden;
+  background-color: var(--vscode-bg-primary);
+}
+
+/* 行番号付きコンテナ */
+.line-numbered-content {
+  display: flex;
+  height: 100%;
+  flex: 1;
+  overflow: hidden;
+}
+
+.line-numbers {
+  background-color: var(--vscode-bg-secondary);
+  border-right: 1px solid var(--vscode-border);
+  padding: 16px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  color: var(--vscode-line-number);
+  text-align: right;
+  user-select: none;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.line-number {
+  display: block;
+  white-space: nowrap;
+  height: calc(var(--vscode-font-size) * var(--vscode-line-height));
+  transition: color 0.15s ease;
+}
+
+.line-number.active {
+  color: var(--vscode-line-number-active);
+  font-weight: 600;
+}
+
+/* テキストコンテンツ */
+.text-content {
+  flex: 1;
+  padding: 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  color: var(--vscode-text-primary);
+  overflow-y: auto;
+}
+
+/* 文字起こしライン */
+.transcription-line {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 2px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  transition: background-color 0.15s ease;
+  cursor: text;
+  user-select: text;
+  min-height: calc(var(--vscode-font-size) * var(--vscode-line-height));
+}
+
+.transcription-line:hover {
+  background-color: var(--vscode-bg-hover);
+}
+
+.transcription-line.selected {
+  background-color: var(--vscode-bg-selection);
+}
+
+.transcription-line.active {
+  background-color: var(--vscode-bg-selection);
+  border-left: 3px solid var(--vscode-accent);
+}
+
+.timestamp-column {
+  color: var(--vscode-text-secondary);
+  font-size: var(--vscode-font-size-xs);
+  margin-right: 16px;
+  white-space: nowrap;
+  user-select: none;
+  min-width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: var(--vscode-line-height);
+}
+
+.timestamp {
+  font-family: var(--vscode-font-family-mono);
+  font-size: var(--vscode-font-size-xs);
+  opacity: 0.8;
+}
+
+.time-separator {
+  opacity: 0.5;
+  font-size: var(--vscode-font-size-xs);
+}
+
+.text-column {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: var(--vscode-line-height);
+  word-wrap: break-word;
+}
+
+.segment-text {
+  flex: 1;
+  line-height: var(--vscode-line-height);
+}
+
+.edited-marker {
+  opacity: 0.6;
+  font-size: var(--vscode-font-size-xs);
+  flex-shrink: 0;
+}
+
+/* 話者表示 */
+.speaker-label {
+  color: var(--vscode-text-accent);
+  font-weight: 600;
+  margin-right: 8px;
+  font-size: var(--vscode-font-size-sm);
+}
+
+/* プレーンテキスト表示 */
+.plain-text-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.6;
+  padding: 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-text-primary);
+}
+
+/* テキストエディター */
+.text-editor {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  background-color: var(--vscode-bg-primary);
+  color: var(--vscode-text-primary);
+  tab-size: 2;
+}
+
+.text-editor::selection {
+  background-color: var(--vscode-bg-selection);
+}
+
+/* 選択テキストのハイライト */
+.selection-highlight {
+  background-color: var(--vscode-bg-selection);
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+/* コピー成功メッセージ */
+.copy-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: var(--vscode-success);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  animation: slideInFadeOut 2s ease-in-out;
+}
+
+@keyframes slideInFadeOut {
+  0% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  15%, 85% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* エラー状態 */
+.error-message {
+  color: var(--vscode-error);
+  background-color: var(--vscode-bg-secondary);
+  border: 1px solid var(--vscode-error);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin: 16px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size-sm);
+}
+
+/* ローディング状態 */
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--vscode-text-secondary);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--vscode-text-tertiary);
+  border-top: 2px solid var(--vscode-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 12px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .text-display-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .text-display-header-left,
+  .text-display-header-right {
+    justify-content: center;
+  }
+  
+  .line-numbers {
+    min-width: 40px;
+    padding: 16px 4px;
+  }
+  
+  .timestamp {
+    min-width: 80px;
+    margin-right: 8px;
+  }
+}
+
+/* セグメント数表示 */
+.transcription-footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--vscode-border);
+  background-color: var(--vscode-bg-secondary);
+  font-size: var(--vscode-font-size-xs);
+  color: var(--vscode-text-secondary);
+  flex-shrink: 0;
+}
+
+.segment-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selection-count {
+  color: var(--vscode-accent);
+  font-weight: 500;
+}
+
+/* 文字起こしビューアーのコンテナ */
+.transcription-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 印刷スタイル */
+@media print {
+  .text-display-header,
+  .metadata-toggle,
+  .action-button {
+    display: none;
+  }
+  
+  .text-display-viewer {
+    background: white;
+    color: black;
+  }
+  
+  .line-numbers {
+    background: transparent;
+    border: none;
+  }
+}

@@ -4,6 +4,7 @@ import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { TabProvider } from './contexts/TabContext'
+import { RecordingProvider } from './contexts/RecordingContext'
 import { LoggerFactory, LogCategories } from './utils/LoggerFactory'
 import { initializeLogger, enableLoggerDebugMode } from './utils/LoggerInitializer'
 
@@ -11,7 +12,7 @@ export interface AudioFile {
   id: string
   filename: string
   filepath: string
-  format: 'webm' | 'wav' | 'mp3' | 'rt.txt'
+  format: 'webm' | 'wav' | 'mp3' | 'rt.txt' | 'txt' | 'md'
   duration?: number // オプショナルに変更（preloadと一致）
   size: number
   createdAt: Date
@@ -21,6 +22,7 @@ export interface AudioFile {
   transcriptionPath?: string // 文字起こしファイルのパス
   isRecording?: boolean // 録音中フラグ
   isRealtimeTranscription?: boolean // リアルタイム文字起こしファイルフラグ
+  isTextFile?: boolean // テキストファイルフラグ
 }
 
 // 選択されたファイルの型定義
@@ -128,14 +130,16 @@ const App: React.FC = () => {
 
   return (
     <SettingsProvider>
-      <TabProvider>
-        <AppContext.Provider value={contextValue}>
-          <div className="app">
-            <TitleBar />
-            <MainLayout />
-          </div>
-        </AppContext.Provider>
-      </TabProvider>
+      <RecordingProvider>
+        <TabProvider>
+          <AppContext.Provider value={contextValue}>
+            <div className="app">
+              <TitleBar />
+              <MainLayout />
+            </div>
+          </AppContext.Provider>
+        </TabProvider>
+      </RecordingProvider>
     </SettingsProvider>
   )
 }

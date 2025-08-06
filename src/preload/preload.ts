@@ -83,7 +83,7 @@ export interface AudioFile {
   id: string;
   filename: string;
   filepath: string;
-  format: 'webm' | 'wav' | 'mp3' | 'rt.txt';
+  format: 'webm' | 'wav' | 'mp3' | 'rt.txt' | 'txt' | 'md';
   size: number;
   createdAt: Date;
   duration?: number;
@@ -91,8 +91,13 @@ export interface AudioFile {
   inputDevice?: string;
   hasTranscriptionFile?: boolean; // 文字起こしファイルの存在フラグ
   transcriptionPath?: string; // 文字起こしファイルのパス
+  transcriptionSize?: number; // 文字起こしファイルのサイズ
   isRecording?: boolean; // 録音中フラグ
   isRealtimeTranscription?: boolean; // リアルタイム文字起こしファイルフラグ
+  isTextFile?: boolean; // テキストファイルフラグ
+  isAudioFile?: boolean; // 音声ファイルフラグ
+  isTranscriptionFile?: boolean; // 文字起こしファイルフラグ
+  isPairedFile?: boolean; // ペアファイルフラグ
 }
 
 export interface AppSettings {

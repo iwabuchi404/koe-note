@@ -30,7 +30,6 @@ const LeftPanel: React.FC = () => {
   // ローカル状態管理
   const [selectedFolder, setSelectedFolder] = useState<string>('')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [loadedTranscriptions, setLoadedTranscriptions] = useState<Map<string, any>>(new Map())
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -138,29 +137,58 @@ const LeftPanel: React.FC = () => {
 
   // ファイル選択ハンドラー
   const handleFileSelect = useCallback((fileId: string) => {
-    const file = fileList.find(f => f.id === fileId)
+    const file = fileList.find(f => f.id === fileId) as ExtendedAudioFile
     if (file) {
       setSelectedFile(file)
       setSelectedFileId(fileId)
+      
+      // ファイルタイプに応じてタブデータを作成
+      const fileType = file.isTextFile || file.format === 'txt' || file.format === 'md' 
+        ? 'text' as const 
+        : file.isRealtimeTranscription 
+        ? 'transcription' as const 
+        : 'audio' as const
+      
       createTab(TabType.PLAYER, {
         filePath: file.filepath,
         fileName: file.filename,
-        fileType: 'audio' as const,
+        fileType: fileType,
         duration: file.duration,
         hasTranscriptionFile: file.hasTranscriptionFile,
         transcriptionPath: file.transcriptionPath
       })
-      logger.info('ファイル選択', { filename: file.filename, fileId })
+      logger.info('ファイル選択', { filename: file.filename, fileId, fileType })
     }
   }, [fileList, setSelectedFile, createTab, logger])
 
   // ファイル操作ハンドラー
   const handleFileAction = useCallback(async (action: string, fileId: string, ...args: any[]) => {
-    const file = fileList.find(f => f.id === fileId)
+    const file = fileList.find(f => f.id === fileId) as ExtendedAudioFile
     if (!file) return
 
     try {
       switch (action) {
+        case 'openTranscriptionFile':
+          // ツリーの文字起こしファイル選択
+          const transcriptionInfo = args[0]
+          if (transcriptionInfo) {
+            // 子ノード用のIDを設定
+            setSelectedFileId(`${fileId}_transcription`)
+            
+            createTab(TabType.PLAYER, {
+              filePath: transcriptionInfo.filePath,
+              fileName: transcriptionInfo.fileName,
+              fileType: 'transcription' as const,
+              content: '',
+              hasTranscriptionFile: false
+            })
+            logger.info('文字起こしファイル選択', { 
+              transcriptionFile: transcriptionInfo.fileName,
+              fileId 
+            })
+          }
+          break
+          
         case 'delete':
           if (window.confirm(`ファイル「${file.filename}」を削除しますか？`)) {
             await window.electronAPI.deleteFile(file.filepath)
@@ -193,20 +221,7 @@ const LeftPanel: React.FC = () => {
     } catch (error) {
       logger.error('ファイル操作エラー', error as Error)
     }
-  }, [fileList, selectedFolder, loadFileList, setTranscriptionDisplayData, createTab, logger])
-
-  // 展開状態の切り替え
-  const handleToggleExpand = useCallback((fileId: string) => {
-    setExpandedFiles(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(fileId)) {
-        newSet.delete(fileId)
-      } else {
-        newSet.add(fileId)
-      }
-      return newSet
-    })
-  }, [])
+  }, [fileList, selectedFolder, loadFileList, setTranscriptionDisplayData, createTab, setSelectedFile, setSelectedFileId, logger])
 
   // コンテキストメニュー（将来的に実装）
   const handleContextMenu = useCallback((event: React.MouseEvent, file: ExtendedAudioFile) => {
@@ -219,14 +234,17 @@ const LeftPanel: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      backgroundColor: 'var(--color-bg-primary)',
-      borderRight: '1px solid var(--color-border)'
+      backgroundColor: 'var(--color-bg-secondary)',
+      color: 'var(--color-text-primary)',
+      fontFamily: 'var(--font-family-ui)',
+      fontSize: 'var(--font-size-md)'
     }}>
       {/* ヘッダー部分 */}
       <div style={{
         padding: 'var(--spacing-md)',
         borderBottom: '1px solid var(--color-border)',
-        backgroundColor: 'var(--color-bg-secondary)'
+        backgroundColor: 'var(--color-bg-tertiary)',
+        color: 'var(--color-text-primary)'
       }}>
         {/* 検索バー */}
         <div style={{ marginBottom: 'var(--spacing-sm)' }}>
@@ -241,7 +259,9 @@ const LeftPanel: React.FC = () => {
               border: '1px solid var(--color-border)',
               borderRadius: '4px',
               fontSize: 'var(--font-size-sm)',
-              backgroundColor: 'var(--color-bg-primary)'
+              backgroundColor: 'var(--color-bg-primary)',
+              color: 'var(--color-text-primary)',
+              outline: 'none'
             }}
           />
         </div>
@@ -273,10 +293,10 @@ const LeftPanel: React.FC = () => {
         <SimpleFileList
           files={filteredFiles}
           selectedFileId={selectedFileId}
-          expandedFiles={expandedFiles}
+          expandedFiles={new Set()} // 空のセット（使用されない）
           onFileSelect={handleFileSelect}
           onFileAction={handleFileAction}
-          onToggleExpand={handleToggleExpand}
+          onToggleExpand={() => {}} // 空の関数（使用されない）
           isLoading={isLoading}
           error={error || undefined}
         />

@@ -7,6 +7,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useTabContext } from '../../contexts/TabContext'
 import { TabStatus, PlayerTabData } from '../../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
+import { TextDisplayViewer, TranscriptionAdapter } from '../common/TextDisplay'
 import './PlayerCard.css'
 
 const logger = LoggerFactory.getLogger(LogCategories.UI_BOTTOM_PANEL)
@@ -40,6 +41,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
   const [hasTranscriptionFile, setHasTranscriptionFile] = useState(data?.hasTranscriptionFile || false)
   const [transcriptionPath, setTranscriptionPath] = useState(data?.transcriptionPath || '')
   const [transcriptionText, setTranscriptionText] = useState('')
+  const [transcriptionResult, setTranscriptionResult] = useState<any>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcriptionProgress, setTranscriptionProgress] = useState(0)
   
@@ -143,7 +145,10 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
           // 実際の文字起こし実行
           const result = await window.electronAPI.speechTranscribe(filePath)
           
-          // 結果を整形
+          // 結果を保存（新しいTextDisplayViewer用）
+          setTranscriptionResult(result)
+          
+          // 結果を整形（従来の表示用）
           const transcribedText = result.segments
             .map(segment => `[${Math.floor(segment.start)}s] ${segment.text}`)
             .join('\n')
@@ -192,52 +197,68 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
     }
   }, [fileName, filePath, fileType])
 
-  // dataプロパティ変更時の状態更新
+  // dataプロパティ変更時の状態更新（初期化時のみ）
   useEffect(() => {
     if (!data) return
 
-    // ファイル情報の更新
+    // 初期状態設定時のみ更新（無限ループ防止）
+    let hasChanges = false
+    
     if (data.fileName && data.fileName !== fileName) {
       setFileName(data.fileName)
+      hasChanges = true
     }
     if (data.filePath && data.filePath !== filePath) {
       setFilePath(data.filePath)
+      hasChanges = true
     }
     if (data.fileType && data.fileType !== fileType) {
       setFileType(data.fileType)
+      hasChanges = true
     }
     
     // 音声関連の更新
-    if (data.duration && data.duration !== duration) {
+    if (typeof data.duration === 'number' && data.duration !== duration) {
       setDuration(data.duration)
+      hasChanges = true
     }
     
-    // テキスト内容の更新
-    if (data.content !== undefined && data.content !== content) {
+    // テキスト内容の更新（初期ロード時のみ）
+    if (data.content !== undefined && data.content !== content && !isEdited) {
       setContent(data.content)
+      hasChanges = true
     }
     
     // 文字起こし関連の更新
-    if (data.hasTranscriptionFile !== undefined && data.hasTranscriptionFile !== hasTranscriptionFile) {
+    if (typeof data.hasTranscriptionFile === 'boolean' && data.hasTranscriptionFile !== hasTranscriptionFile) {
       setHasTranscriptionFile(data.hasTranscriptionFile)
+      hasChanges = true
     }
     if (data.transcriptionPath && data.transcriptionPath !== transcriptionPath) {
       setTranscriptionPath(data.transcriptionPath)
+      hasChanges = true
     }
     
-    logger.info('PlayerCardデータ更新', { 
-      fileName: data.fileName, 
-      filePath: data.filePath, 
-      fileType: data.fileType 
-    })
-  }, [data, fileName, filePath, fileType, duration, content, hasTranscriptionFile, transcriptionPath])
+    if (hasChanges) {
+      logger.info('PlayerCardデータ更新', { 
+        fileName: data.fileName, 
+        filePath: data.filePath, 
+        fileType: data.fileType 
+      })
+    }
+  }, [data?.fileName, data?.filePath, data?.fileType, data?.duration, data?.hasTranscriptionFile, data?.transcriptionPath])
 
-  // ファイル読み込み
+  // ファイル読み込み（ファイルパス変更時のみ実行）
   useEffect(() => {
     const loadFile = async () => {
-      if (!filePath) return
+      if (!filePath) {
+        setContent('')
+        return
+      }
       
       try {
+        setError(null) // エラーリセット
+        
         if (fileType === 'audio') {
           // 音声ファイルの設定
           if (audioRef.current && window.electronAPI?.loadAudioFile) {
@@ -268,10 +289,31 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
               const fileContent = await window.electronAPI.readFile(transcriptionPath)
               const contentText = new TextDecoder().decode(fileContent)
               setTranscriptionText(contentText)
+              
+              // 新しいシステム用: ファイル内容を解析してTranscriptionResultを生成
+              try {
+                const parsedContent = import('../common/TextDisplay').then(module => {
+                  return module.MetadataParser.parseTranscriptionFile(contentText, transcriptionPath)
+                })
+                parsedContent.then(content => {
+                  if (content.segments.length > 0) {
+                    // 新しいシステム用のTranscriptionResultを生成
+                    const legacyResult = import('../common/TextDisplay').then(module => {
+                      return module.TranscriptionAdapter.convertToLegacyResult(content)
+                    })
+                    legacyResult.then(result => {
+                      setTranscriptionResult(result)
+                    })
+                  }
+                })
+              } catch (parseError) {
+                logger.warn('文字起こしファイル解析エラー（従来表示を継続）', parseError)
+              }
+              
               logger.info('既存の文字起こしファイル読み込み完了', { fileName, transcriptionPath })
             }
           }
-        } else {
+        } else if (fileType === 'text' || fileType === 'transcription') {
           // テキストファイルの読み込み
           logger.info('テキストファイル読み込み開始', { fileName, filePath })
           
@@ -294,7 +336,46 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
     }
     
     loadFile()
-  }, [filePath, fileName, fileType, hasTranscriptionFile, transcriptionPath])
+  }, [filePath, fileType]) // 依存配列を最小限に
+
+  // 文字起こしテキストコンテンツ生成
+  const generateTranscriptionContent = useCallback((): string => {
+    if (!transcriptionResult) return transcriptionText
+    
+    return TranscriptionAdapter.generateFileContent(
+      transcriptionResult,
+      fileName,
+      'kotoba-whisper'
+    )
+  }, [transcriptionResult, transcriptionText, fileName])
+  
+  // 文字起こし結果保存
+  const handleSaveTranscription = useCallback(async (content: string): Promise<boolean> => {
+    try {
+      if (!fileName) return false
+      
+      const baseName = fileName.replace(/\.[^/.]+$/, '')
+      const transcriptionFileName = `${baseName}_transcription.txt`
+      
+      const success = await window.electronAPI.saveTextFile(transcriptionFileName, content)
+      
+      if (success) {
+        logger.info('文字起こし結果保存完了', { fileName, transcriptionFileName })
+        setTranscriptionPath(transcriptionFileName)
+        setHasTranscriptionFile(true)
+      }
+      
+      return success
+    } catch (error) {
+      logger.error('文字起こし保存エラー', error instanceof Error ? error : new Error(String(error)))
+      return false
+    }
+  }, [fileName])
+  
+  // 文字起こしコンテンツ変更
+  const handleTranscriptionContentChange = useCallback((newContent: string) => {
+    setTranscriptionText(newContent)
+  }, [])
 
   // 音声イベントハンドラー
   useEffect(() => {
@@ -333,7 +414,7 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
     }
   }, [fileName, filePath, fileType])
 
-  // タブ状態更新
+  // タブ状態更新（データ更新を制限して無限ループを防止）
   useEffect(() => {
     const status = isTranscribing 
       ? TabStatus.TRANSCRIBING
@@ -348,16 +429,21 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
     updateTab(tabId, { 
       status,
       data: { 
-        ...data, 
+        fileName,
+        filePath,
+        fileType,
+        duration,
         isPlaying, 
         currentTime, 
         volume, 
         content, 
         isEdited,
-        transcriptionText
+        transcriptionText,
+        hasTranscriptionFile,
+        transcriptionPath
       }
     })
-  }, [isPlaying, currentTime, volume, content, isEdited, transcriptionText, isTranscribing, isEditing, error, tabId, updateTab, data])
+  }, [isPlaying, isTranscribing, isEditing, error, tabId, updateTab, fileName, filePath, fileType, duration, currentTime, volume, content, isEdited, transcriptionText, hasTranscriptionFile, transcriptionPath])
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
@@ -459,9 +545,19 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
               </div>
             )}
 
-            {transcriptionText && (
+            {(transcriptionText || transcriptionResult) && (
               <div className="transcription-result" data-testid="transcription-result">
-                <pre data-testid="transcription-text">{transcriptionText}</pre>
+                <TextDisplayViewer
+                  content={generateTranscriptionContent()}
+                  filePath={`${fileName.replace(/\.[^/.]+$/, '')}_transcription.txt`}
+                  onContentChange={handleTranscriptionContentChange}
+                  onSave={handleSaveTranscription}
+                  forceFileType="transcription"
+                  showLineNumbers={true}
+                  showMetadata={true}
+                  initialMode="view"
+                  className="transcription-display"
+                />
               </div>
             )}
           </div>
@@ -469,47 +565,35 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
       )}
 
       {/* テキストエディター */}
-      {(fileType === 'text' || fileType === 'transcription') && (
+      {(fileType === 'text' || fileType === 'transcription') && content && (
         <div className="text-editor-section">
-          <div className="editor-header">
-            <h3>テキスト</h3>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {isEdited && (
-                <button 
-                  className="save-button"
-                  onClick={handleSaveFile}
-                  title="ファイルを保存"
-                >
-                  💾 保存
-                </button>
-              )}
-              <button 
-                className={`edit-toggle ${isEditing ? 'active' : ''}`}
-                onClick={handleEditToggle}
-              >
-                {isEditing ? '👁️ 閲覧' : '✏️ 編集'}
-              </button>
-            </div>
-          </div>
-
           <div className="text-content">
-            {isEditing ? (
-              <textarea
-                className="text-editor"
-                value={content}
-                onChange={handleContentChange}
-                placeholder="ここにテキストを入力してください..."
-              />
-            ) : (
-              <pre className="text-viewer">{content || 'テキストがありません'}</pre>
-            )}
+            <TextDisplayViewer
+              content={content}
+              filePath={filePath}
+              onContentChange={setContent}
+              onSave={async (newContent) => {
+                try {
+                  if (window.electronAPI?.saveTextFile) {
+                    const success = await window.electronAPI.saveTextFile(filePath, newContent)
+                    if (success) {
+                      setIsEdited(false)
+                      logger.info('テキストファイル保存完了', { fileName, filePath })
+                    }
+                    return success
+                  }
+                  return false
+                } catch (error) {
+                  logger.error('テキストファイル保存エラー', error instanceof Error ? error : new Error(String(error)))
+                  return false
+                }
+              }}
+              showLineNumbers={true}
+              showMetadata={true}
+              initialMode="view"
+              className="text-display"
+            />
           </div>
-
-          {isEdited && (
-            <div className="save-indicator">
-              未保存の変更があります
-            </div>
-          )}
         </div>
       )}
     </div>

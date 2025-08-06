@@ -1,0 +1,339 @@
+/**
+ * TextEditor コンポーネントのスタイル
+ * VSCode風のテキストエディター
+ */
+
+/* メインコンテナ */
+.text-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+  font-size: var(--vscode-editor-font-size, 14px);
+  line-height: var(--vscode-editor-line-height, 1.5);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* エディターコンテンツエリア */
+.editor-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 行番号カラム */
+.line-numbers {
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+  border-right: 1px solid var(--vscode-panel-border);
+  padding: 8px 0;
+  min-width: 60px;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.line-number {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: calc(var(--vscode-editor-line-height, 1.5) * 1em);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vscode-editorLineNumber-foreground);
+  transition: color 0.15s ease;
+}
+
+.line-number.current {
+  color: var(--vscode-editorLineNumber-activeForeground);
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.05));
+}
+
+/* メインエディターエリア */
+.main-editor-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* テキストエリア */
+.editor-textarea {
+  width: 100%;
+  height: 100%;
+  padding: 8px 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  resize: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  overflow-y: auto;
+  caret-color: var(--vscode-editorCursor-foreground, #ffffff);
+}
+
+.main-editor-area.word-wrap .editor-textarea {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  overflow-x: hidden;
+}
+
+.main-editor-area.no-wrap .editor-textarea {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* プレースホルダー */
+.editor-textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+  opacity: 1;
+}
+
+/* テキスト選択 */
+.editor-textarea::selection {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.3));
+  color: var(--vscode-editor-selectionForeground);
+}
+
+/* フォーカス状態 */
+.editor-textarea:focus {
+  background-color: var(--vscode-editor-background);
+}
+
+/* 検索ハイライトオーバーレイ */
+.highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* エディターフッター */
+.editor-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background-color: var(--vscode-statusBar-background, #007acc);
+  color: var(--vscode-statusBar-foreground, #ffffff);
+  font-size: 12px;
+  font-weight: 400;
+  border-top: 1px solid var(--vscode-statusBar-border, transparent);
+}
+
+.cursor-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+
+.editor-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+}
+
+.selection-info {
+  color: var(--vscode-statusBar-foreground, #ffffff);
+  opacity: 0.9;
+}
+
+.editor-settings {
+  display: flex;
+  align-items: center;
+  color: inherit;
+  opacity: 0.8;
+  font-size: 11px;
+}
+
+/* スクロールバースタイル */
+.editor-textarea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.editor-textarea::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.1));
+}
+
+.editor-textarea::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 4px;
+}
+
+.editor-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.6));
+}
+
+.editor-textarea::-webkit-scrollbar-corner {
+  background: var(--vscode-editor-background);
+}
+
+/* 読み取り専用モード */
+.text-editor.readonly {
+  opacity: 0.8;
+}
+
+.text-editor.readonly .editor-textarea {
+  cursor: default;
+  user-select: text;
+}
+
+.text-editor.readonly .editor-footer {
+  background-color: var(--vscode-statusBar-background, rgba(0, 122, 204, 0.7));
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .line-numbers {
+    min-width: 50px;
+  }
+  
+  .line-number {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  
+  .editor-textarea {
+    padding: 8px;
+  }
+  
+  .editor-footer {
+    padding: 4px 8px;
+    font-size: 11px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .editor-settings {
+    display: none;
+  }
+}
+
+/* ダークテーマ対応 */
+.vscode-dark .editor-textarea {
+  color: var(--vscode-editor-foreground, #cccccc);
+}
+
+.vscode-dark .line-number.current {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ライトテーマ対応 */
+.vscode-light .editor-textarea {
+  color: var(--vscode-editor-foreground, #333333);
+}
+
+.vscode-light .line-number.current {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.vscode-light .editor-footer {
+  background-color: var(--vscode-statusBar-background, #007acc);
+  border-top-color: var(--vscode-statusBar-border, #cccccc);
+}
+
+/* ハイコントラストテーマ対応 */
+.vscode-high-contrast .editor-textarea {
+  border: 1px solid var(--vscode-focusBorder);
+}
+
+.vscode-high-contrast .line-number.current {
+  background-color: transparent;
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* タブサイズのカスタマイズ */
+.editor-textarea[style*="tab-size: 2"] {
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+
+.editor-textarea[style*="tab-size: 4"] {
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+.editor-textarea[style*="tab-size: 8"] {
+  tab-size: 8;
+  -moz-tab-size: 8;
+}
+
+/* アクセシビリティ対応 */
+@media (prefers-reduced-motion: reduce) {
+  .line-number {
+    transition: none;
+  }
+}
+
+/* プリント対応 */
+@media print {
+  .text-editor {
+    border: none;
+    background: white;
+    color: black;
+    font-family: 'Times New Roman', serif;
+  }
+  
+  .line-numbers {
+    background: transparent;
+    border-right: 1px solid #ccc;
+  }
+  
+  .editor-textarea {
+    background: transparent;
+    color: black;
+  }
+  
+  .editor-footer {
+    display: none;
+  }
+  
+  .highlight-overlay {
+    display: none;
+  }
+}
+
+/* エラー状態 */
+.text-editor.error {
+  border-color: var(--vscode-inputValidation-errorBorder, #f14c4c);
+}
+
+.text-editor.error .editor-footer {
+  background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #ffffff);
+}
+
+/* 警告状態 */
+.text-editor.warning {
+  border-color: var(--vscode-inputValidation-warningBorder, #bf8803);
+}
+
+.text-editor.warning .editor-footer {
+  background-color: var(--vscode-inputValidation-warningBackground, #352a05);
+  color: var(--vscode-inputValidation-warningForeground, #ffffff);
+}
+
+/* 成功状態 */
+.text-editor.success {
+  border-color: var(--vscode-inputValidation-infoBorder, #007acc);
+}
+
+.text-editor.success .editor-footer {
+  background-color: var(--vscode-inputValidation-infoBackground, #063f73);
+  color: var(--vscode-inputValidation-infoForeground, #ffffff);
+}

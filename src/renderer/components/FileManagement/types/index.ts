@@ -4,8 +4,13 @@ import { AudioFile } from '../../../App'
 export interface ExtendedAudioFile extends AudioFile {
   hasTranscriptionFile?: boolean
   transcriptionPath?: string
+  transcriptionSize?: number
   isRecording?: boolean
   isSelected?: boolean
+  isPairedFile?: boolean
+  isTextFile?: boolean
+  isTranscriptionFile?: boolean
+  isAudioFile?: boolean
 }
 
 // ファイル操作結果

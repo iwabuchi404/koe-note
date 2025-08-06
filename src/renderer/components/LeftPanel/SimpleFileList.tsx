@@ -9,10 +9,10 @@ import { ExtendedAudioFile } from '../FileManagement/types'
 interface SimpleFileListProps {
   files: ExtendedAudioFile[]
   selectedFileId: string | null
-  expandedFiles: Set<string>
+  expandedFiles: Set<string> // 互換性のため残す
   onFileSelect: (fileId: string) => void
-  onFileAction: (action: string, fileId: string) => void
-  onToggleExpand: (fileId: string) => void
+  onFileAction: (action: string, fileId: string, ...args: any[]) => void
+  onToggleExpand: (fileId: string) => void // 互換性のため残す
   isLoading?: boolean
   error?: string
 }
@@ -20,10 +20,8 @@ interface SimpleFileListProps {
 const SimpleFileList: React.FC<SimpleFileListProps> = ({
   files,
   selectedFileId,
-  expandedFiles,
   onFileSelect,
   onFileAction,
-  onToggleExpand,
   isLoading = false,
   error
 }) => {
@@ -143,7 +141,22 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
       </div>
 
       {/* ファイル一覧 */}
-      {sortedFiles.map((file) => (
+      {sortedFiles.map((file) => {
+        // デバッグ：ペアファイルの条件をチェック
+        const isPaired = file.isPairedFile;
+        const hasTranscription = file.hasTranscriptionFile;
+        const hasPath = !!file.transcriptionPath;
+        
+        if (isPaired) {
+          console.log(`🔍 ペアファイル調査: ${file.filename}`);
+          console.log(`  isPairedFile: ${isPaired} (${typeof isPaired})`);
+          console.log(`  hasTranscriptionFile: ${hasTranscription} (${typeof hasTranscription})`);
+          console.log(`  transcriptionPath: "${file.transcriptionPath}" (${typeof file.transcriptionPath})`);
+          console.log(`  hasPath: ${hasPath} (${typeof hasPath})`);
+          console.log(`  shouldShowChild: ${isPaired && hasTranscription && hasPath}`);
+        }
+        
+        return (
         <div key={file.id} style={{ marginBottom: 'var(--spacing-sm)' }}>
           {/* メイン音声ファイル */}
           <div
@@ -160,6 +173,9 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
               ...(file.isRecording && {
                 borderColor: '#ff4444',
                 backgroundColor: '#fff5f5'
+              }),
+              ...(file.isPairedFile && {
+                borderLeft: '4px solid var(--color-accent)'
               })
             }}
             onMouseEnter={(e) => {
@@ -180,7 +196,11 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
             }}>
               {/* ファイルアイコン */}
               <div style={{ fontSize: '18px' }}>
-                {file.isRecording ? '🔴' : '🎬'}
+                {file.isRecording ? '🔴' : 
+                 file.isTextFile ? '📄' : 
+                 file.format === 'md' ? '📝' : 
+                 file.isRealtimeTranscription ? '📋' : 
+                 '🎬'}
               </div>
               
               {/* ファイル情報 */}
@@ -229,105 +249,91 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
                 </div>
               </div>
 
-              {/* 文字起こし展開ボタン */}
-              {file.hasTranscriptionFile && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onToggleExpand(file.id)
-                  }}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: '14px',
-                    backgroundColor: 'transparent',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  title={expandedFiles.has(file.id) ? '文字起こしを折りたたむ' : '文字起こしを表示'}
-                >
-                  {expandedFiles.has(file.id) ? '📄' : '📋'}
-                </button>
-              )}
             </div>
 
-            {/* 文字起こしファイル表示エリア */}
-            {file.hasTranscriptionFile && expandedFiles.has(file.id) && (
-              <div style={{
-                marginTop: 'var(--spacing-sm)',
-                padding: 'var(--spacing-sm)',
-                backgroundColor: 'var(--color-bg-primary)',
-                borderRadius: '4px',
-                border: '1px solid var(--color-border)'
-              }}>
+          </div>
+          
+          {/* ペアファイルの文字起こしファイル（ツリー子ノード） */}
+          {(() => {
+            const shouldShow = file.isPairedFile && file.hasTranscriptionFile && file.transcriptionPath;
+            if (file.isPairedFile) {
+              console.log(`🎯 子ノード表示判定: ${file.filename} = ${shouldShow}`);
+            }
+            return shouldShow;
+          })() && (() => {
+            const transcriptionFileName = file.transcriptionPath?.split(/[\\/]/).pop() || 'transcription.txt'
+            const isChildSelected = selectedFileId === `${file.id}_transcription`
+            
+            return (
+              <div 
+                style={{
+                  marginTop: '4px',
+                  marginLeft: '20px',
+                  padding: 'var(--spacing-xs)',
+                  backgroundColor: isChildSelected 
+                    ? 'var(--color-accent-light, #e3f2fd)' 
+                    : 'var(--color-bg-primary)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // 文字起こしファイル専用の選択処理
+                  onFileAction('openTranscriptionFile', file.id, {
+                    filePath: file.transcriptionPath,
+                    fileName: transcriptionFileName
+                  })
+                }}
+                onMouseEnter={(e) => {
+                  if (!isChildSelected) {
+                    e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary, #f0f0f0)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isChildSelected) {
+                    e.currentTarget.style.backgroundColor = 'var(--color-bg-primary, #ffffff)'
+                  }
+                }}
+              >
                 <div style={{
                   display: 'flex',
-                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginBottom: 'var(--spacing-xs)'
+                  gap: 'var(--spacing-sm)'
                 }}>
-                  <span style={{
-                    fontSize: 'var(--font-size-xs)',
-                    color: 'var(--color-text-secondary)',
-                    fontWeight: 'bold'
-                  }}>
-                    📋 文字起こし結果
-                  </span>
-                  {file.transcriptionPath && (
-                    <span style={{
-                      fontSize: 'var(--font-size-xs)',
-                      color: 'var(--color-text-tertiary)'
-                    }}>
-                      {file.transcriptionPath.split(/[\\/]/).pop()}
-                    </span>
-                  )}
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  gap: 'var(--spacing-xs)'
-                }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onFileAction('toggleTranscription', file.id)
-                    }}
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: 'var(--font-size-xs)',
-                      backgroundColor: 'var(--color-accent)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    👁️ 表示
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onFileAction('export', file.id)
-                    }}
-                    style={{
-                      padding: '4px 8px',
-                      fontSize: 'var(--font-size-xs)',
-                      backgroundColor: 'var(--color-bg-tertiary)',
+                  {/* 文字起こしファイルアイコン */}
+                  <div style={{ fontSize: '16px' }}>📋</div>
+                  
+                  {/* ファイル名 */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 'var(--font-size-sm)',
                       color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    📤 エクスポート
-                  </button>
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {transcriptionFileName}
+                    </div>
+                    <div style={{
+                      fontSize: 'var(--font-size-xs)',
+                      color: 'var(--color-text-secondary)',
+                      marginTop: '2px'
+                    }}>
+                      {file.transcriptionSize && (
+                        <span>📊 {formatFileSize(file.transcriptionSize)}</span>
+                      )}
+                      <span style={{ marginLeft: 'var(--spacing-xs)' }}>文字起こし</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            )
+          })()}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

@@ -1,0 +1,401 @@
+/**
+ * PlainTextViewer コンポーネントのスタイル
+ * VSCode風の行番号付きプレーンテキスト表示
+ */
+
+/* メインコンテナ */
+.plain-text-viewer {
+  /* 行の基本高さ（パフォーマンス最適化） */
+  --min-line-height: 21px;
+  --line-height-value: 1.4;
+  --line-padding: 2px;
+  /* 計算済み高さ */
+  --calculated-line-height: calc(var(--min-line-height) + var(--line-padding) * 2);
+  
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+  font-size: var(--vscode-editor-font-size, 14px);
+  line-height: var(--vscode-editor-line-height, 1.5);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* コンテンツエリア */
+.text-content {
+  display: flex;
+  flex-direction: row !important;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 行番号カラム */
+.plain-text-viewer .plain-text-line-numbers {
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+  border-right: 1px solid var(--vscode-panel-border);
+  padding: 8px 0;
+  min-width: 60px;
+  max-width: 60px;
+  flex-shrink: 0 !important;
+  user-select: none;
+  /* 独立スクロールを無効化、JavaScriptでのみ制御 */
+  overflow-y: hidden !important;
+  overflow-x: hidden !important;
+  /* ポインターイベントを無効化してスクロールを防止 */
+  pointer-events: none;
+  position: relative;
+  max-height: 100%;
+  /* スクロールバーを非表示にする */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+/* 行番号エリアのスクロールバーを非表示にする */
+.plain-text-viewer .plain-text-line-numbers::-webkit-scrollbar {
+  display: none;
+}
+
+/* スクロール同期の特別設定 */
+.plain-text-viewer .plain-text-line-numbers {
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+  /* ホイールスクロールやタッチスクロールを無効化 */
+  -webkit-overflow-scrolling: auto;
+  /* マウスホイールを通す */
+  pointer-events: none;
+}
+
+.plain-text-viewer .plain-text-main-text-area {
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+}
+
+/* パフォーマンス最適化クラス */
+.plain-text-main-text-area.performance-mode {
+  /* 大ファイル用の最適化 */
+  will-change: auto;
+  transform: translateZ(0); /* GPUアクセラレーション */
+}
+
+.text-line.fixed-height {
+  /* 大ファイルでは高さを固定してパフォーマンス向上 */
+  height: var(--calculated-line-height) !important;
+  min-height: var(--calculated-line-height) !important;
+}
+
+.line-content.dynamic-height {
+  /* 長い行がある小ファイルでのみ動的高さ */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.text-line.fixed-height .line-content {
+  /* 大ファイルでは改行を無効化してパフォーマンス向上 */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  height: var(--min-line-height) !important;
+}
+
+.plain-text-line-number {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  min-height: var(--min-line-height);
+  padding: 2px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vscode-editorLineNumber-foreground);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  line-height: var(--line-height-value);
+  /* 動的高さ調整のための設定 */
+  margin: 0;
+  border: 0;
+  /* テキスト行と同じ高さになるよう調整 */
+  flex-shrink: 0;
+  /* 行番号はクリック可能にする */
+  pointer-events: auto;
+}
+
+.plain-text-line-number:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-editorLineNumber-activeForeground);
+}
+
+.plain-text-line-number.active {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-editorLineNumber-activeForeground);
+}
+
+.plain-text-line-number.selected {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.3));
+  color: var(--vscode-editor-selectionForeground, #ffffff);
+}
+
+/* メインテキストエリア */
+.plain-text-viewer .plain-text-main-text-area {
+  flex: 1 !important;
+  overflow-y: auto;
+  padding: 8px 0;
+  font-family: inherit;
+  max-height: 100%;
+  position: relative;
+}
+
+.plain-text-viewer .plain-text-main-text-area.word-wrap {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.plain-text-viewer .plain-text-main-text-area.no-wrap {
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* テキスト行 */
+.text-line {
+  display: flex;
+  align-items: flex-start;
+  min-height: var(--min-line-height);
+  padding: 2px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-left: 3px solid transparent;
+  position: relative;
+  box-sizing: border-box;
+  line-height: var(--line-height-value);
+  /* 動的高さ調整のための設定 */
+  margin: 0;
+  border: 0;
+  /* テキストの長さに応じて高さが変わる */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.text-line:hover {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.05));
+}
+
+.text-line.active {
+  background-color: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 255, 0.08));
+  border-left-color: var(--vscode-focusBorder, #007acc);
+}
+
+.text-line.selected {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.2));
+  border-left-color: var(--vscode-editor-selectionBackground, #007acc);
+}
+
+/* 行コンテンツ */
+.line-content {
+  flex: 1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  /* 動的高さ調整のための設定 */
+  line-height: var(--line-height-value);
+  min-height: calc(var(--min-line-height) - 4px); /* paddingを差し引いた値 */
+  /* テキストが長い場合は改行される */
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* 空行の表示 */
+.text-line:has(.line-content:empty) .line-content::before,
+.line-content:empty::before {
+  content: ' ';
+  display: inline-block;
+  width: 1ch;
+  height: 1em;
+}
+
+/* 検索ハイライト */
+.search-highlight {
+  background-color: var(--vscode-editor-findMatchBackground, rgba(234, 92, 0, 0.33));
+  color: var(--vscode-editor-findMatchForeground);
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+/* フッター */
+.plain-text-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--vscode-editor-lineHighlightBackground, rgba(255, 255, 255, 0.03));
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.line-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selection-count {
+  color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+  font-weight: 500;
+}
+
+.content-stats {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
+}
+
+/* スクロールバースタイル */
+.text-content ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.text-content ::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.1));
+}
+
+.text-content ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 4px;
+}
+
+.text-content ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.6));
+}
+
+/* 改行なしモードの水平スクロール */
+.main-text-area.no-wrap::-webkit-scrollbar {
+  height: 12px;
+}
+
+.main-text-area.no-wrap::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.1));
+}
+
+.main-text-area.no-wrap::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 6px;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .plain-text-line-numbers {
+    min-width: 50px;
+  }
+  
+  .plain-text-line-number {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  
+  .text-line {
+    padding: 0 8px;
+  }
+  
+  .plain-text-footer {
+    padding: 6px 8px;
+    font-size: 11px;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
+
+/* ダークテーマ特別対応 */
+.vscode-dark .text-line.selected {
+  background-color: rgba(0, 122, 204, 0.25);
+}
+
+.vscode-dark .plain-text-line-number.selected {
+  background-color: rgba(0, 122, 204, 0.35);
+}
+
+/* ライトテーマ特別対応 */
+.vscode-light .text-line.selected {
+  background-color: rgba(0, 122, 204, 0.15);
+}
+
+.vscode-light .plain-text-line-number.selected {
+  background-color: rgba(0, 122, 204, 0.25);
+}
+
+/* ハイコントラストテーマ対応 */
+.vscode-high-contrast .text-line {
+  border-left-width: 2px;
+}
+
+.vscode-high-contrast .text-line.selected {
+  border-left-width: 4px;
+  background-color: transparent;
+  outline: 2px solid var(--vscode-focusBorder);
+}
+
+/* セレクション状態のアニメーション */
+.text-line.selected,
+.plain-text-line-number.selected {
+  animation: fadeInSelection 0.2s ease-out;
+}
+
+@keyframes fadeInSelection {
+  from {
+    background-color: transparent;
+  }
+  to {
+    background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.2));
+  }
+}
+
+/* アクセシビリティ対応 */
+@media (prefers-reduced-motion: reduce) {
+  .text-line,
+  .plain-text-line-number,
+  .text-line.selected,
+  .plain-text-line-number.selected {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* フォーカス状態 */
+.plain-text-viewer:focus-within .text-line:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+/* テキスト選択カスタマイズ */
+.plain-text-viewer ::selection {
+  background-color: var(--vscode-editor-selectionBackground, rgba(0, 122, 204, 0.3));
+  color: var(--vscode-editor-selectionForeground);
+}
+
+/* プリント対応 */
+@media print {
+  .plain-text-viewer {
+    border: none;
+    background: white;
+    color: black;
+    font-family: 'Times New Roman', serif;
+  }
+  
+  .plain-text-line-numbers {
+    background: transparent;
+    border-right: 1px solid #ccc;
+  }
+  
+  .text-line {
+    break-inside: avoid;
+  }
+  
+  .plain-text-footer {
+    display: none;
+  }
+}

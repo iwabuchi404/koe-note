@@ -1,12 +1,12 @@
 /**
- * useAdvancedRecording - 新録音システム専用Hook
- * AudioWorkletRecordingService + TranscriptionWebSocketService統合管理
+ * RecordingContext - グローバル録音状態管理
+ * タブ切り替え時も録音状態を維持する
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import React, { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react'
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats } from '../audio/services/AudioWorkletRecordingService'
 import { TranscriptionResult, TranscriptionProgress } from '../audio/services/TranscriptionWebSocketService'
-import { AdvancedRecordingFileService, SaveFileOptions, SaveResult } from '../services/AdvancedRecordingFileService'
+import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileService'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 
@@ -29,27 +29,59 @@ export interface AdvancedRecordingConfig {
   }
 }
 
-export interface AdvancedRecordingCallbacks {
-  onDataUpdate?: (data: AdvancedRecordingTabData) => void
-  onError?: (error: string) => void
-  onChunkReady?: (chunk: ChunkReadyEvent) => void
-  onTranscriptionResult?: (result: TranscriptionResult) => void
+interface RecordingContextType {
+  // 状態
+  recordingData: AdvancedRecordingTabData
+  isRecording: boolean
+  
+  // アクション
+  startRecording: (config: AdvancedRecordingConfig) => Promise<void>
+  stopRecording: () => Promise<Blob | null>
+  updateConfig: (newConfig: Partial<AdvancedRecordingConfig>) => void
+  
+  // ヘルパー
+  getChunkById: (id: number) => AdvancedRecordingTabData['chunks'][0] | undefined
+  getTotalDuration: () => number
+  getTotalDataSize: () => number
+  getChunksCount: () => number
+  getErrorsCount: () => number
+  getTranscriptionCount: () => number
+  hasTranscriptionData: () => boolean
+  
+  // ダウンロード機能
+  downloadChunk: (chunkId: number) => void
+  downloadAllChunks: () => void
 }
 
-export const useAdvancedRecording = (
-  initialConfig: AdvancedRecordingConfig,
-  callbacks?: AdvancedRecordingCallbacks
-) => {
+const RecordingContext = createContext<RecordingContextType | null>(null)
+
+export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 現在の設定を保持
-  const currentConfigRef = useRef<AdvancedRecordingConfig>(initialConfig)
-  // 録音データ状態
+  const currentConfigRef = useRef<AdvancedRecordingConfig>({
+    recordingSettings: {
+      source: 'microphone',
+      deviceId: undefined,
+      chunkSize: 64,
+      chunkDuration: 3.0,
+      chunkSizeMode: 'duration',
+      format: 'mp3'
+    },
+    transcriptionSettings: {
+      enabled: true,
+      serverUrl: 'ws://localhost:8770',
+      language: 'ja',
+      model: 'small'
+    }
+  })
+
+  // 録音データ状態（グローバル）
   const [recordingData, setRecordingData] = useState<AdvancedRecordingTabData>({
     startTime: new Date(),
     duration: 0,
     audioLevel: 0,
     isRecording: false,
-    recordingSettings: initialConfig.recordingSettings,
-    transcriptionSettings: initialConfig.transcriptionSettings,
+    recordingSettings: currentConfigRef.current.recordingSettings,
+    transcriptionSettings: currentConfigRef.current.transcriptionSettings,
     chunks: [],
     stats: {
       totalChunks: 0,
@@ -60,7 +92,7 @@ export const useAdvancedRecording = (
     errors: []
   })
 
-  // サービス参照
+  // サービス参照（グローバル）
   const audioWorkletServiceRef = useRef<AudioWorkletRecordingService | null>(null)
   const recordingStartTimeRef = useRef<number>(0)
   const baseFileNameRef = useRef<string>('')
@@ -78,13 +110,12 @@ export const useAdvancedRecording = (
       errors: [...prev.errors, newError]
     }))
 
-    logger.error(`AdvancedRecording ${type} エラー:`, new Error(message))
-    callbacks?.onError?.(message)
-  }, [callbacks])
+    logger.error(`グローバル録音 ${type} エラー:`, new Error(message))
+  }, [])
 
   // チャンク準備完了コールバック
   const handleChunkReady = useCallback(async (event: ChunkReadyEvent) => {
-    logger.info(`チャンク#${event.chunkNumber}生成`, { size: event.size })
+    logger.info(`グローバル録音 チャンク#${event.chunkNumber}生成`, { size: event.size })
 
     const newChunk = {
       id: event.chunkNumber,
@@ -108,14 +139,12 @@ export const useAdvancedRecording = (
         baseFileNameRef.current,
         format
       )
-      logger.info(`チャンク#${event.chunkNumber}自動保存完了`, { filePath })
+      logger.info(`グローバル録音 チャンク#${event.chunkNumber}自動保存完了`, { filePath })
     } catch (error) {
       const errorMessage = `チャンク#${event.chunkNumber}自動保存失敗: ${error instanceof Error ? error.message : String(error)}`
       addError('recording', errorMessage)
     }
-
-    callbacks?.onChunkReady?.(event)
-  }, [callbacks, addError])
+  }, [addError])
 
   // 録音統計更新コールバック
   const handleStatsUpdate = useCallback((stats: RecordingStats) => {
@@ -125,7 +154,7 @@ export const useAdvancedRecording = (
     setRecordingData(prev => ({
       ...prev,
       duration,
-      audioLevel: stats.audioLevel, // 実際の音量レベルを使用
+      audioLevel: stats.audioLevel,
       stats: {
         totalChunks: stats.chunksGenerated,
         totalDataSize: stats.totalDataSize,
@@ -142,7 +171,7 @@ export const useAdvancedRecording = (
 
   // 文字起こし結果コールバック
   const handleTranscriptionResult = useCallback(async (result: TranscriptionResult) => {
-    logger.info(`文字起こし結果 #${result.chunkNumber}:`, result.text)
+    logger.info(`グローバル録音 文字起こし結果 #${result.chunkNumber}:`, result.text)
 
     setRecordingData(prev => ({
       ...prev,
@@ -156,27 +185,25 @@ export const useAdvancedRecording = (
     // 文字起こし結果をファイルに追記
     if (result.text && result.text.trim()) {
       try {
-        const chunkTimestamp = new Date() // 文字起こし完了時刻
+        const chunkTimestamp = new Date()
         const filePath = await AdvancedRecordingFileService.appendTranscription(
           result.chunkNumber,
           result.text,
           chunkTimestamp,
           baseFileNameRef.current,
-          true // タイムスタンプ付き
+          true
         )
-        logger.info(`チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
+        logger.info(`グローバル録音 チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
       } catch (error) {
         const errorMessage = `チャンク#${result.chunkNumber}文字起こし追記失敗: ${error instanceof Error ? error.message : String(error)}`
         addError('transcription', errorMessage)
       }
     }
-
-    callbacks?.onTranscriptionResult?.(result)
-  }, [callbacks, addError])
+  }, [addError])
 
   // 文字起こし進捗コールバック
   const handleTranscriptionProgress = useCallback((progress: TranscriptionProgress) => {
-    logger.info(`文字起こし進捗 #${progress.chunkNumber}:`, progress.status)
+    logger.info(`グローバル録音 文字起こし進捗 #${progress.chunkNumber}:`, progress.status)
 
     const status = progress.status === 'completed' ? 'completed' : 
                    progress.status === 'failed' ? 'failed' : 'processing'
@@ -192,9 +219,17 @@ export const useAdvancedRecording = (
   }, [])
 
   // 録音開始
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (config: AdvancedRecordingConfig) => {
     try {
-      logger.info('新録音システム開始', { config: initialConfig })
+      if (recordingData.isRecording) {
+        logger.warn('既に録音中です')
+        return
+      }
+
+      logger.info('グローバル録音システム開始', { config })
+
+      // 設定を更新
+      currentConfigRef.current = config
 
       // ベースファイル名生成（design-doc準拠）
       const timestamp = new Date().toISOString()
@@ -213,22 +248,22 @@ export const useAdvancedRecording = (
         handleTranscriptionProgress
       )
 
-      // 文字起こし設定（現在の設定を使用）
-      if (currentConfigRef.current.transcriptionSettings.enabled) {
+      // 文字起こし設定
+      if (config.transcriptionSettings.enabled) {
         audioWorkletServiceRef.current.setTranscriptionConfig({
           enabled: true,
-          serverUrl: currentConfigRef.current.transcriptionSettings.serverUrl,
-          language: currentConfigRef.current.transcriptionSettings.language
+          serverUrl: config.transcriptionSettings.serverUrl,
+          language: config.transcriptionSettings.language
         })
       }
 
-      // チャンクサイズ設定（現在の設定を使用）
-      audioWorkletServiceRef.current.setChunkSizeThreshold(currentConfigRef.current.recordingSettings.chunkSize * 1024)
+      // チャンクサイズ設定
+      audioWorkletServiceRef.current.setChunkSizeThreshold(config.recordingSettings.chunkSize * 1024)
 
-      // 音声ソース設定（現在の設定を使用）
+      // 音声ソース設定
       const audioConfig: AudioSourceConfig = {
-        type: currentConfigRef.current.recordingSettings.source,
-        deviceId: currentConfigRef.current.recordingSettings.deviceId
+        type: config.recordingSettings.source,
+        deviceId: config.recordingSettings.deviceId
       }
 
       // 録音開始
@@ -240,18 +275,20 @@ export const useAdvancedRecording = (
         isRecording: true,
         audioLevel: 0,
         startTime: new Date(),
+        recordingSettings: config.recordingSettings,
+        transcriptionSettings: config.transcriptionSettings,
         chunks: [],
         errors: []
       }))
 
-      logger.info('新録音システム開始完了', { baseName: baseFileNameRef.current })
+      logger.info('グローバル録音システム開始完了', { baseName: baseFileNameRef.current })
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       addError('recording', `録音開始失敗: ${errorMessage}`)
       throw error
     }
-  }, [initialConfig, handleChunkReady, handleError, handleStatsUpdate, handleTranscriptionResult, handleTranscriptionProgress, addError])
+  }, [recordingData.isRecording, handleChunkReady, handleError, handleStatsUpdate, handleTranscriptionResult, handleTranscriptionProgress, addError])
 
   // 録音停止
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
@@ -261,7 +298,7 @@ export const useAdvancedRecording = (
         return null
       }
 
-      logger.info('新録音システム停止開始')
+      logger.info('グローバル録音システム停止開始')
 
       const finalBlob = await audioWorkletServiceRef.current.stop()
       
@@ -271,7 +308,6 @@ export const useAdvancedRecording = (
         isRecording: false,
         audioLevel: 0,
         chunks: prev.chunks.map(chunk => {
-          // 録音停止時に未処理状態のチャンクをキャンセル
           if (chunk.transcriptionStatus === 'pending' || chunk.transcriptionStatus === 'processing') {
             return {
               ...chunk,
@@ -287,7 +323,7 @@ export const useAdvancedRecording = (
       audioWorkletServiceRef.current = null
       recordingStartTimeRef.current = 0
 
-      logger.info('新録音システム停止完了', { finalBlobSize: finalBlob.size })
+      logger.info('グローバル録音システム停止完了', { finalBlobSize: finalBlob.size })
       return finalBlob
 
     } catch (error) {
@@ -316,7 +352,7 @@ export const useAdvancedRecording = (
       transcriptionSettings: { ...prev.transcriptionSettings, ...newConfig.transcriptionSettings }
     }))
 
-    logger.info('録音設定更新', newConfig)
+    logger.info('グローバル録音設定更新', newConfig)
   }, [recordingData.isRecording, addError])
 
   // チャンクダウンロード
@@ -339,7 +375,7 @@ export const useAdvancedRecording = (
     logger.info(`チャンク#${chunkId}ダウンロード完了`)
   }, [recordingData.chunks, recordingData.recordingSettings.format, addError])
 
-  // 全チャンク統合ダウンロード（レガシー）
+  // 全チャンク統合ダウンロード
   const downloadAllChunks = useCallback(() => {
     if (recordingData.chunks.length === 0) {
       addError('recording', 'ダウンロード可能なチャンクがありません')
@@ -369,54 +405,18 @@ export const useAdvancedRecording = (
     logger.info(`統合ファイルダウンロード完了`, { chunksCount: recordingData.chunks.length })
   }, [recordingData.chunks, recordingData.recordingSettings.format, addError])
 
-  // ファイル保存機能
-  const saveRecording = useCallback(async (options: SaveFileOptions): Promise<SaveResult> => {
-    try {
-      logger.info('録音ファイル保存開始', options)
-      
-      const result = await AdvancedRecordingFileService.saveRecording(recordingData, options)
-      
-      if (result.success) {
-        logger.info('録音ファイル保存完了', result)
-      } else {
-        result.errors.forEach(error => addError('recording', error))
-      }
-      
-      return result
-    } catch (error) {
-      const errorMessage = `ファイル保存エラー: ${error instanceof Error ? error.message : String(error)}`
-      addError('recording', errorMessage)
-      return {
-        success: false,
-        errors: [errorMessage]
-      }
-    }
-  }, [recordingData, addError])
-
-  // 保存プリセット機能
-  const saveWithPreset = useCallback(async (presetName: keyof ReturnType<typeof AdvancedRecordingFileService.getPresetOptions>): Promise<SaveResult> => {
-    const presets = AdvancedRecordingFileService.getPresetOptions()
-    return saveRecording(presets[presetName])
-  }, [saveRecording])
-
-
-  // データ更新時のコールバック実行
-  useEffect(() => {
-    callbacks?.onDataUpdate?.(recordingData)
-  }, [recordingData, callbacks])
-
-  // クリーンアップ
+  // クリーンアップ（アプリ終了時）
   useEffect(() => {
     return () => {
       if (audioWorkletServiceRef.current) {
         audioWorkletServiceRef.current.stop().catch(error => {
-          logger.error('録音サービスクリーンアップエラー:', error)
+          logger.error('グローバル録音サービスクリーンアップエラー:', error)
         })
       }
     }
   }, [])
 
-  return {
+  const contextValue: RecordingContextType = {
     // 状態
     recordingData,
     isRecording: recordingData.isRecording,
@@ -425,12 +425,6 @@ export const useAdvancedRecording = (
     startRecording,
     stopRecording,
     updateConfig,
-    downloadChunk,
-    downloadAllChunks,
-
-    // ファイル保存機能
-    saveRecording,
-    saveWithPreset,
 
     // ヘルパー
     getChunkById: (id: number) => recordingData.chunks.find(c => c.id === id),
@@ -441,9 +435,23 @@ export const useAdvancedRecording = (
     getTranscriptionCount: () => recordingData.chunks.filter(c => c.transcriptionText).length,
     hasTranscriptionData: () => recordingData.chunks.some(c => c.transcriptionText && c.transcriptionText.trim()),
 
-    // 統計
-    stats: recordingData.stats
+    // ダウンロード機能
+    downloadChunk,
+    downloadAllChunks
   }
+
+  return (
+    <RecordingContext.Provider value={contextValue}>
+      {children}
+    </RecordingContext.Provider>
+  )
 }
 
-export default useAdvancedRecording
+// RecordingContextの使用フック
+export const useRecordingContext = (): RecordingContextType => {
+  const context = useContext(RecordingContext)
+  if (!context) {
+    throw new Error('useRecordingContext must be used within RecordingProvider')
+  }
+  return context
+}

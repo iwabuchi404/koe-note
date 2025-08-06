@@ -103,7 +103,9 @@
 
 /* 音声プレイヤー */
 .audio-player {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+  /* コンパクトにして文字起こし結果にスペースを譲る */
+  flex-shrink: 0;
 }
 
 .playback-controls {
@@ -199,6 +201,11 @@
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
+  /* 文字起こし結果を表示するために柔軟なサイズ */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .transcription-header {
@@ -254,7 +261,10 @@
   background: var(--color-bg-primary);
   border-radius: 6px;
   padding: 12px;
-  max-height: 200px;
+  /* 文字起こし結果をより大きく表示する */
+  flex: 1;
+  min-height: 400px;
+  max-height: 600px;
   overflow-y: auto;
 }
 
@@ -273,19 +283,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.editor-header h3 {
-  margin: 0;
-  color: var(--color-text-primary);
-  font-size: 16px;
 }
 
 .edit-toggle {
@@ -443,9 +440,9 @@
     align-items: stretch;
   }
   
-  .editor-header {
-    flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
+  .transcription-result {
+    /* モバイルでも十分な高さを確保 */
+    min-height: 300px;
+    max-height: 500px;
   }
 }

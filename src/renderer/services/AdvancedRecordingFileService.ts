@@ -214,15 +214,16 @@ export class AdvancedRecordingFileService {
   }
 
   /**
-   * ベースファイル名生成
+   * ベースファイル名生成（design-doc準拠）
    */
   private static generateBaseName(startTime: Date): string {
     const timestamp = startTime.toISOString()
-      .replace(/:/g, '-')
-      .replace(/\./g, '-')
-      .slice(0, 19) // 2024-01-01T12-30-45
+      .replace(/:/g, '')
+      .replace(/\./g, '')
+      .replace(/[-T]/g, '_')
+      .slice(0, 15) // YYYYMMDD_HHMMSS
 
-    return `advanced_recording_${timestamp}`
+    return `recording_${timestamp}`
   }
 
   /**
@@ -406,7 +407,11 @@ export class AdvancedRecordingFileService {
     } catch (error) {
       logger.error('ファイル保存ダイアログエラー', new Error(String(error)))
       // ダイアログが利用できない場合は、現在時刻をベースとしたファイル名を返す
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+      const timestamp = new Date().toISOString()
+        .replace(/:/g, '')
+        .replace(/\./g, '')
+        .replace(/[-T]/g, '_')
+        .slice(0, 15) // YYYYMMDD_HHMMSS
       return `./recordings/${defaultName}_${timestamp}`
     }
   }
