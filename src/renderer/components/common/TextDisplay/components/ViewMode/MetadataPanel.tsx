@@ -65,26 +65,28 @@ const MetadataPanel: React.FC<MetadataPanelProps> = ({
     }
   }, [metadata, segments])
   
-  return (
-    <div className={`metadata-panel ${collapsed ? 'collapsed' : 'expanded'} ${className}`}>
-      {/* 折りたたみボタン - 常に情報表示 */}
-      <button
-        className={`metadata-toggle ${collapsed ? '' : 'expanded'}`}
-        onClick={handleToggleCollapse}
-        type="button"
-        aria-expanded={!collapsed}
-        title={collapsed ? 'ファイル情報を展開' : 'ファイル情報を折りたたむ'}
-      >
-        <span className={`arrow ${collapsed ? 'collapsed' : 'expanded'}`}>▶</span>
-        <span>📊 ファイル情報</span>
-        <span className="summary">
-          {metadata.fileType === 'transcription' ? '文字起こし' : 'テキスト'} • 
-          {TextFormatter.formatNumber(statistics.characters)}文字 • 
-          {TextFormatter.formatNumber(statistics.words)}語
-          {collapsed && ' • クリックで詳細表示'}
-        </span>
-      </button>
-      
+return (
+  <div className={`metadata-panel-wrapper ${className}`}> 
+    {/* 折りたたみボタン - 常に情報表示 */}
+    <button
+      className={`metadata-toggle ${collapsed ? '' : 'expanded'}`}
+      onClick={handleToggleCollapse}
+      type="button"
+      aria-expanded={!collapsed}
+      title={collapsed ? 'ファイル情報を展開' : 'ファイル情報を折りたたむ'}
+    >
+      <span className={`arrow ${collapsed ? 'collapsed' : 'expanded'}`}>▶</span>
+      <span>📊 ファイル情報</span>
+      <span className="summary">
+        {metadata.fileType === 'transcription' ? '文字起こし' : 'テキスト'} • 
+        {TextFormatter.formatNumber(statistics.characters)}文字 • 
+        {TextFormatter.formatNumber(statistics.words)}語
+        {collapsed && ' • クリックで詳細表示'}
+      </span>
+    </button>
+    
+    {/* メタデータパネル */}
+    <div className={`metadata-panel ${collapsed ? 'collapsed' : 'expanded'}`}> 
       {/* メタデータコンテンツ */}
       {!collapsed && (
         <div className="metadata-content">
@@ -220,7 +222,7 @@ const MetadataPanel: React.FC<MetadataPanelProps> = ({
         </div>
       )}
     </div>
-  )
-}
+  </div>
+)}
 
 export default MetadataPanel

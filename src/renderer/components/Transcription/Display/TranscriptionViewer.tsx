@@ -7,7 +7,7 @@
  * - 編集インターフェースへの橋渡し
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { TranscriptionResult } from '../../../../preload/preload'
 import SegmentList from './SegmentList'
 import TimestampDisplay from './TimestampDisplay'
@@ -37,6 +37,8 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
   onSaveEdit,
   onKeyDown
 }) => {
+  const [isHeaderOpen, setIsHeaderOpen] = useState(false)
+
   // 表示用データの決定
   const data = transcriptionDisplayData || transcriptionResult
   
@@ -59,23 +61,55 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
       display: 'flex',
       flexDirection: 'column'
     }}>
-      {/* ヘッダー情報 */}
+      {/* 折りたたみ可能なヘッダー情報 - デフォルトで閉じる */}
       <div style={{
-        padding: 'var(--spacing-md)',
         borderBottom: '1px solid var(--color-border)',
-        backgroundColor: 'var(--color-bg-secondary)',
-        fontSize: 'var(--font-size-sm)',
-        color: 'var(--color-text-secondary)'
+        backgroundColor: 'var(--color-bg-secondary)'
       }}>
-        <div style={{ display: 'flex', gap: 'var(--spacing-lg)' }}>
-          <span>セグメント数: {data.segments.length}</span>
-          <span>言語: {data.language || '不明'}</span>
-          <TimestampDisplay duration={data.duration} />
-          {modifiedSegments.size > 0 && (
-            <span style={{ color: 'var(--color-warning)' }}>
-              編集済み: {modifiedSegments.size}個
-            </span>
-          )}
+        <button
+          onClick={() => setIsHeaderOpen(prev => !prev)}
+          style={{
+            width: '100%',
+            padding: 'var(--spacing-sm) var(--spacing-md)',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--color-text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-sm)',
+            textAlign: 'left'
+          }}
+        >
+          <span>ファイル情報</span>
+          <span style={{ marginLeft: 'auto', fontSize: '10px' }}>
+            {isHeaderOpen ? '▼' : '▶'}
+          </span>
+        </button>
+        
+        <div style={{
+          height: isHeaderOpen ? 'auto' : '0',
+          overflow: 'hidden',
+          transition: 'height 0.2s ease-out'
+        }}>
+          <div style={{
+            padding: 'var(--spacing-md)',
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--color-text-secondary)',
+            borderTop: '1px solid var(--color-border)'
+          }}>
+            <div style={{ display: 'flex', gap: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+              <span>セグメント数: {data.segments.length}</span>
+              <span>言語: {data.language || '不明'}</span>
+              <TimestampDisplay duration={data.duration} />
+              {modifiedSegments.size > 0 && (
+                <span style={{ color: 'var(--color-warning)' }}>
+                  編集済み: {modifiedSegments.size}個
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
