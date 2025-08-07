@@ -31,6 +31,25 @@ export interface TranscriptionData {
   duration?: number
 }
 
+export interface TranscriptionMetadata {
+  audioFile: string
+  model: string
+  transcribedAt: string
+  duration: number
+  segmentCount: number
+  language: string
+  speakers: string[]
+  coverage: number
+}
+
+export interface TranscriptionSegment {
+  start: number
+  end: number
+  text: string
+  speaker?: string
+  isEdited?: boolean
+}
+
 export class AdvancedRecordingFileService {
   
   /**
@@ -158,29 +177,12 @@ export class AdvancedRecordingFileService {
     baseName: string,
     includeTimestamps: boolean
   ): Promise<string> {
-    const fileName = `${baseName}_transcription.txt`
+    const fileName = `${baseName}.trans.txt`
     const filePath = `${directory}/${fileName}`
 
-    // テキスト内容生成
-    let content = ''
-    
-    if (includeTimestamps) {
-      // タイムスタンプ付きフォーマット
-      content = `# 文字起こし結果\n`
-      content += `# 録音ファイル: ${baseName}\n`
-      content += `# 生成日時: ${new Date().toLocaleString('ja-JP')}\n\n`
-      
-      transcriptionData.forEach((data, index) => {
-        const timestamp = data.timestamp.toLocaleTimeString('ja-JP')
-        content += `[${timestamp}] チャンク${data.chunkNumber}: ${data.text}\n`
-      })
-    } else {
-      // プレーンテキストフォーマット
-      content = transcriptionData
-        .map(data => data.text)
-        .filter(text => text && text.trim())
-        .join('\n')
-    }
+    // YAML+テキスト形式で内容生成
+    const metadata = this.generateTranscriptionMetadata(transcriptionData, baseName)
+    const content = this.formatTranscriptionContent(transcriptionData, metadata, includeTimestamps)
 
     try {
       // saveTextFile APIを使用
@@ -347,7 +349,7 @@ export class AdvancedRecordingFileService {
     workingDirectory?: string
   ): Promise<string> {
     const directory = workingDirectory || await this.getDefaultWorkingDirectory()
-    const fileName = `${baseName}_transcription.txt`
+    const fileName = `${baseName}.trans.txt`
     const filePath = `${directory}/${fileName}`
 
     try {
@@ -360,17 +362,19 @@ export class AdvancedRecordingFileService {
       } catch (error) {
         // ファイルが存在しない場合はヘッダーを作成
         if (includeTimestamps) {
-          content = `# 文字起こし結果\n`
-          content += `# 録音ファイル: ${baseName}\n`
-          content += `# 生成開始: ${new Date().toLocaleString('ja-JP')}\n\n`
+          // 新規ファイル作成時はメタデータヘッダーを生成
+          const tempData: TranscriptionData[] = [{ chunkNumber, timestamp, text }]
+          const metadata = this.generateTranscriptionMetadata(tempData, baseName)
+          content = this.formatTranscriptionMetadataHeader(metadata)
         }
       }
 
       // 新しい文字起こし結果を追記
       let newLine = ''
       if (includeTimestamps) {
-        const timeString = timestamp.toLocaleTimeString('ja-JP')
-        newLine = `[${timeString}] チャンク${chunkNumber}: ${text}\n`
+        // HH:MM:SS.s 形式に変換
+        const timeString = this.formatTimestamp(timestamp)
+        newLine = `[${timeString}] ${text}\n`
       } else {
         newLine = `${text}\n`
       }
@@ -414,5 +418,96 @@ export class AdvancedRecordingFileService {
         .slice(0, 15) // YYYYMMDD_HHMMSS
       return `./recordings/${defaultName}_${timestamp}`
     }
+  }
+
+  /**
+   * 文字起こしメタデータ生成
+   */
+  private static generateTranscriptionMetadata(
+    transcriptionData: TranscriptionData[],
+    baseName: string
+  ): TranscriptionMetadata {
+    const now = new Date().toISOString()
+    const totalDuration = transcriptionData.length > 0 
+      ? (transcriptionData[transcriptionData.length - 1].timestamp.getTime() - transcriptionData[0].timestamp.getTime()) / 1000
+      : 0
+    
+    return {
+      audioFile: `${baseName}.mp3`,
+      model: 'kotoba-whisper-medium',
+      transcribedAt: now,
+      duration: totalDuration,
+      segmentCount: transcriptionData.length,
+      language: 'ja',
+      speakers: [],
+      coverage: 95.0 // 仮の値、将来的に実際の計算に変更
+    }
+  }
+
+  /**
+   * YAML+テキスト形式で文字起こし内容をフォーマット
+   */
+  private static formatTranscriptionContent(
+    transcriptionData: TranscriptionData[],
+    metadata: TranscriptionMetadata,
+    includeTimestamps: boolean
+  ): string {
+    let content = ''
+    
+    // YAMLメタデータヘッダー
+    content += '---\n'
+    content += `audio_file: ${metadata.audioFile}\n`
+    content += `model: ${metadata.model}\n`
+    content += `transcribed_at: ${metadata.transcribedAt}\n`
+    content += `duration: ${metadata.duration.toFixed(3)}\n`
+    content += `segment_count: ${metadata.segmentCount}\n`
+    content += `language: ${metadata.language}\n`
+    content += `speakers: []\n`
+    content += `coverage: ${metadata.coverage.toFixed(1)}\n`
+    content += '---\n\n'
+    
+    // 文字起こし内容
+    if (includeTimestamps) {
+      transcriptionData.forEach((data) => {
+        const timeString = this.formatTimestamp(data.timestamp)
+        content += `[${timeString}] ${data.text}\n`
+      })
+    } else {
+      content = transcriptionData
+        .map(data => data.text)
+        .filter(text => text && text.trim())
+        .join('\n')
+    }
+    
+    return content
+  }
+
+  /**
+   * YAMLメタデータヘッダーのみ生成（追記モード用）
+   */
+  private static formatTranscriptionMetadataHeader(metadata: TranscriptionMetadata): string {
+    let content = ''
+    content += '---\n'
+    content += `audio_file: ${metadata.audioFile}\n`
+    content += `model: ${metadata.model}\n`
+    content += `transcribed_at: ${metadata.transcribedAt}\n`
+    content += `duration: ${metadata.duration.toFixed(3)}\n`
+    content += `segment_count: ${metadata.segmentCount}\n`
+    content += `language: ${metadata.language}\n`
+    content += `speakers: []\n`
+    content += `coverage: ${metadata.coverage.toFixed(1)}\n`
+    content += '---\n\n'
+    return content
+  }
+
+  /**
+   * タイムスタンプをHH:MM:SS.s形式にフォーマット
+   */
+  private static formatTimestamp(timestamp: Date): string {
+    const hours = timestamp.getHours().toString().padStart(2, '0')
+    const minutes = timestamp.getMinutes().toString().padStart(2, '0')
+    const seconds = timestamp.getSeconds().toString().padStart(2, '0')
+    const milliseconds = Math.floor(timestamp.getMilliseconds() / 100)
+    return `${hours}:${minutes}:${seconds}.${milliseconds}`
   }
 }

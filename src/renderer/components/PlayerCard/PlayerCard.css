@@ -50,36 +50,6 @@
   color: var(--color-text-secondary);
 }
 
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.controls-toggle {
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.controls-toggle:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-accent);
-}
-
-.controls-toggle.active {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
-}
 
 /* メッセージ表示 */
 .message {
@@ -152,25 +122,50 @@
   background: var(--color-bg-primary);
   outline: none;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .seek-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
   appearance: none;
   width: 20px;
   height: 20px;
   border-radius: 50%;
   background: var(--color-primary);
   cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-top: -6px; /* (thumb height - track height) / 2 = (20px - 8px) / 2 = -6px */
 }
 
-.audio-controls {
-  display: flex;
-  gap: 20px;
-  padding: 12px 16px;
-  background: var(--color-bg-tertiary);
-  border-radius: 8px;
-  margin-bottom: 16px;
+.seek-bar::-webkit-slider-track {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  border: none;
 }
+
+/* Firefox用のスタイル */
+.seek-bar::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  border: none;
+}
+
+.seek-bar::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 
 .volume-control {
   display: flex;
@@ -184,15 +179,54 @@
   border-radius: 3px;
   background: var(--color-bg-primary);
   outline: none;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .volume-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
   appearance: none;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: var(--color-accent);
   cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-top: -5px; /* (thumb height - track height) / 2 = (16px - 6px) / 2 = -5px */
+}
+
+.volume-control input[type="range"]::-webkit-slider-track {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-primary);
+  border: none;
+}
+
+/* Firefox用のスタイル */
+.volume-control input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-bg-primary);
+  border: none;
+}
+
+.volume-control input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.volume-value {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 35px;
 }
 
 /* 文字起こしセクション */
@@ -429,10 +463,6 @@
     font-size: 20px;
   }
   
-  .audio-controls {
-    flex-direction: column;
-    gap: 12px;
-  }
   
   .transcription-header {
     flex-direction: column;

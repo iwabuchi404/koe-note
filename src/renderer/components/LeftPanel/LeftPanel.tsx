@@ -124,6 +124,22 @@ const LeftPanel: React.FC = () => {
     initializeFileList()
   }, [getDefaultFolder, loadFileList, selectedFolder, logger])
 
+  // 録音状態変更時の自動ファイルリスト更新
+  useEffect(() => {
+    if (!selectedFolder) return
+
+    if (recordingFile) {
+      // 録音開始時: 少し遅延してファイル作成を待つ
+      const timeoutId = setTimeout(() => {
+        loadFileList(selectedFolder)
+      }, 500)
+      return () => clearTimeout(timeoutId)
+    } else {
+      // 録音停止時: すぐに更新
+      loadFileList(selectedFolder)
+    }
+  }, [recordingFile, selectedFolder, loadFileList])
+
   // 検索フィルタリング
   const filteredFiles = useMemo(() => {
     if (!searchQuery) return fileList as ExtendedAudioFile[]

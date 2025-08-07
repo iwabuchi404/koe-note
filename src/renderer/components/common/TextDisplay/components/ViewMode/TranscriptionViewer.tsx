@@ -96,7 +96,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     onTextSelect?.(textSelection)
   }
   
-  // スクロール同期（本文スクロール時に行番号も同期）
+  // スクロール同期と高さ同期（PlainTextViewerと同じ実装）
   useEffect(() => {
     const textContent = textContentRef.current
     const lineNumbers = lineNumbersRef.current
@@ -106,32 +106,99 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
       return
     }
     
+    // 行高さの軽量同期（パフォーマンス最適化版）
+    const syncRowHeights = () => {
+      const textLines = textContent?.querySelectorAll('.transcription-line')
+      const lineNumbers = lineNumbersRef.current?.querySelectorAll('.transcription-line-number')
+      
+      if (!textLines || !lineNumbers) return
+      
+      // requestAnimationFrameでパフォーマンス最適化
+      requestAnimationFrame(() => {
+        // バッチ処理でDOM操作を最小限に
+        const heights: number[] = []
+        
+        // 先に全ての高さを測定
+        textLines.forEach((textLine) => {
+          heights.push(textLine.getBoundingClientRect().height)
+        })
+        
+        // 一括で高さを設定
+        lineNumbers.forEach((lineNumber, index) => {
+          if (heights[index]) {
+            const element = lineNumber as HTMLElement
+            const height = `${heights[index]}px`
+            element.style.height = height
+            element.style.minHeight = height
+          }
+        })
+      })
+    }
+    
     const handleScroll = () => {
       // 本文エリアのスクロール位置を行番号エリアに同期
       const scrollTop = textContent.scrollTop
       lineNumbers.scrollTop = scrollTop
-      
-      // デバッグログ（開発時のみ）
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Scroll sync:', { 
-          textScrollTop: scrollTop, 
-          lineNumbersScrollTop: lineNumbers.scrollTop,
-          textContentHeight: textContent.scrollHeight,
-          lineNumbersHeight: lineNumbers.scrollHeight
-        })
-      }
     }
     
     // スクロールイベントリスナーを追加
     textContent.addEventListener('scroll', handleScroll, { passive: true })
     
-    // 初期位置の同期
-    setTimeout(() => handleScroll(), 100) // 少し遅延を入れてDOM確実に構築済みにする
+    // 初期初期化と高さ同期
+    const timeoutId = setTimeout(() => {
+      handleScroll()
+      syncRowHeights()
+    }, 50)
+    
+    // ResizeObserverは必要な場合のみ使用（パフォーマンス重視）
+    let resizeObserver: ResizeObserver | null = null
+    const hasLongText = segments.some(segment => segment.text.length > 100)
+    if (hasLongText) {
+      resizeObserver = new ResizeObserver(() => {
+        // デバウンスでパフォーマンス最適化
+        clearTimeout(timeoutId)
+        setTimeout(syncRowHeights, 200)
+      })
+      resizeObserver.observe(textContent)
+    }
     
     return () => {
       textContent.removeEventListener('scroll', handleScroll)
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
+      clearTimeout(timeoutId)
     }
   }, [segments])
+
+  // 行番号エリアのスクロールを無効化
+  useEffect(() => {
+    const lineNumbers = lineNumbersRef.current
+    if (!lineNumbers) return
+    
+    const preventScroll = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      // ホイールイベントを本文エリアに転送
+      if (textContentRef.current) {
+        textContentRef.current.scrollTop += e.deltaY
+      }
+    }
+    
+    const preventTouch = (e: TouchEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    
+    // ホイールやタッチスクロールを無効化
+    lineNumbers.addEventListener('wheel', preventScroll, { passive: false })
+    lineNumbers.addEventListener('touchmove', preventTouch, { passive: false })
+    
+    return () => {
+      lineNumbers.removeEventListener('wheel', preventScroll)
+      lineNumbers.removeEventListener('touchmove', preventTouch)
+    }
+  }, [])
 
   // マウスアップイベント（テキスト選択用）
   useEffect(() => {
@@ -158,9 +225,26 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
   
-  // 時間フォーマット
+  // 時間フォーマット（独自実装で不要な.00を削除）
   const formatTime = (seconds: number): string => {
-    return MetadataParser.secondsToTime(seconds)
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    const decimal = seconds - Math.floor(seconds)
+    
+    // 時間表示を構築
+    let timeString = ''
+    if (hours > 0) {
+      timeString = `${hours.toString().padStart(2, '0')}:`
+    }
+    timeString += `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    
+    // 有意な小数点がある場合のみ追加（1桁のみ）
+    if (decimal >= 0.1) {
+      timeString += `.${Math.floor(decimal * 10)}`
+    }
+    
+    return timeString
   }
   
   return (
@@ -205,10 +289,6 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
                   <div className="timestamp-column">
                     <span className="timestamp">
                       {formatTime(segment.start)}
-                    </span>
-                    <span className="time-separator">-</span>
-                    <span className="timestamp">
-                      {formatTime(segment.end)}
                     </span>
                   </div>
                 )}

@@ -9,6 +9,7 @@ import { TranscriptionResult, TranscriptionProgress } from '../audio/services/Tr
 import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileService'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
+import { useAppContext } from '../App'
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
 
@@ -56,6 +57,8 @@ interface RecordingContextType {
 const RecordingContext = createContext<RecordingContextType | null>(null)
 
 export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Appコンテキストとの連携
+  const { setRecordingFile } = useAppContext()
   // 現在の設定を保持
   const currentConfigRef = useRef<AdvancedRecordingConfig>({
     recordingSettings: {
@@ -140,11 +143,13 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         format
       )
       logger.info(`グローバル録音 チャンク#${event.chunkNumber}自動保存完了`, { filePath })
+      
+      // 初回チャンク保存時は左ペインが自動更新
     } catch (error) {
       const errorMessage = `チャンク#${event.chunkNumber}自動保存失敗: ${error instanceof Error ? error.message : String(error)}`
       addError('recording', errorMessage)
     }
-  }, [addError])
+  }, [addError, setRecordingFile])
 
   // 録音統計更新コールバック
   const handleStatsUpdate = useCallback((stats: RecordingStats) => {
@@ -167,7 +172,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // エラーコールバック
   const handleError = useCallback((error: Error) => {
     addError('recording', error.message)
-  }, [addError])
+  }, [addError, setRecordingFile])
 
   // 文字起こし結果コールバック
   const handleTranscriptionResult = useCallback(async (result: TranscriptionResult) => {
@@ -194,12 +199,14 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           true
         )
         logger.info(`グローバル録音 チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
+        
+        // 文字起こしファイル保存後は左ペインが自動更新
       } catch (error) {
         const errorMessage = `チャンク#${result.chunkNumber}文字起こし追記失敗: ${error instanceof Error ? error.message : String(error)}`
         addError('transcription', errorMessage)
       }
     }
-  }, [addError])
+  }, [addError, setRecordingFile])
 
   // 文字起こし進捗コールバック
   const handleTranscriptionProgress = useCallback((progress: TranscriptionProgress) => {
@@ -270,16 +277,36 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await audioWorkletServiceRef.current.startWithConfig(audioConfig)
       
       recordingStartTimeRef.current = Date.now()
+      const now = new Date()
       setRecordingData(prev => ({
         ...prev,
         isRecording: true,
         audioLevel: 0,
-        startTime: new Date(),
+        startTime: now,
         recordingSettings: config.recordingSettings,
         transcriptionSettings: config.transcriptionSettings,
         chunks: [],
         errors: []
       }))
+
+      // 左ペインとの連携: 録音中ファイル情報を設定
+      const recordingFileInfo = {
+        id: baseFileNameRef.current,
+        filename: `${baseFileNameRef.current}.${config.recordingSettings.format}`,
+        filepath: '', // 保存先は後で決定
+        format: config.recordingSettings.format,
+        size: 0,
+        createdAt: now,
+        duration: 0,
+        isRecording: true,
+        hasTranscriptionFile: config.transcriptionSettings.enabled,
+        transcriptionPath: config.transcriptionSettings.enabled ? 
+          `${baseFileNameRef.current}.trans.txt` : undefined,
+        isPairedFile: config.transcriptionSettings.enabled
+      }
+      setRecordingFile(recordingFileInfo as any)
+
+      // 左ペインは setRecordingFile の変更で自動更新される
 
       logger.info('グローバル録音システム開始完了', { baseName: baseFileNameRef.current })
 
@@ -288,7 +315,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addError('recording', `録音開始失敗: ${errorMessage}`)
       throw error
     }
-  }, [recordingData.isRecording, handleChunkReady, handleError, handleStatsUpdate, handleTranscriptionResult, handleTranscriptionProgress, addError])
+  }, [recordingData.isRecording, handleChunkReady, handleError, handleStatsUpdate, handleTranscriptionResult, handleTranscriptionProgress, addError, setRecordingFile])
 
   // 録音停止
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
@@ -323,6 +350,11 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       audioWorkletServiceRef.current = null
       recordingStartTimeRef.current = 0
 
+      // 左ペインとの連携: 録音中状態をクリア
+      setRecordingFile(null)
+
+      // 左ペインは setRecordingFile(null) の変更で自動更新される
+
       logger.info('グローバル録音システム停止完了', { finalBlobSize: finalBlob.size })
       return finalBlob
 
@@ -331,7 +363,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addError('recording', `録音停止失敗: ${errorMessage}`)
       return null
     }
-  }, [addError])
+  }, [addError, setRecordingFile])
 
   // 設定更新
   const updateConfig = useCallback((newConfig: Partial<AdvancedRecordingConfig>) => {

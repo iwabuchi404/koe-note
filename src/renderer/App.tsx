@@ -130,16 +130,16 @@ const App: React.FC = () => {
 
   return (
     <SettingsProvider>
-      <RecordingProvider>
-        <TabProvider>
-          <AppContext.Provider value={contextValue}>
+      <AppContext.Provider value={contextValue}>
+        <RecordingProvider>
+          <TabProvider>
             <div className="app">
               <TitleBar />
               <MainLayout />
             </div>
-          </AppContext.Provider>
-        </TabProvider>
-      </RecordingProvider>
+          </TabProvider>
+        </RecordingProvider>
+      </AppContext.Provider>
     </SettingsProvider>
   )
 }

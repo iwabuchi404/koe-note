@@ -155,7 +155,7 @@ const TextDisplayViewer: React.FC<TextDisplayViewerProps> = ({
     }
     return (
       <PlainTextViewer
-        content={fileAnalysis.rawText}
+        content={MetadataParser.extractRawTextWithTimestamps(content)}
         selectedLineNumbers={selectedLineNumbers}
         onLineSelect={handleLineSelect}
         onTextSelect={() => {}}
@@ -193,13 +193,6 @@ const TextDisplayViewer: React.FC<TextDisplayViewerProps> = ({
             onCopySelection={copySelection}
             onCopyFullText={copyFullText}
             onCopySegments={copySegments}
-            size="small"
-            className="action-button"
-          />
-          <CopyButton
-            fullText={fileAnalysis.rawText}
-            variant="full-text"
-            onCopyFullText={copyFullText}
             size="small"
             className="action-button"
           />

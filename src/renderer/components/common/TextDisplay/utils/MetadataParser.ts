@@ -168,7 +168,7 @@ export class MetadataParser {
   }
   
   /**
-   * 生テキストを抽出（メタデータ除去）
+   * 生テキストを抽出（メタデータ除去、タイムスタンプ除去）
    */
   static extractRawText(content: string): string {
     let textContent = this.removeYamlFrontMatter(content)
@@ -200,6 +200,23 @@ export class MetadataParser {
     
     return textLines.join('\n')
   }
+
+  /**
+   * タイムスタンプ付き生テキストを抽出（メタデータのみ除去）
+   */
+  static extractRawTextWithTimestamps(content: string): string {
+    return this.removeYamlFrontMatter(content)
+  }
+  
+  /**
+   * YAMLフロントマターを除去
+   */
+  private static removeYamlFrontMatter(content: string): string {
+    const yamlMatch = content.match(/^---\s*\n[\s\S]*?\n---\s*\n/)
+    if (!yamlMatch) return content
+    
+    return content.substring(yamlMatch[0].length)
+  }
   
   /**
    * YAMLフロントマターを抽出
@@ -224,13 +241,6 @@ export class MetadataParser {
   }
   
   /**
-   * YAMLフロントマターを除去
-   */
-  private static removeYamlFrontMatter(content: string): string {
-    return content.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '')
-  }
-  
-  /**
    * 時間文字列を秒に変換
    */
   private static timeToSeconds(timeStr: string): number {
@@ -248,12 +258,24 @@ export class MetadataParser {
   static secondsToTime(seconds: number): string {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
-    const secs = seconds % 60
+    const secs = Math.floor(seconds % 60)
+    const decimal = seconds % 1
+    
+    // 小数点以下がほぼ0の場合は整数表示
+    const hasDecimal = decimal >= 0.1
     
     if (hours > 0) {
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toFixed(3).padStart(6, '0')}`
+      if (hasDecimal) {
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${Math.floor(decimal * 10)}`
+      } else {
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      }
     } else {
-      return `${minutes.toString().padStart(2, '0')}:${secs.toFixed(3).padStart(6, '0')}`
+      if (hasDecimal) {
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${Math.floor(decimal * 10)}`
+      } else {
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      }
     }
   }
   

@@ -17,7 +17,7 @@ interface TranscriptionExporterProps {
   currentModel: string
 }
 
-export type ExportFormat = 'json' | 'txt' | 'csv' | 'srt'
+export type ExportFormat = 'json' | 'txt' | 'csv' | 'srt' | 'trans-txt'
 
 const TranscriptionExporter: React.FC<TranscriptionExporterProps> = ({
   transcriptionResult,

@@ -305,7 +305,7 @@ const PlainTextViewer: React.FC<PlainTextViewerProps> = ({
                 <span 
                   className={`line-content ${hasLongLines && !isLargeFile ? 'dynamic-height' : ''}`}
                   dangerouslySetInnerHTML={{ 
-                    __html: highlightText(line || ' ') // 空行は1文字スペースで表示
+                    __html: highlightText(line || ' ') // タイムスタンプを含めた全テキストを表示
                   }}
                 />
               </div>

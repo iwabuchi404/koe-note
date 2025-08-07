@@ -5,6 +5,13 @@
 
 /* メインコンテナ */
 .transcription-viewer {
+  /* 行の基本高さ（PlainTextViewerと同じ設定） */
+  --min-line-height: 24px;
+  --line-height-value: 1.4;
+  --line-padding: 2px;
+  /* 計算済み高さ */
+  --calculated-line-height: calc(var(--min-line-height) + var(--line-padding) * 2);
+  
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -38,12 +45,11 @@
   max-width: 60px;
   flex-shrink: 0 !important;
   user-select: none;
-  /* スクロール同期のためにY軸スクロールを有効にする - 他のスタイルを上書き */
-  overflow-y: auto !important;
+  /* PlainTextViewerと同じスクロール設定 */
+  overflow-y: hidden !important;
   overflow-x: hidden !important;
-  /* 競合している可能性のある hidden スタイルを強制上書き */
-  overflow: visible !important;
-  overflow-y: auto !important;
+  /* ポインターイベントを無効化してスクロールを防止 */
+  pointer-events: none;
   position: relative;
   max-height: 100%;
   /* スクロールバーを非表示にする */
@@ -51,12 +57,26 @@
   -ms-overflow-style: none; /* IE/Edge */
 }
 
+/* 行番号エリアのスクロールバーを非表示にする */
+.transcription-viewer .transcription-line-numbers::-webkit-scrollbar {
+  display: none;
+}
+
+/* スクロール同期の特別設定 */
+.transcription-viewer .transcription-line-numbers {
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+  /* ホイールスクロールやタッチスクロールを無効化 */
+  -webkit-overflow-scrolling: auto;
+  /* マウスホイールを通す */
+  pointer-events: none;
+}
+
 .transcription-line-number {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: flex-end;
-  height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
-  min-height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  min-height: var(--min-line-height);
   padding: 2px 12px;
   font-size: 12px;
   font-weight: 400;
@@ -64,8 +84,14 @@
   cursor: pointer;
   transition: all 0.15s ease;
   box-sizing: border-box;
-  /* スクロール同期のための高さ一致 */
-  line-height: var(--vscode-editor-line-height, 1.5);
+  line-height: var(--line-height-value);
+  /* 動的高さ調整のための設定 */
+  margin: 0;
+  border: 0;
+  /* テキスト行と同じ高さになるよう調整 */
+  flex-shrink: 0;
+  /* 行番号はクリック可能にする */
+  pointer-events: auto;
 }
 
 .transcription-line-number:hover {
@@ -99,6 +125,10 @@
 
 /* 本文エリア */
 .transcription-viewer .transcription-main-text-area {
+  scroll-behavior: auto !important;
+  overscroll-behavior: none !important;
+}
+.transcription-viewer .transcription-main-text-area {
   flex: 1 !important;
   overflow-y: auto;
   overflow-x: hidden;
@@ -113,16 +143,20 @@
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
-  min-height: calc(var(--vscode-editor-line-height, 1.5) * var(--vscode-editor-font-size, 14px) + 4px);
+  min-height: var(--min-line-height);
   padding: 2px 12px;
   cursor: pointer;
   transition: background-color 0.15s ease;
   border-left: 3px solid transparent;
   position: relative;
   box-sizing: border-box;
-  /* スクロール同期のための高さ一致 */
-  line-height: var(--vscode-editor-line-height, 1.5);
+  line-height: var(--line-height-value);
+  /* 動的高さ調整のための設定 */
+  margin: 0;
+  border: 0;
+  /* テキストの長さに応じて高さが変わる */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .transcription-line:hover {
@@ -145,9 +179,9 @@
   flex-direction: row;
   align-items: center;
   gap: 4px;
-  min-width: 120px;
+  min-width: 80px;
   margin-right: 16px;
-  font-size: 11px;
+  font-size: var(--vscode-editor-font-size, 14px);
   font-weight: 400;
   color: var(--vscode-descriptionForeground);
   padding-top: 1px;
@@ -156,6 +190,7 @@
 
 .timestamp {
   font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 14px);
   letter-spacing: 0.3px;
 }
 
@@ -172,7 +207,11 @@
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
-  line-height: 1.5;
+  line-height: var(--line-height-value);
+  /* PlainTextViewerと同じ高さ調整 */
+  min-height: calc(var(--min-line-height) - 4px); /* paddingを差し引いた値 */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* 話者ラベル */
@@ -186,8 +225,16 @@
 /* セグメントテキスト */
 .segment-text {
   flex: 1;
-  word-wrap: break-word;
   white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  /* 動的高さ調整のための設定 */
+  line-height: var(--line-height-value);
+  /* テキストが長い場合は改行される */
+  word-break: break-word;
+  hyphens: auto;
 }
 
 /* 編集済みマーカー */

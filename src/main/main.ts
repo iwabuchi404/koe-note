@@ -425,8 +425,18 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   createWindow();
 
-  // Pythonサーバーの自動起動は無効化（手動管理）
-  writeLog('Pythonサーバーは手動管理モードです。UIから起動してください。');
+  // Pythonサーバーの自動起動を試行（失敗してもアプリは継続）
+  writeLog('Pythonサーバー自動起動を試行...');
+  try {
+    const success = await whisperManager.startServer();
+    if (success) {
+      writeLog('Pythonサーバー自動起動成功');
+    } else {
+      writeLog('Pythonサーバー自動起動失敗 - 手動起動を使用してください');
+    }
+  } catch (error) {
+    writeLog(`Pythonサーバー自動起動エラー: ${error} - 手動起動を使用してください`);
+  }
 
   app.on('activate', () => {
     // macOS対応: ドックアイコンがクリックされた際の処理
@@ -797,8 +807,17 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
           duration: 0,
           isRealtimeTranscription: true,
         });
-      } else if (file.endsWith('_transcription.txt')) {
-        // 新録音システムの文字起こしファイル
+      } else if (file.endsWith('_transcription.txt') || file.endsWith('.trans.txt')) {
+        // 文字起こしファイル（旧形式と新形式の両方に対応）
+        let baseFileName: string;
+        if (file.endsWith('_transcription.txt')) {
+          // 旧形式: advanced_recording_2025-08-05T00-58-23_transcription.txt
+          baseFileName = file.replace('_transcription.txt', '');
+        } else {
+          // 新形式: recording_2025_08_06_1801.trans.txt
+          baseFileName = file.replace('.trans.txt', '');
+        }
+        
         transcriptionFiles.push({
           id: file,
           filename: file,
@@ -808,21 +827,23 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
           createdAt: stats.birthtime,
           duration: 0,
           isTranscriptionFile: true,
-          baseFileName: file.replace('_transcription.txt', '') // ベースファイル名
+          baseFileName: baseFileName
         });
       } else if (file.endsWith('.txt') || file.endsWith('.md')) {
-        // 一般的なテキストファイル
-        textFiles.push({
-          id: file,
-          filename: file,
-          filepath: filePath,
-          format: file.endsWith('.md') ? 'md' : 'txt' as any,
-          size: stats.size,
-          createdAt: stats.birthtime,
-          duration: 0,
-          isRealtimeTranscription: false,
-          isTextFile: true,
-        });
+        // .trans.txtや_transcription.txtは上で処理済みなので、一般的なテキストファイルのみを処理
+        if (!file.endsWith('.trans.txt') && !file.endsWith('_transcription.txt')) {
+          textFiles.push({
+            id: file,
+            filename: file,
+            filepath: filePath,
+            format: file.endsWith('.md') ? 'md' : 'txt' as any,
+            size: stats.size,
+            createdAt: stats.birthtime,
+            duration: 0,
+            isRealtimeTranscription: false,
+            isTextFile: true,
+          });
+        }
       }
     });
 
@@ -1553,7 +1574,26 @@ ipcMain.handle('aichat:getPath', async (event, audioFilePath: string): Promise<s
 // ヘルパー関数
 function getTranscriptionPath(audioFilePath: string): string {
   const parsedPath = path.parse(audioFilePath);
-  return path.join(parsedPath.dir, `${parsedPath.name}_transcription.txt`);
+  
+  // 新形式のパスを優先し、存在しない場合は旧形式を返す
+  const newFormatPath = path.join(parsedPath.dir, `${parsedPath.name}.trans.txt`);
+  const oldFormatPath = path.join(parsedPath.dir, `${parsedPath.name}_transcription.txt`);
+  
+  try {
+    // 新形式のファイルが存在するかチェック
+    if (fs.existsSync(newFormatPath)) {
+      return newFormatPath;
+    }
+    // 旧形式のファイルが存在するかチェック
+    if (fs.existsSync(oldFormatPath)) {
+      return oldFormatPath;
+    }
+    // どちらも存在しない場合は新形式をデフォルトとして返す
+    return newFormatPath;
+  } catch (error) {
+    // エラーが発生した場合は新形式を返す
+    return newFormatPath;
+  }
 }
 
 function getAIChatPath(audioFilePath: string): string {

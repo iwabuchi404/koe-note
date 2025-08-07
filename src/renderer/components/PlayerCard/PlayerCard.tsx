@@ -47,7 +47,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
   
   // UI状態
   const [error, setError] = useState<string | null>(null)
-  const [showControls, setShowControls] = useState(true)
   
   // 音声再生制御
   const handlePlayPause = useCallback(async () => {
@@ -462,15 +461,6 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
           <div className="file-type" data-testid="selected-file-info">{fileType === 'audio' ? '音声ファイル' : 'テキストファイル'}</div>
         </div>
         
-        <div className="header-actions">
-          <button 
-            className={`controls-toggle ${showControls ? 'active' : ''}`}
-            onClick={() => setShowControls(!showControls)}
-            data-testid="player-controls-button"
-          >
-            ⚙️
-          </button>
-        </div>
       </div>
 
       {/* エラー表示 */}
@@ -504,23 +494,21 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
               onChange={(e) => handleSeek(Number(e.target.value))}
               data-testid="audio-seek-bar"
             />
-          </div>
-
-          {showControls && (
-            <div className="audio-controls">
-              <div className="volume-control" data-testid="volume-control">
-                <span>🔊</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.1}
-                  value={volume}
-                  onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                />
-              </div>
+            
+            <div className="volume-control" data-testid="volume-control">
+              <span>🔊</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.1}
+                value={volume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                data-testid="volume-slider"
+              />
+              <span className="volume-value">{Math.round(volume * 100)}%</span>
             </div>
-          )}
+          </div>
 
           {/* 文字起こし機能 */}
           <div className="transcription-section">
