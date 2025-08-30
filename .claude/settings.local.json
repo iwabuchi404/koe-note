@@ -1,14 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)",
       "Bash(npm start)",
       "Bash(npm run build:renderer:*)",
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
-      "Bash(npx electron:*)",
-      "Bash(find:*)"
+      "Bash(npx electron:*)"
     ],
     "deny": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "playwright",
+    "serena"
+  ]
 }
