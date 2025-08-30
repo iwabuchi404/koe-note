@@ -9,6 +9,7 @@
 declare const lamejs: any;
 
 import { TranscriptionWebSocketService, TranscriptionResult, TranscriptionProgress } from './TranscriptionWebSocketService';
+import { AudioMixingService, MixingConfig } from './core/AudioMixingService';
 
 export interface AudioSourceConfig {
   type: 'microphone' | 'desktop' | 'mix';
@@ -74,6 +75,9 @@ export class AudioWorkletRecordingService {
   private analyserNode: AnalyserNode | null = null;
   private audioLevelData: Uint8Array | null = null;
   private currentAudioLevel: number = 0;
+
+  // ミックス録音サービス
+  private audioMixingService: AudioMixingService | null = null;
 
   constructor(
     onChunkReadyCallback: (event: ChunkReadyEvent) => void,
@@ -200,19 +204,47 @@ export class AudioWorkletRecordingService {
         }
 
       case 'mix':
-        // ミックス録音（簡易実装：マイクのみ、実際の混合は後で実装）
-        console.warn('🎵 ミックス録音は現在マイクのみです');
-        return await navigator.mediaDevices.getUserMedia({
-          audio: {
-            deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-            sampleRate: 44100,
-            channelCount: 1
-          },
-          video: false
-        });
+        try {
+          console.log('🎧 マイク＋デスクトップミックス録音開始');
+          
+          // AudioMixingServiceを使用してミックスストリームを作成
+          if (!this.audioMixingService) {
+            this.audioMixingService = new AudioMixingService();
+          }
+          
+          const mixingConfig: MixingConfig = {
+            enableMicrophone: true,
+            enableDesktop: true,
+            microphoneDeviceId: config.deviceId,
+            desktopSourceId: config.desktopSourceId,
+            microphoneGain: 0.7,
+            desktopGain: 0.7
+          };
+          
+          const mixedStream = await this.audioMixingService.createMixedStream(mixingConfig);
+          console.log('🎧 ミックスストリーム作成完了:', {
+            audioTracks: mixedStream.getAudioTracks().length,
+            videoTracks: mixedStream.getVideoTracks().length
+          });
+          
+          return mixedStream;
+          
+        } catch (error) {
+          console.error('❌ ミックス録音エラー:', error);
+          // フォールバック: マイクのみで録音
+          console.warn('🎵 ミックス録音に失敗、マイクのみで録音を継続します');
+          return await navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              sampleRate: 44100,
+              channelCount: 1
+            },
+            video: false
+          });
+        }
 
       default:
         throw new Error(`未対応の音声ソースタイプ: ${config.type}`);
@@ -832,6 +864,12 @@ export class AudioWorkletRecordingService {
       
       // 文字起こしサービス切断
       await this.disconnectTranscriptionService();
+
+      // ミックス録音サービス切断
+      if (this.audioMixingService) {
+        await this.audioMixingService.cleanup();
+        this.audioMixingService = null;
+      }
       
       console.log('🎵 AudioWorkletRecordingService: クリーンアップ完了');
       
