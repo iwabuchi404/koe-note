@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAppContext } from '../../App'
 import { useSettings } from '../../contexts/SettingsContext'
+import { ModelManager } from '../ModelManagement/ModelManager'
 import './SettingsModal.css'
 
 // 新しい型安全な設定型をインポート
@@ -104,6 +105,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   // 保存状態
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false)
+  
+  // タブ管理
+  const [activeTab, setActiveTab] = useState<'general' | 'models'>('general')
 
   // 型安全なデバイス一覧取得
   const getAvailableDevices = async (): Promise<void> => {
@@ -364,8 +368,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="settings-modal__content">
-          {/* 録音設定 */}
-          <section className="settings-section">
+          {/* タブナビゲーション */}
+          <div className="settings-modal__tabs">
+            <button
+              className={`settings-tab ${activeTab === 'general' ? 'active' : ''}`}
+              onClick={() => setActiveTab('general')}
+            >
+              一般設定
+            </button>
+            <button
+              className={`settings-tab ${activeTab === 'models' ? 'active' : ''}`}
+              onClick={() => setActiveTab('models')}
+            >
+              モデル管理
+            </button>
+          </div>
+
+          {activeTab === 'general' ? (
+            <div className="settings-modal__body">
+              {/* 録音設定 */}
+              <section className="settings-section">
             <h3>📺 録音設定</h3>
             
             <div className="settings-item">
@@ -575,6 +597,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
               </label>
             </div>
           </section>
+            </div>
+          ) : (
+            <div className="settings-modal__body">
+              <ModelManager
+                currentModel={currentModel}
+                onModelChange={setCurrentModel}
+              />
+            </div>
+          )}
         </div>
 
         <div className="settings-modal__footer">

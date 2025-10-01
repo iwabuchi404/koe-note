@@ -76,6 +76,23 @@ export interface ElectronAPI {
   
   // 録音中ファイルの処理
   loadPartialAudioFile: (audioFilePath: string) => Promise<string | null>;
+  
+  // モデル管理
+  getModelsPath: () => Promise<string>;
+  getInstalledModels: () => Promise<string[]>;
+  downloadModel: (options: {
+    modelId: string;
+    downloadUrl: string;
+    targetPath: string;
+    checksum: string;
+    onProgress: (bytesDownloaded: number, totalBytes: number) => void;
+  }) => Promise<void>;
+  downloadWhisperModel: (modelId: string) => Promise<void>;
+  removeModel: (modelPath: string) => Promise<void>;
+  
+  // イベントリスナー
+  on: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
+  removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
 }
 
 // 型定義
@@ -333,6 +350,30 @@ const electronAPI: ElectronAPI = {
   // 録音中ファイルの処理
   loadPartialAudioFile: (audioFilePath: string) => 
     ipcRenderer.invoke('audio:loadPartialFile', audioFilePath),
+  
+  // モデル管理
+  getModelsPath: () => 
+    ipcRenderer.invoke('models:getModelsPath'),
+  getInstalledModels: () => 
+    ipcRenderer.invoke('models:getInstalledModels'),
+  downloadModel: (options: {
+    modelId: string;
+    downloadUrl: string;
+    targetPath: string;
+    checksum: string;
+    onProgress: (bytesDownloaded: number, totalBytes: number) => void;
+  }) => 
+    ipcRenderer.invoke('models:downloadModel', options),
+  downloadWhisperModel: (modelId: string) => 
+    ipcRenderer.invoke('models:downloadWhisperModel', modelId),
+  removeModel: (modelPath: string) => 
+    ipcRenderer.invoke('models:removeModel', modelPath),
+  
+  // イベントリスナー
+  on: (channel: string, callback: (event: any, ...args: any[]) => void) => 
+    ipcRenderer.on(channel, callback),
+  removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => 
+    ipcRenderer.removeListener(channel, callback),
 };
 
 // Context Bridgeを使用してAPIを安全に公開

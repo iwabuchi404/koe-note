@@ -1,7 +1,10 @@
 import { app, BrowserWindow, ipcMain, dialog, desktopCapturer } from 'electron';
+import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, exec, ChildProcess } from 'child_process';
+import * as https from 'https';
+import * as http from 'http';
 
 // ログファイルのパス
 const logFilePath = path.join(app.getPath('userData'), 'app.log');
@@ -26,7 +29,35 @@ const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
 
+// シングルインスタンスロック（重複起動防止）
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  writeLog('Second instance detected. Quitting this instance.');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    writeLog('Second instance event - focusing existing window.');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Pythonサブプロセス管理クラス
+// Python環境チェック関数
+async function checkPythonAvailability(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const pythonProcess = spawn('python', ['--version'], { stdio: 'pipe' });
+    pythonProcess.on('close', (code) => {
+      resolve(code === 0);
+    });
+    pythonProcess.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
 class KotobaWhisperManager {
   private pythonProcess: ChildProcess | null = null;
   private isRunning: boolean = false;
@@ -37,63 +68,66 @@ class KotobaWhisperManager {
     writeLog('KotobaWhisperManager初期化');
   }
 
-  // Pythonサーバー起動
+  // Pythonサーバー起動（PyInstaller実行ファイル版）
   async startServer(): Promise<boolean> {
     if (this.isRunning) {
       writeLog('Pythonサーバーは既に起動中です');
       return true;
     }
-  
-    // ★★★★★ 開発環境専用デバッグコード（コメントアウト） ★★★★★
-    // try {
-    //   const workDirContent = fs.readdirSync('D:/work/');
-    //   writeLog(`[DEBUG] Content of D:/work/ -> [${workDirContent.join(', ')}]`);
-    //   if (workDirContent.includes('whisper-server')) {
-    //       writeLog('[DEBUG] "whisper-server" directory IS FOUND in D:/work/ by readdirSync.');
-    //   } else {
-    //       writeLog('[DEBUG] "whisper-server" directory NOT FOUND in D:/work/ by readdirSync.');
-    //   }
-    // } catch (e) {
-    //   writeLog(`[DEBUG] Failed to read D:/work/ directory. Error: ${e}`);
-    // }
-    // ★★★★★ デバッグコードここまで ★★★★★
 
     try {
-      writeLog('Kotoba-Whisper Pythonサーバー起動中...');
-      
-      // whisper-serverディレクトリのパス（相対パス解決）
-      writeLog(`Current __dirname: ${__dirname}`);
-      writeLog(`Process cwd: ${process.cwd()}`);
+      // 既に外部で起動していないか事前チェック（ポート競合回避）
+      const inUse = await isPortInUse(8770);
+      if (inUse) {
+        writeLog('Port 8770 is already in use. Skipping internal server start.');
+        this.isRunning = false;
+        return true; // 外部サーバー使用とみなす
+      }
+      writeLog('Kotoba-Whisper Pythonサーバー起動中（PyInstaller版）...');
       
       // Electronアプリのベースディレクトリを特定
       const appPath = app.getAppPath();
       writeLog(`App path: ${appPath}`);
       
-      // whisper-serverへのパス（環境非依存の相対パス）
-      let whisperServerPath: string;
+      // whisper-server実行ファイルのパス解決
+      let whisperServerExePath: string;
       
       // 開発環境かパッケージ化環境かを判定
       const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
       writeLog(`Environment: ${isDevelopment ? 'Development' : 'Production'}`);
       
-      if (isDevelopment) {
-        // 開発環境: アプリルートの whisper-server
-        whisperServerPath = path.join(appPath, 'whisper-server');
+      // Python環境の可用性をチェック
+      const pythonAvailable = await checkPythonAvailability();
+      writeLog(`Python available: ${pythonAvailable}`);
+      
+      if (pythonAvailable) {
+        // Pythonが利用可能な場合、Pythonスクリプトを使用
+        whisperServerExePath = 'python';
+        writeLog('Using Python interpreter');
       } else {
-        // パッケージ化環境: resources/app.asar の隣の whisper-server
-        // 通常は resources/app.asar/dist から ../../whisper-server
-        whisperServerPath = path.join(path.dirname(appPath), 'whisper-server');
+        // Pythonが利用できない場合、実行ファイルを使用
+        if (isDevelopment) {
+          whisperServerExePath = path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe');
+        } else {
+          // 本番は resourcesPath を起点に解決
+          whisperServerExePath = path.join(process.resourcesPath, 'whisper-server.exe');
+        }
+        writeLog('Using standalone executable');
       }
       
-      writeLog(`Whisper server path: ${whisperServerPath}`);
+      writeLog(`Whisper server exe path: ${whisperServerExePath}`);
       
       // パス存在確認（フォールバック付き）
       const pathCandidates = [
-        whisperServerPath,
-        path.join(appPath, 'whisper-server'),           // 基本パス
-        path.join(path.dirname(appPath), 'whisper-server'), // 親ディレクトリ
-        path.join(process.cwd(), 'whisper-server'),     // 実行ディレクトリ
-        path.resolve(__dirname, '..', 'whisper-server'), // 相対パス
+        whisperServerExePath,
+        // 開発系
+        path.join(appPath, 'whisper-server', 'dist', 'whisper-server.exe'),
+        path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
+        path.resolve(__dirname, '..', 'whisper-server', 'dist', 'whisper-server.exe'),
+        // 本番系（resources配下）
+        path.join(process.resourcesPath, 'whisper-server.exe'),
+        path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server.exe'),
+        path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
       ];
       
       let validPath: string | null = null;
@@ -101,108 +135,66 @@ class KotobaWhisperManager {
         writeLog(`Checking path candidate: ${candidatePath}`);
         if (fs.existsSync(candidatePath)) {
           validPath = candidatePath;
-          writeLog(`Found valid whisper-server path: ${validPath}`);
+          writeLog(`Found valid whisper-server exe: ${validPath}`);
           break;
         }
       }
       
       if (!validPath) {
-        const errorMessage = `Whisper server directory not found in any of these locations:\n${pathCandidates.join('\n')}`;
+        const errorMessage = `Whisper server exe not found in any of these locations:\n${pathCandidates.join('\n')}`;
         writeLog(errorMessage);
         throw new Error(errorMessage);
       }
       
-      whisperServerPath = validPath;
+      whisperServerExePath = validPath;
       
-      // main.pyの存在確認
-      const mainPyPath = path.join(whisperServerPath, 'main.py');
-      if (!fs.existsSync(mainPyPath)) {
-        const errorMessage = `main.py not found: ${mainPyPath}`;
+      // 実行ファイルの存在確認
+      if (!fs.existsSync(whisperServerExePath)) {
+        const errorMessage = `whisper-server.exe not found: ${whisperServerExePath}`;
         writeLog(errorMessage);
         throw new Error(errorMessage);
       }
       
-      writeLog(`Found main.py at: ${mainPyPath}`);
+      writeLog(`Found whisper-server.exe at: ${whisperServerExePath}`);
       
-      // Windows環境でのuvコマンド実行を修正
-      const isWindows = process.platform === 'win32';
-      let uvCommand: string;
+      // 実行方法に応じて引数を設定
+      let command: string;
+      let args: string[];
+      let cwd: string;
       
-      if (isWindows) {
-        // Windows環境でのUVコマンド解決
-        try {
-          const userHome = process.env.USERPROFILE || '';
-          const fullPath = path.join(userHome, '.local', 'bin', 'uv.exe');
-          
-          if (fs.existsSync(fullPath)) {
-            uvCommand = fullPath;
-            writeLog(`Found UV at: ${fullPath}`);
-          } else {
-            // フォールバック: PATHからuv.exeを探す
-            uvCommand = 'uv.exe';
-            writeLog(`Using UV from PATH: uv.exe`);
-          }
-        } catch (error) {
-          writeLog(`UV path resolution error: ${error}`);
-          uvCommand = 'uv.exe';
-        }
+      if (pythonAvailable) {
+        // Pythonスクリプトを実行
+        command = 'python';
+        args = ['main.py'];
+        cwd = path.join(appPath, 'whisper-server');
       } else {
-        uvCommand = 'uv';
+        // 実行ファイルを実行
+        command = whisperServerExePath;
+        args = [];
+        cwd = path.dirname(whisperServerExePath);
       }
       
-      writeLog(`Using UV command: ${uvCommand}`);
-      
-      // UVコマンドの存在確認
-      if (!fs.existsSync(uvCommand) && !uvCommand.includes('.exe')) {
-        // フルパスでない場合のエラーハンドリング
-        writeLog(`UV command not found at: ${uvCommand}`);
-        throw new Error(`UV command not found: ${uvCommand}`);
-      }
-      
-      // shellを使わずに直接UVを実行
       const spawnOptions: any = {
-        cwd: whisperServerPath,
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: cwd,
         env: {
           ...process.env,
-          // UVのパスを明示的に追加
-          PATH: process.env.PATH + (isWindows ? `;${path.dirname(uvCommand)}` : `:${path.dirname(uvCommand)}`)
+          // モデルファイルのパスを設定
+          WHISPER_MODELS_PATH: isDevelopment
+            ? path.join(cwd, 'models')
+            : path.join(process.resourcesPath, 'models')
         }
       };
       
-      // Windows固有の設定（shellを使わない）
-      if (isWindows) {
+      // Windows固有の設定
+      if (process.platform === 'win32') {
         spawnOptions.windowsHide = true;
       }
       
       writeLog(`Spawn options: ${JSON.stringify(spawnOptions, null, 2)}`);
       
-      // Windowsバッチファイル経由でUV実行（spawn問題回避）
-      if (isWindows) {
-        // 一時バッチファイルを作成
-        const batchContent = `@echo off\ncd /d "${whisperServerPath}"\n"${uvCommand}" run python main.py\npause`;
-        const batchPath = path.join(whisperServerPath, 'start_whisper.bat');
-        
-        try {
-          fs.writeFileSync(batchPath, batchContent);
-          writeLog(`Created batch file: ${batchPath}`);
-          writeLog(`Batch content: ${batchContent}`);
-          
-          // バッチファイルを実行
-          this.pythonProcess = spawn('cmd.exe', ['/c', batchPath], {
-            cwd: whisperServerPath,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: spawnOptions.env,
-            windowsHide: false // デバッグのためfalse
-          });
-        } catch (error) {
-          writeLog(`Batch file creation error: ${error}`);
-          throw error;
-        }
-      } else {
-        // Linux/Mac用
-        this.pythonProcess = spawn(uvCommand, ['run', 'python', 'main.py'], spawnOptions);
-      }
+      // プロセスを実行
+      this.pythonProcess = spawn(command, args, spawnOptions);
 
       // 標準出力の監視
       if (this.pythonProcess.stdout) {
@@ -241,8 +233,7 @@ class KotobaWhisperManager {
       // エラーハンドリング
       this.pythonProcess.on('error', (error) => {
         writeLog(`Python server spawn error: ${error.message}`);
-        writeLog(`UV command used: ${uvCommand}`);
-        writeLog(`Working directory: ${whisperServerPath}`);
+        writeLog(`Executable used: ${whisperServerExePath}`);
         writeLog(`Environment PATH: ${process.env.PATH}`);
         this.isRunning = false;
       });
@@ -359,12 +350,11 @@ function createWindow(): void {
   // HTMLファイルの読み込み
   if (isDev) {
     mainWindow.loadURL('http://localhost:3000');
-    // 開発環境ではDevToolsを開く
-    mainWindow.webContents.openDevTools();
+    if (!mainWindow.webContents.isDevToolsOpened()) {
+      mainWindow.webContents.openDevTools();
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
-    // 本番環境でもテスト用にDevToolsを開く
-    mainWindow.webContents.openDevTools();
   }
 
   // メディア権限要求ハンドラー（音声録音・映像キャプチャ・デスクトップキャプチャ）
@@ -1200,6 +1190,227 @@ ipcMain.handle('speech:stopServer', async (): Promise<void> => {
   whisperManager.stopServer();
 });
 
+// モデル管理関連のIPCハンドラー
+ipcMain.handle('models:getModelsPath', async (): Promise<string> => {
+  try {
+    const appPath = app.getAppPath();
+    const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
+    
+    if (isDevelopment) {
+      return path.join(appPath, 'whisper-server', 'models');
+    } else {
+      return path.join(path.dirname(appPath), 'whisper-server', 'models');
+    }
+  } catch (error) {
+    writeLog(`Failed to get models path: ${error}`);
+    throw error;
+  }
+});
+
+ipcMain.handle('models:getInstalledModels', async (): Promise<string[]> => {
+  try {
+    const appPath = app.getAppPath();
+    const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
+    
+    let modelsPath: string;
+    if (isDevelopment) {
+      modelsPath = path.join(appPath, 'whisper-server', 'models');
+    } else {
+      modelsPath = path.join(path.dirname(appPath), 'whisper-server', 'models');
+    }
+    const installedModels: string[] = [];
+    
+    if (fs.existsSync(modelsPath)) {
+      const entries = fs.readdirSync(modelsPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name.startsWith('models--')) {
+          // models--Systran--faster-whisper-small のような形式からモデル名を抽出
+          const modelName = entry.name.replace('models--', '').replace(/--/g, '/');
+          installedModels.push(modelName);
+        }
+      }
+    }
+    
+    return installedModels;
+  } catch (error) {
+    writeLog(`Failed to get installed models: ${error}`);
+    throw error;
+  }
+});
+
+ipcMain.handle('models:downloadModel', async (event, options: {
+  modelId: string;
+  downloadUrl: string;
+  targetPath: string;
+  checksum: string;
+  onProgress: (bytesDownloaded: number, totalBytes: number) => void;
+}): Promise<void> => {
+  const { modelId, downloadUrl, targetPath, checksum, onProgress } = options;
+  
+  try {
+    writeLog(`Starting model download: ${modelId} from ${downloadUrl}`);
+    
+    // ターゲットディレクトリを作成
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    // ダウンロード実行
+    await downloadFile(downloadUrl, targetPath, onProgress);
+    
+    writeLog(`Model download completed: ${modelId}`);
+  } catch (error) {
+    writeLog(`Model download failed: ${modelId}, error: ${error}`);
+    throw error;
+  }
+});
+
+ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<void> => {
+  try {
+    writeLog(`Removing model: ${modelPath}`);
+    
+    if (fs.existsSync(modelPath)) {
+      fs.rmSync(modelPath, { recursive: true, force: true });
+      writeLog(`Model removed successfully: ${modelPath}`);
+    } else {
+      writeLog(`Model path does not exist: ${modelPath}`);
+    }
+  } catch (error) {
+    writeLog(`Failed to remove model: ${modelPath}, error: ${error}`);
+    throw error;
+  }
+});
+
+// Node.jsベースのモデルダウンロード
+ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Promise<void> => {
+  try {
+    writeLog(`Starting model download: ${modelId}`);
+    
+    // モデル情報を定義
+    const modelConfigs = {
+      'small': {
+        repo: 'Systran/faster-whisper-small',
+        files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+      },
+      'large-v2': {
+        repo: 'Systran/faster-whisper-large-v2',
+        files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+      },
+      'kotoba-whisper-v2.0-faster': {
+        repo: 'kotoba-tech/kotoba-whisper-v2.0-faster',
+        files: ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
+      }
+    };
+
+    const config = modelConfigs[modelId as keyof typeof modelConfigs];
+    if (!config) {
+      throw new Error(`Unknown model: ${modelId}`);
+    }
+
+    const modelsPath = path.join(process.cwd(), 'whisper-server', 'models');
+    const modelDir = path.join(modelsPath, `models--${config.repo.replace('/', '--')}`);
+    
+    // モデルディレクトリを作成
+    if (!fs.existsSync(modelDir)) {
+      fs.mkdirSync(modelDir, { recursive: true });
+    }
+
+    const snapshotsDir = path.join(modelDir, 'snapshots', 'main');
+    if (!fs.existsSync(snapshotsDir)) {
+      fs.mkdirSync(snapshotsDir, { recursive: true });
+    }
+
+    // 各ファイルをダウンロード
+    let completedFiles = 0;
+    const totalFiles = config.files.length;
+
+    for (const fileName of config.files) {
+      const fileUrl = `https://huggingface.co/${config.repo}/resolve/main/${fileName}`;
+      const filePath = path.join(snapshotsDir, fileName);
+      
+      writeLog(`Downloading ${fileName}...`);
+      
+      await downloadFile(fileUrl, filePath, (downloadedBytes, totalBytes) => {
+        const fileProgress = (downloadedBytes / totalBytes) * 100;
+        const overallProgress = ((completedFiles + fileProgress / 100) / totalFiles) * 100;
+        
+        event.sender.send('models:downloadProgress', { 
+          modelId, 
+          percent: Math.round(overallProgress), 
+          message: `Downloading ${fileName}...` 
+        });
+      });
+      
+      completedFiles++;
+    }
+
+    // 完了通知
+    event.sender.send('models:downloadProgress', { 
+      modelId, 
+      percent: 100, 
+      message: 'Download completed' 
+    });
+    
+    writeLog(`Model download completed: ${modelId}`);
+    
+  } catch (error) {
+    writeLog(`Model download error: ${modelId}, error: ${error}`);
+    throw error;
+  }
+});
+
+// ファイルダウンロード関数
+async function downloadFile(
+  url: string, 
+  targetPath: string, 
+  onProgress: (bytesDownloaded: number, totalBytes: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(targetPath);
+    let downloadedBytes = 0;
+    let totalBytes = 0;
+    
+    const request = url.startsWith('https:') ? https : http;
+    
+    const req = request.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+        return;
+      }
+      
+      totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+      
+      response.on('data', (chunk) => {
+        downloadedBytes += chunk.length;
+        onProgress(downloadedBytes, totalBytes);
+      });
+      
+      response.on('end', () => {
+        file.close();
+        resolve();
+      });
+      
+      response.on('error', (error) => {
+        file.close();
+        fs.unlinkSync(targetPath); // 失敗したファイルを削除
+        reject(error);
+      });
+    });
+    
+    req.on('error', (error) => {
+      file.close();
+      fs.unlinkSync(targetPath); // 失敗したファイルを削除
+      reject(error);
+    });
+    
+    file.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
 // 音声ファイル文字起こし
 ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any> => {
   try {
@@ -1572,6 +1783,25 @@ ipcMain.handle('aichat:getPath', async (event, audioFilePath: string): Promise<s
 });
 
 // ヘルパー関数
+async function isPortInUse(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(1500);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => {
+      // ECONNREFUSED 等は未使用とみなす
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
 function getTranscriptionPath(audioFilePath: string): string {
   const parsedPath = path.parse(audioFilePath);
   
@@ -1882,6 +2112,7 @@ ipcMain.handle('audio:loadPartialFile', async (event, audioFilePath: string): Pr
     // ファイルが存在するかチェック
     if (!fs.existsSync(audioFilePath)) {
       writeLog(`ファイルが存在しません: ${audioFilePath}`);
+      
       return null;
     }
     
