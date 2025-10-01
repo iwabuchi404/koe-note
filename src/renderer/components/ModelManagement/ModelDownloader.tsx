@@ -21,6 +21,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
   const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [consentMap, setConsentMap] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     loadAvailableModels()
@@ -43,6 +44,15 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
   const handleDownload = async (modelId: string) => {
     try {
       setError(null)
+      // ライセンス同意必須
+      const consented = consentMap[modelId]
+      const targetModel = availableModels.find(m => m.id === modelId)
+      if (!consented) {
+        const name = targetModel?.name || modelId
+        setError(`${name} のライセンスに同意してください。`)
+        onError?.(`${name} のライセンスに同意してください。`)
+        return
+      }
       setDownloadingModels(prev => new Set(prev).add(modelId))
 
       await modelDownloadService.downloadModel({
@@ -65,11 +75,14 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
           loadAvailableModels() // リストを更新
         },
         onError: (errorMessage) => {
-          setError(errorMessage)
-          onError?.(errorMessage)
+          // 既にダウンロード中メッセージは通知せず静かに継続
+          if (!/already being downloaded/i.test(errorMessage)) {
+            setError(errorMessage)
+            onError?.(errorMessage)
+          }
           setDownloadingModels(prev => {
             const newSet = new Set(prev)
-            newSet.delete(modelId)
+            // まだ進行中であれば残し、完了/キャンセル時に削除される
             return newSet
           })
         }
@@ -163,6 +176,27 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
                   <span className="model-license">License: {model.license}</span>
                   <span className="model-version">Version: {model.version}</span>
                 </div>
+                {!isInstalled && !isDownloading && (
+                  <div className="model-license-consent">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={!!consentMap[model.id]}
+                        onChange={(e) => setConsentMap(prev => ({ ...prev, [model.id]: e.target.checked }))}
+                      />
+                      <span>
+                        ライセンスに同意します
+                        {model.licenseUrl && (
+                          <>（
+                            <a href={model.licenseUrl} target="_blank" rel="noreferrer">
+                              ライセンス詳細
+                            </a>
+                          ）</>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="model-actions">

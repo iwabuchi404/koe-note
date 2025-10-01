@@ -10,6 +10,7 @@ export interface ModelInfo {
   sizeBytes: number
   version: string
   license: string
+  licenseUrl?: string
   downloadUrl: string
   checksum: string
   isInstalled: boolean
@@ -71,6 +72,12 @@ export interface ModelDownloadService {
   
   // ダウンロード進捗取得
   getDownloadProgress(modelId: string): DownloadProgress | null
+  
+  // ダウンロード中チェック
+  hasActiveDownloads(): boolean
+  
+  // ダウンロード中モデル一覧取得
+  getActiveDownloads(): string[]
 }
 
 // 利用可能なモデル定義
@@ -83,6 +90,7 @@ export const AVAILABLE_MODELS: Omit<ModelInfo, 'isInstalled' | 'isDownloading' |
     sizeBytes: 244 * 1024 * 1024,
     version: '1.0.0',
     license: 'MIT',
+    licenseUrl: 'https://huggingface.co/Systran/faster-whisper-small',
     downloadUrl: 'https://huggingface.co/Systran/faster-whisper-small/resolve/main',
     checksum: 'sha256:...'
   },
@@ -94,6 +102,7 @@ export const AVAILABLE_MODELS: Omit<ModelInfo, 'isInstalled' | 'isDownloading' |
     sizeBytes: 769 * 1024 * 1024,
     version: '2.0.0',
     license: 'MIT',
+    licenseUrl: 'https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-faster',
     downloadUrl: 'https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-faster/resolve/main',
     checksum: 'sha256:...'
   },
@@ -105,6 +114,7 @@ export const AVAILABLE_MODELS: Omit<ModelInfo, 'isInstalled' | 'isDownloading' |
     sizeBytes: 3.1 * 1024 * 1024 * 1024,
     version: '1.0.0',
     license: 'MIT',
+    licenseUrl: 'https://huggingface.co/Systran/faster-whisper-large-v2',
     downloadUrl: 'https://huggingface.co/Systran/faster-whisper-large-v2/resolve/main',
     checksum: 'sha256:...'
   }

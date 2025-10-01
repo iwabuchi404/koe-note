@@ -89,6 +89,7 @@ export interface ElectronAPI {
   }) => Promise<void>;
   downloadWhisperModel: (modelId: string) => Promise<void>;
   removeModel: (modelPath: string) => Promise<void>;
+  cancelModelDownload: (modelId: string) => Promise<void>;
   
   // イベントリスナー
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
@@ -368,6 +369,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('models:downloadWhisperModel', modelId),
   removeModel: (modelPath: string) => 
     ipcRenderer.invoke('models:removeModel', modelPath),
+  cancelModelDownload: (modelId: string) =>
+    ipcRenderer.invoke('models:cancelDownload', modelId),
   
   // イベントリスナー
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => 

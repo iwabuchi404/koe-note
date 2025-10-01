@@ -21,7 +21,7 @@ export class ModelDownloadService implements IModelDownloadService {
   private async initializeInstalledModels(): Promise<void> {
     try {
       // 既存のモデルディレクトリをチェック
-      const modelsPath = await window.electronAPI.getModelsPath()
+      await window.electronAPI.getModelsPath()
       const installedModels = await window.electronAPI.getInstalledModels()
       
       installedModels.forEach(modelId => {
@@ -59,9 +59,11 @@ export class ModelDownloadService implements IModelDownloadService {
     const { modelId, forceDownload = false, verifyChecksum = true, onProgress, onComplete, onError } = options
 
     try {
-      // 既にダウンロード中かチェック
+      // 既にダウンロード中かチェック（重複開始せず、呼び出し元には現在値だけ通知して黙って返す）
       if (this.downloadProgress.has(modelId)) {
-        throw new Error(`Model ${modelId} is already being downloaded`)
+        const existing = this.downloadProgress.get(modelId)!
+        onProgress?.(existing)
+        return
       }
 
       // 既にインストール済みかチェック
@@ -138,13 +140,17 @@ export class ModelDownloadService implements IModelDownloadService {
   ): Promise<void> {
     try {
       // 進捗リスナーを設定
-      const progressListener = (event: any, data: { modelId: string, percent: number, message: string }) => {
+      const progressListener = (event: any, data: { modelId: string, percent: number, message?: string, bytesDownloaded?: number, totalBytes?: number, speed?: number, eta?: number }) => {
         if (data.modelId === modelInfo.id) {
           progress.progress = data.percent
-          progress.downloadedBytes = Math.floor((data.percent / 100) * modelInfo.sizeBytes)
-          progress.totalBytes = modelInfo.sizeBytes
-          progress.speed = 0 // faster-whisperでは速度計算が困難
-          progress.eta = 0   // faster-whisperではETA計算が困難
+          if (typeof data.bytesDownloaded === 'number') {
+            progress.downloadedBytes = data.bytesDownloaded
+          } else {
+            progress.downloadedBytes = Math.floor((data.percent / 100) * (data.totalBytes || modelInfo.sizeBytes))
+          }
+          progress.totalBytes = data.totalBytes || modelInfo.sizeBytes
+          progress.speed = data.speed || 0
+          progress.eta = data.eta || 0
 
           onProgress?.(progress)
         }
@@ -184,6 +190,11 @@ export class ModelDownloadService implements IModelDownloadService {
       progress.status = 'cancelled'
       this.downloadProgress.delete(modelId)
     }
+    // Mainへもキャンセル要求
+    try {
+      // @ts-ignore - exposed in preload
+      await (window.electronAPI as any).cancelModelDownload(modelId)
+    } catch {}
   }
 
   /**
@@ -238,11 +249,27 @@ export class ModelDownloadService implements IModelDownloadService {
   }
 
   /**
+   * ダウンロード中のモデルがあるかチェック
+   */
+  hasActiveDownloads(): boolean {
+    return this.downloadProgress.size > 0
+  }
+
+  /**
+   * ダウンロード中のモデル一覧を取得
+   */
+  getActiveDownloads(): string[] {
+    return Array.from(this.downloadProgress.keys())
+  }
+
+  /**
    * モデルのパスを取得
    */
   private async getModelPath(modelId: string): Promise<string> {
     const modelsPath = await window.electronAPI.getModelsPath()
-    return `${modelsPath}/${modelId}`
+    // Main 側は models--<org>--<name>/snapshots/main に配置
+    // ここではユーザー向け表示用にルート直下の表現を返すのみ
+    return `${modelsPath}`
   }
 }
 

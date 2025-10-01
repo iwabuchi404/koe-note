@@ -26,6 +26,64 @@ writeLog('アプリケーション開始');
 
 // アプリケーション設定
 const isDev = process.env.NODE_ENV === 'development';
+// モデル保存ルートを解決（開発/本番/ポータブル対応）
+function resolveModelsRoot(): string {
+  try {
+    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+    if (portableDir && portableDir.length > 0) {
+      return path.join(portableDir, 'models');
+    }
+    const appPath = app.getAppPath();
+    const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
+    if (isDevelopment) {
+      // 開発モード: プロジェクトルートの whisper-server/models
+      return path.join(process.cwd(), 'whisper-server', 'models');
+    }
+    // 本番モード: ユーザーデータディレクトリを使用（書き込み可能）
+    return path.join(app.getPath('userData'), 'models');
+  } catch (error) {
+    writeLog(`resolveModelsRoot error: ${error}`);
+    // フォールバック: プロジェクトルート
+    return path.join(process.cwd(), 'whisper-server', 'models');
+  }
+}
+
+// モデル定義（id <-> repo 対応）
+const MODEL_CONFIGS: Record<string, { id: string; repo: string; files: string[] }> = {
+  small: {
+    id: 'small',
+    repo: 'Systran/faster-whisper-small',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
+  'large-v2': {
+    id: 'large-v2',
+    repo: 'Systran/faster-whisper-large-v2',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
+  'kotoba-whisper-v2.0-faster': {
+    id: 'kotoba-whisper-v2.0-faster',
+    repo: 'kotoba-tech/kotoba-whisper-v2.0-faster',
+    files: ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
+  }
+};
+
+function repoToFolder(repo: string): string {
+  return `models--${repo.replace('/', '--')}`;
+}
+
+function folderToRepo(folderName: string): string {
+  return folderName.replace(/^models--/, '').replace(/--/g, '/');
+}
+
+function repoToId(repo: string): string | null {
+  const entry = Object.values(MODEL_CONFIGS).find(c => c.repo === repo);
+  return entry ? entry.id : null;
+}
+
+// ダウンロード中の管理（キャンセル用）
+const activeDownloads = new Map<string, { abort: () => void }>();
+const cancelledDownloads = new Set<string>();
+
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -180,9 +238,7 @@ class KotobaWhisperManager {
         env: {
           ...process.env,
           // モデルファイルのパスを設定
-          WHISPER_MODELS_PATH: isDevelopment
-            ? path.join(cwd, 'models')
-            : path.join(process.resourcesPath, 'models')
+          WHISPER_MODELS_PATH: resolveModelsRoot()
         }
       };
       
@@ -562,7 +618,7 @@ ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subf
     writeLog(`ファイル保存完了: ${filename} (${subfolder || 'メイン'}) - ${buffer.length} bytes`);
     
     // ファイル保存完了をレンダラープロセスに通知
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('file:saved', {
         filePath,
         filename,
@@ -1193,14 +1249,12 @@ ipcMain.handle('speech:stopServer', async (): Promise<void> => {
 // モデル管理関連のIPCハンドラー
 ipcMain.handle('models:getModelsPath', async (): Promise<string> => {
   try {
-    const appPath = app.getAppPath();
-    const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
-    
-    if (isDevelopment) {
-      return path.join(appPath, 'whisper-server', 'models');
-    } else {
-      return path.join(path.dirname(appPath), 'whisper-server', 'models');
+    const root = resolveModelsRoot();
+    // 事前にフォルダ作成
+    if (!fs.existsSync(root)) {
+      fs.mkdirSync(root, { recursive: true });
     }
+    return root;
   } catch (error) {
     writeLog(`Failed to get models path: ${error}`);
     throw error;
@@ -1209,60 +1263,55 @@ ipcMain.handle('models:getModelsPath', async (): Promise<string> => {
 
 ipcMain.handle('models:getInstalledModels', async (): Promise<string[]> => {
   try {
-    const appPath = app.getAppPath();
-    const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
-    
-    let modelsPath: string;
-    if (isDevelopment) {
-      modelsPath = path.join(appPath, 'whisper-server', 'models');
-    } else {
-      modelsPath = path.join(path.dirname(appPath), 'whisper-server', 'models');
-    }
-    const installedModels: string[] = [];
-    
+    const modelsPath = resolveModelsRoot();
+    const installedModelIds: string[] = [];
     if (fs.existsSync(modelsPath)) {
       const entries = fs.readdirSync(modelsPath, { withFileTypes: true });
-      
       for (const entry of entries) {
         if (entry.isDirectory() && entry.name.startsWith('models--')) {
-          // models--Systran--faster-whisper-small のような形式からモデル名を抽出
-          const modelName = entry.name.replace('models--', '').replace(/--/g, '/');
-          installedModels.push(modelName);
+          const repo = folderToRepo(entry.name);
+          const id = repoToId(repo);
+          if (id) {
+            installedModelIds.push(id);
+          }
         }
       }
     }
-    
-    return installedModels;
+    return installedModelIds;
   } catch (error) {
     writeLog(`Failed to get installed models: ${error}`);
     throw error;
   }
 });
 
+// 任意URLの単一ファイルダウンロード（将来の拡張用）
 ipcMain.handle('models:downloadModel', async (event, options: {
   modelId: string;
   downloadUrl: string;
   targetPath: string;
   checksum: string;
-  onProgress: (bytesDownloaded: number, totalBytes: number) => void;
 }): Promise<void> => {
-  const { modelId, downloadUrl, targetPath, checksum, onProgress } = options;
-  
+  const { modelId, downloadUrl, targetPath } = options;
   try {
-    writeLog(`Starting model download: ${modelId} from ${downloadUrl}`);
-    
-    // ターゲットディレクトリを作成
+    writeLog(`Starting file download for model: ${modelId} from ${downloadUrl}`);
     const targetDir = path.dirname(targetPath);
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
-    
-    // ダウンロード実行
-    await downloadFile(downloadUrl, targetPath, onProgress);
-    
-    writeLog(`Model download completed: ${modelId}`);
+    await downloadFile(downloadUrl, targetPath, (downloadedBytes, totalBytes) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        event.sender.send('models:downloadProgress', {
+          modelId,
+          bytesDownloaded: downloadedBytes,
+          totalBytes,
+          percent: totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0,
+          message: 'Downloading file...'
+        });
+      }
+    });
+    writeLog(`File download completed for: ${modelId}`);
   } catch (error) {
-    writeLog(`Model download failed: ${modelId}, error: ${error}`);
+    writeLog(`Model file download failed: ${modelId}, error: ${error}`);
     throw error;
   }
 });
@@ -1287,40 +1336,31 @@ ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<v
 ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Promise<void> => {
   try {
     writeLog(`Starting model download: ${modelId}`);
-    
-    // モデル情報を定義
-    const modelConfigs = {
-      'small': {
-        repo: 'Systran/faster-whisper-small',
-        files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-      },
-      'large-v2': {
-        repo: 'Systran/faster-whisper-large-v2',
-        files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-      },
-      'kotoba-whisper-v2.0-faster': {
-        repo: 'kotoba-tech/kotoba-whisper-v2.0-faster',
-        files: ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
-      }
-    };
-
-    const config = modelConfigs[modelId as keyof typeof modelConfigs];
+    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
     if (!config) {
       throw new Error(`Unknown model: ${modelId}`);
     }
 
-    const modelsPath = path.join(process.cwd(), 'whisper-server', 'models');
-    const modelDir = path.join(modelsPath, `models--${config.repo.replace('/', '--')}`);
+    const modelsPath = resolveModelsRoot();
+    const modelDir = path.join(modelsPath, repoToFolder(config.repo));
     
     // モデルディレクトリを作成
     if (!fs.existsSync(modelDir)) {
       fs.mkdirSync(modelDir, { recursive: true });
     }
 
+    const refsDir = path.join(modelDir, 'refs');
     const snapshotsDir = path.join(modelDir, 'snapshots', 'main');
     if (!fs.existsSync(snapshotsDir)) {
       fs.mkdirSync(snapshotsDir, { recursive: true });
     }
+    if (!fs.existsSync(refsDir)) {
+      fs.mkdirSync(refsDir, { recursive: true });
+    }
+    // refs/main を simple に作成（実運用ではcommit hash等を記録）
+    try {
+      fs.writeFileSync(path.join(refsDir, 'main'), 'main');
+    } catch {}
 
     // 各ファイルをダウンロード
     let completedFiles = 0;
@@ -1329,29 +1369,48 @@ ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Pr
     for (const fileName of config.files) {
       const fileUrl = `https://huggingface.co/${config.repo}/resolve/main/${fileName}`;
       const filePath = path.join(snapshotsDir, fileName);
+      const tempPath = filePath + '.partial';
       
       writeLog(`Downloading ${fileName}...`);
       
-      await downloadFile(fileUrl, filePath, (downloadedBytes, totalBytes) => {
+      await downloadFile(fileUrl, tempPath, (downloadedBytes, totalBytes, speedBps, elapsedMs) => {
         const fileProgress = (downloadedBytes / totalBytes) * 100;
         const overallProgress = ((completedFiles + fileProgress / 100) / totalFiles) * 100;
+        const remainingBytes = (totalFiles - completedFiles - 1) * (totalBytes || 0) + Math.max((totalBytes || 0) - downloadedBytes, 0);
+        const etaSec = speedBps > 0 ? Math.round(remainingBytes / speedBps) : 0;
         
-        event.sender.send('models:downloadProgress', { 
-          modelId, 
-          percent: Math.round(overallProgress), 
-          message: `Downloading ${fileName}...` 
-        });
+        // ウィンドウが破棄されていないかチェック
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          event.sender.send('models:downloadProgress', { 
+            modelId, 
+            percent: Math.round(overallProgress), 
+            message: `Downloading ${fileName}...`,
+            bytesDownloaded: downloadedBytes,
+            totalBytes,
+            speed: speedBps,
+            eta: etaSec
+          });
+        }
       });
+      // 原子的リネーム
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch {}
+      fs.renameSync(tempPath, filePath);
       
       completedFiles++;
     }
 
     // 完了通知
-    event.sender.send('models:downloadProgress', { 
-      modelId, 
-      percent: 100, 
-      message: 'Download completed' 
-    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      event.sender.send('models:downloadProgress', { 
+        modelId, 
+        percent: 100, 
+        message: 'Download completed' 
+      });
+    }
     
     writeLog(`Model download completed: ${modelId}`);
     
@@ -1363,53 +1422,96 @@ ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Pr
 
 // ファイルダウンロード関数
 async function downloadFile(
-  url: string, 
-  targetPath: string, 
-  onProgress: (bytesDownloaded: number, totalBytes: number) => void
+  url: string,
+  targetPath: string,
+  onProgress: (bytesDownloaded: number, totalBytes: number, speedBps: number, elapsedMs: number) => void,
+  abortKey?: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(targetPath);
     let downloadedBytes = 0;
     let totalBytes = 0;
+    let startTime = Date.now();
+    let currentUrl = url;
+    let redirectCount = 0;
+    const maxRedirects = 5;
     
     const request = url.startsWith('https:') ? https : http;
     
-    const req = request.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
-        return;
-      }
-      
-      totalBytes = parseInt(response.headers['content-length'] || '0', 10);
-      
-      response.on('data', (chunk) => {
-        downloadedBytes += chunk.length;
-        onProgress(downloadedBytes, totalBytes);
+    const makeRequest = (requestUrl: string) => {
+      const req = request.get(requestUrl, (response) => {
+        if (response.statusCode !== 200) {
+          if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
+            const location = response.headers.location;
+            if (location && redirectCount < maxRedirects) {
+              redirectCount++;
+              currentUrl = location.startsWith('http') ? location : new URL(location, requestUrl).href;
+              writeLog(`Following redirect ${redirectCount}/${maxRedirects}: ${currentUrl}`);
+              makeRequest(currentUrl);
+              return;
+            } else {
+              reject(new Error(`Too many redirects or invalid redirect: ${response.statusCode}`));
+              return;
+            }
+          }
+          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          return;
+        }
+        
+        totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+        
+        response.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          const elapsedMs = Date.now() - startTime;
+          const speedBps = elapsedMs > 0 ? (downloadedBytes * 1000) / elapsedMs : 0;
+          onProgress(downloadedBytes, totalBytes, speedBps, elapsedMs);
+        });
+        
+        response.on('end', () => {
+          file.close();
+          resolve();
+        });
+        
+        response.on('error', (error) => {
+          file.close();
+          fs.unlinkSync(targetPath); // 失敗したファイルを削除
+          reject(error);
+        });
       });
       
-      response.on('end', () => {
-        file.close();
-        resolve();
-      });
-      
-      response.on('error', (error) => {
+      req.on('error', (error) => {
         file.close();
         fs.unlinkSync(targetPath); // 失敗したファイルを削除
         reject(error);
       });
-    });
+      
+      file.on('error', (error) => {
+        reject(error);
+      });
+
+      // Abort 対応
+      if (abortKey) {
+        activeDownloads.set(abortKey, { abort: () => {
+          try { req.destroy(new Error('aborted')); } catch {}
+          try { file.close(); } catch {}
+          try { if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath); } catch {}
+        }});
+      }
+    };
     
-    req.on('error', (error) => {
-      file.close();
-      fs.unlinkSync(targetPath); // 失敗したファイルを削除
-      reject(error);
-    });
-    
-    file.on('error', (error) => {
-      reject(error);
-    });
+    makeRequest(currentUrl);
   });
 }
+
+// ダウンロードキャンセル
+ipcMain.handle('models:cancelDownload', async (event, modelId: string): Promise<void> => {
+  const handle = activeDownloads.get(modelId);
+  if (handle) {
+    handle.abort();
+    activeDownloads.delete(modelId);
+  }
+  cancelledDownloads.add(modelId);
+});
 
 // 音声ファイル文字起こし
 ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any> => {
@@ -1477,7 +1579,7 @@ ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any
             writeLog(`音声認識進捗: ${response.status}`);
             
             // 進捗をレンダラープロセスに通知
-            if (mainWindow) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('speech:progress', response);
             }
           } else if (response.type === 'connection') {

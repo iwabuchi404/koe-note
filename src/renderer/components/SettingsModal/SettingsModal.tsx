@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAppContext } from '../../App'
 import { useSettings } from '../../contexts/SettingsContext'
 import { ModelManager } from '../ModelManagement/ModelManager'
+import { modelDownloadService } from '../../services/ModelDownloadService'
 import './SettingsModal.css'
 
 // 新しい型安全な設定型をインポート
@@ -108,6 +109,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   
   // タブ管理
   const [activeTab, setActiveTab] = useState<'general' | 'models'>('general')
+  
+  // ダウンロード状態監視
+  const [hasActiveDownloads, setHasActiveDownloads] = useState(false)
+  const [activeDownloads, setActiveDownloads] = useState<string[]>([])
+
+  // ダウンロード状態を監視
+  useEffect(() => {
+    const checkDownloads = () => {
+      const hasDownloads = modelDownloadService.hasActiveDownloads()
+      const downloads = modelDownloadService.getActiveDownloads()
+      setHasActiveDownloads(hasDownloads)
+      setActiveDownloads(downloads)
+    }
+    
+    // 初回チェック
+    checkDownloads()
+    
+    // 定期的にチェック（1秒間隔）
+    const interval = setInterval(checkDownloads, 1000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   // 型安全なデバイス一覧取得
   const getAvailableDevices = async (): Promise<void> => {
@@ -253,6 +276,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
 
   // 型安全なキャンセル処理
   const handleCancel = (): void => {
+    // ダウンロード中の場合、警告を表示
+    if (hasActiveDownloads) {
+      const downloadNames = activeDownloads.join(', ')
+      const confirmed = window.confirm(
+        `モデルのダウンロードが進行中です（${downloadNames}）。\n` +
+        `設定を閉じるとダウンロード状態が失われます。\n` +
+        `本当に閉じますか？`
+      )
+      if (!confirmed) {
+        return
+      }
+    }
+    
     // エラー状態をリセット
     setValidationErrors([])
     setDeviceLoadError(null)
@@ -360,7 +396,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
           <h2>⚙️ KoeNote 設定</h2>
           <button 
             className="settings-modal__close"
-            onClick={onClose}
+            onClick={handleCancel}
             title="閉じる"
           >
             ✕
