@@ -5,6 +5,7 @@
 
 import { ModelInfo, DownloadProgress, ModelDownloadOptions, ModelDownloadService as IModelDownloadService } from '../types/ModelTypes'
 import { AVAILABLE_MODELS } from '../types/ModelTypes'
+import modelsConfig from '../config/models.json'
 
 export class ModelDownloadService implements IModelDownloadService {
   private downloadProgress = new Map<string, DownloadProgress>()
@@ -36,7 +37,11 @@ export class ModelDownloadService implements IModelDownloadService {
    * 利用可能なモデル一覧を取得
    */
   async getAvailableModels(): Promise<ModelInfo[]> {
-    return AVAILABLE_MODELS.map(model => ({
+    // 設定ファイル優先、なければハードコード定義をフォールバック
+    const source = Array.isArray(modelsConfig) && modelsConfig.length > 0
+      ? modelsConfig
+      : AVAILABLE_MODELS
+    return source.map((model: any) => ({
       ...model,
       isInstalled: this.installedModels.has(model.id),
       isDownloading: this.downloadProgress.has(model.id),
@@ -71,7 +76,10 @@ export class ModelDownloadService implements IModelDownloadService {
         throw new Error(`Model ${modelId} is already installed`)
       }
 
-      const modelInfo = AVAILABLE_MODELS.find(m => m.id === modelId)
+      const listSource = Array.isArray(modelsConfig) && modelsConfig.length > 0
+        ? modelsConfig
+        : AVAILABLE_MODELS
+      const modelInfo = listSource.find((m: any) => m.id === modelId)
       if (!modelInfo) {
         throw new Error(`Model ${modelId} not found`)
       }
