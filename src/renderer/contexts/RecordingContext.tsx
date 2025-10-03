@@ -26,7 +26,7 @@ export interface AdvancedRecordingConfig {
     enabled: boolean
     serverUrl: string
     language: 'ja' | 'en' | 'auto'
-    model: 'small' | 'medium' | 'large'
+    model: string  // 動的なモデルIDに対応
   }
 }
 

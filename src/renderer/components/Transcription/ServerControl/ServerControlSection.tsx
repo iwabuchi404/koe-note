@@ -8,6 +8,8 @@
  */
 
 import React, { useState, useEffect } from 'react'
+import { modelDownloadService } from '../../../services/ModelDownloadService'
+import type { ModelInfo } from '../../../types/ModelTypes'
 
 interface ServerStatus {
   isRunning: boolean
@@ -31,6 +33,7 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
 }) => {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({ isRunning: false })
   const [selectedModel, setSelectedModel] = useState<string>(currentModel)
+  const [installedModels, setInstalledModels] = useState<ModelInfo[]>([])
 
   // currentModelと同期
   useEffect(() => {
@@ -51,6 +54,22 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
     checkServerStatus()
     const interval = setInterval(checkServerStatus, 5000)
 
+    return () => clearInterval(interval)
+  }, [])
+
+  // インストール済みモデルの取得（初回＋定期）
+  useEffect(() => {
+    const loadInstalled = async () => {
+      try {
+        const models = await modelDownloadService.getInstalledModels()
+        setInstalledModels(models)
+      } catch (error) {
+        console.error('インストール済みモデル取得エラー:', error)
+      }
+    }
+
+    loadInstalled()
+    const interval = setInterval(loadInstalled, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -187,10 +206,19 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
               opacity: isChangingModel ? 0.6 : 1
             }}
           >
-            <option value="small">Small (高速)</option>
-            <option value="medium">Medium (バランス)</option>
-            <option value="large">Large (高精度)</option>
-            <option value="large-v2">Large-v2 (最高精度)</option>
+            {installedModels.length > 0 ? (
+              installedModels.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name || m.id}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="small">Small (高速)</option>
+                <option value="medium">Medium (バランス)</option>
+                <option value="large-v2">Large-v2 (最高精度)</option>
+              </>
+            )}
           </select>
           
           {/* モデル変更中のローディング表示 */}

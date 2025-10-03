@@ -4,10 +4,12 @@
  * グローバル録音状態を使用してタブ切り替え時も状態を維持
  */
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { AdvancedRecordingTabData } from '../../types/TabTypes'
 import { useRecordingContext, AdvancedRecordingConfig } from '../../contexts/RecordingContext'
 import { AudioChunkCalculator } from '../../utils/AudioChunkCalculator'
+import { modelDownloadService } from '../../services/ModelDownloadService'
+import type { ModelInfo } from '../../types/ModelTypes'
 import './AdvancedRecordingCard.css'
 
 interface AdvancedRecordingCardProps {
@@ -19,6 +21,21 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
   // アコーディオン状態管理
   const [settingsExpanded, setSettingsExpanded] = useState(false)
   const [statsExpanded, setStatsExpanded] = useState(false)
+  const [installedModels, setInstalledModels] = useState<ModelInfo[]>([])
+
+  useEffect(() => {
+    const loadInstalled = async () => {
+      try {
+        const models = await modelDownloadService.getInstalledModels()
+        setInstalledModels(models)
+      } catch (e) {
+        console.warn('インストール済みモデル取得失敗:', e)
+      }
+    }
+    loadInstalled()
+    const interval = setInterval(loadInstalled, 5000)
+    return () => clearInterval(interval)
+  }, [])
   const [chunksExpanded, setChunksExpanded] = useState(false)
 
   // グローバル録音状態を使用
@@ -225,15 +242,25 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                       onChange={(e) => updateConfig({
                         transcriptionSettings: {
                           ...recordingData.transcriptionSettings,
-                          model: e.target.value as 'small' | 'medium' | 'large'
+                          model: e.target.value
                         }
                       })}
                       disabled={isRecording}
                       className="setting-select"
                     >
-                      <option value="small">Small (高速)</option>
-                      <option value="medium">Medium (バランス)</option>
-                      <option value="large">Large (高精度)</option>
+                      {installedModels.length > 0 ? (
+                        installedModels.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name || m.id}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="small">Small (高速)</option>
+                          <option value="medium">Medium (バランス)</option>
+                          <option value="large-v2">Large-v2 (高精度)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                 </div>

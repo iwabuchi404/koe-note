@@ -56,7 +56,7 @@ export interface AdvancedRecordingTabData {
     enabled: boolean
     serverUrl: string
     language: 'ja' | 'en' | 'auto'
-    model: 'small' | 'medium' | 'large'
+    model: string  // 動的なモデルIDに対応
   }
   
   // リアルタイムデータ
@@ -132,7 +132,7 @@ export interface WorkflowSettings {
     enableRealTimeTranscription: boolean
   }
   transcriptionSettings?: {
-    model: 'small' | 'medium' | 'large'
+    model: string  // 動的なモデルIDに対応
     language: 'auto' | 'ja' | 'en'
     accuracy: 'speed' | 'balanced' | 'accuracy'
   }

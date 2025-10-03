@@ -114,6 +114,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [hasActiveDownloads, setHasActiveDownloads] = useState(false)
   const [activeDownloads, setActiveDownloads] = useState<string[]>([])
 
+  // インストール済みモデル
+  const [installedModels, setInstalledModels] = useState<{ id: string; name?: string }[]>([])
+
+  useEffect(() => {
+    const loadInstalled = async () => {
+      try {
+        const models = await modelDownloadService.getInstalledModels()
+        setInstalledModels(models.map(m => ({ id: m.id, name: m.name })))
+      } catch (e) {
+        console.warn('インストール済みモデル取得失敗:', e)
+      }
+    }
+    loadInstalled()
+  }, [])
+
   // ダウンロード状態を監視
   useEffect(() => {
     const checkDownloads = () => {
@@ -236,6 +251,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         setIsSaving(false)
         return
       }
+
+      // モデルがインストール済みか確認（未インストールでも保存は継続し、サーバー切替のみスキップ）
+      let selectedModelInstalled = false
+      try {
+        const installed = await modelDownloadService.getInstalledModels()
+        selectedModelInstalled = installed.some(m => m.id === localTranscriptionSettings.model)
+      } catch (e) {
+        console.warn('インストール済みモデル確認失敗（保存は継続）:', e)
+      }
       
       // SettingsContextに設定を反映
       updateRecordingSettings(localRecordingSettings)
@@ -243,8 +267,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       updateFileSettings(localFileSettings)
       updateDetailedSettings(localDetailedSettings)
       
-      // モデル設定をグローバル状態に反映
+      // モデル設定をグローバル状態に反映（未インストールでも選択自体は保持）
       setCurrentModel(localTranscriptionSettings.model)
+
+      // サーバーが起動中かつ選択モデルがインストール済みならモデル変更を依頼
+      try {
+        const serverStatus = await window.electronAPI.speechGetServerStatus?.()
+        if (serverStatus?.isRunning && selectedModelInstalled) {
+          await window.electronAPI.speechChangeModel(localTranscriptionSettings.model)
+        }
+      } catch (e) {
+        console.warn('モデル変更要求に失敗しました（後で再試行可）:', e)
+      }
       
       console.log('設定を保存しました:', {
         recording: localRecordingSettings,
@@ -483,11 +517,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                   ...prev,
                   model: e.target.value
                 }))}
+                disabled={installedModels.length === 0}
               >
-                <option value="kotoba-whisper-v1.0">Kotoba-Whisper v1.0</option>
-                <option value="whisper-large">Whisper Large</option>
-                <option value="whisper-base">Whisper Base</option>
+                {installedModels.length > 0 ? (
+                  installedModels.map(m => (
+                    <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                  ))
+                ) : (
+                  <option value="" disabled>インストール済みモデルがありません</option>
+                )}
               </select>
+              {installedModels.length === 0 && (
+                <div className="settings-hint">モデル管理タブからモデルをインストールしてください</div>
+              )}
             </div>
 
             <div className="settings-item">
