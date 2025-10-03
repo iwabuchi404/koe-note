@@ -18,20 +18,16 @@ export interface RecordingSettings {
 
 export interface TranscriptionSettings {
   model: string
-  quality: TranscriptionQuality  // 型安全な品質設定
   language: SupportedLanguage    // 型安全な言語設定
   chunkDurationSeconds: number
 }
 
 export interface FileSettings {
   workspaceFolder: string
-  autoSaveInterval: number
 }
 
 export interface DetailedSettings {
-  uiTheme: 'light' | 'dark' | 'auto'  // 型安全なテーマ設定
-  logLevel: 'error' | 'warn' | 'info' | 'debug'  // 型安全なログレベル
-  autoLineBreak: boolean
+  // 現在使用されていない設定項目は削除済み
 }
 
 // 型安全なデバイス情報

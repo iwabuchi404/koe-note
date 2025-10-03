@@ -41,12 +41,6 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
     { value: 'whisper-small', label: 'Whisper Small', description: '軽量、高速処理' }
   ]
 
-  // 品質選択肢
-  const qualityOptions = [
-    { value: 'high', label: '高精度（処理時間長）', description: '最高品質、時間がかかります' },
-    { value: 'medium', label: '標準', description: 'バランスの取れた設定' },
-    { value: 'fast', label: '高速（精度低）', description: '素早い処理、精度は劣ります' }
-  ]
 
   // 言語選択肢
   const languageOptions = [
@@ -92,31 +86,6 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
         )}
       </div>
 
-      {/* 品質設定 */}
-      <div className="settings-item">
-        <label htmlFor="transcription-quality">品質:</label>
-        <select
-          id="transcription-quality"
-          value={settings.quality}
-          onChange={(e) => handleSettingChange('quality', e.target.value as TranscriptionQuality)}
-          disabled={isDisabled}
-          className={getFieldError('quality') ? 'settings-input--error' : ''}
-        >
-          {qualityOptions.map(option => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <div className="settings-description">
-          {qualityOptions.find(opt => opt.value === settings.quality)?.description}
-        </div>
-        {getFieldError('quality') && (
-          <div className="settings-error-message">
-            {getFieldError('quality')}
-          </div>
-        )}
-      </div>
 
       {/* 言語設定 */}
       <div className="settings-item">
@@ -179,12 +148,6 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
             <span className="settings-summary__label">モデル:</span>
             <span className="settings-summary__value">
               {modelOptions.find(opt => opt.value === settings.model)?.label}
-            </span>
-          </div>
-          <div className="settings-summary__item">
-            <span className="settings-summary__label">品質:</span>
-            <span className="settings-summary__value">
-              {qualityOptions.find(opt => opt.value === settings.quality)?.label}
             </span>
           </div>
           <div className="settings-summary__item">

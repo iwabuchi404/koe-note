@@ -12,7 +12,6 @@ import {
   NotificationInfo
 } from '../../state/ApplicationState'
 import { 
-  TranscriptionQuality, 
   SupportedLanguage 
 } from '../../state/TranscriptionState'
 
@@ -36,20 +35,16 @@ interface RecordingSettings {
 
 interface TranscriptionSettings {
   model: string
-  quality: TranscriptionQuality  // 型安全な品質設定
   language: SupportedLanguage    // 型安全な言語設定
   chunkDurationSeconds: number
 }
 
 interface FileSettings {
   workspaceFolder: string
-  autoSaveInterval: number
 }
 
 interface DetailedSettings {
-  uiTheme: 'light' | 'dark' | 'auto'  // 型安全なテーマ設定
-  logLevel: 'error' | 'warn' | 'info' | 'debug'  // 型安全なログレベル
-  autoLineBreak: boolean
+  // 現在使用されていない設定項目は削除済み
 }
 
 // 型安全なデバイス情報
@@ -86,15 +81,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const [localRecordingSettings, setLocalRecordingSettings] = useState<RecordingSettings>(settings.recording)
   const [localTranscriptionSettings, setLocalTranscriptionSettings] = useState<TranscriptionSettings>({
     ...settings.transcription,
-    quality: settings.transcription.quality as TranscriptionQuality,
     language: settings.transcription.language as SupportedLanguage
   })
   const [localFileSettings, setLocalFileSettings] = useState<FileSettings>(settings.file)
-  const [localDetailedSettings, setLocalDetailedSettings] = useState<DetailedSettings>({
-    ...settings.detailed,
-    uiTheme: settings.detailed.uiTheme as 'light' | 'dark' | 'auto',
-    logLevel: settings.detailed.logLevel as 'error' | 'warn' | 'info' | 'debug'
-  })
+  const [localDetailedSettings, setLocalDetailedSettings] = useState<DetailedSettings>(settings.detailed)
 
   // 型安全なデバイス管理
   const [availableDevices, setAvailableDevices] = useState<SafeAudioDeviceInfo[]>([])
@@ -191,15 +181,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       setLocalTranscriptionSettings({
         ...settings.transcription,
         model: currentModel || settings.transcription.model,
-        quality: settings.transcription.quality as TranscriptionQuality,
         language: settings.transcription.language as SupportedLanguage
       })
       setLocalFileSettings(settings.file)
-      setLocalDetailedSettings({
-        ...settings.detailed,
-        uiTheme: settings.detailed.uiTheme as 'light' | 'dark' | 'auto',
-        logLevel: settings.detailed.logLevel as 'error' | 'warn' | 'info' | 'debug'
-      })
+      setLocalDetailedSettings(settings.detailed)
     }
   }, [isOpen, settings, currentModel])
 
@@ -216,14 +201,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       })
     }
     
-    // ファイル設定の検証
-    if (localFileSettings.autoSaveInterval < 0) {
-      errors.push({
-        field: 'file.autoSaveInterval',
-        message: '自動保存間隔は0以上の値を設定してください',
-        type: 'validation'
-      })
-    }
     
     // ワークスペースフォルダの検証
     if (!localFileSettings.workspaceFolder.trim()) {
@@ -332,15 +309,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
     setLocalRecordingSettings(settings.recording)
     setLocalTranscriptionSettings({
       ...settings.transcription,
-      quality: settings.transcription.quality as TranscriptionQuality,
       language: settings.transcription.language as SupportedLanguage
     })
     setLocalFileSettings(settings.file)
-    setLocalDetailedSettings({
-      ...settings.detailed,
-      uiTheme: settings.detailed.uiTheme as 'light' | 'dark' | 'auto',
-      logLevel: settings.detailed.logLevel as 'error' | 'warn' | 'info' | 'debug'
-    })
+    setLocalDetailedSettings(settings.detailed)
     
     onClose()
   }
@@ -366,21 +338,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         
         const defaultTranscription: TranscriptionSettings = {
           model: 'kotoba-whisper-v1.0',
-          quality: 'medium',
           language: 'ja',
           chunkDurationSeconds: 20
         }
         
         const defaultFile: FileSettings = {
-          workspaceFolder: '',
-          autoSaveInterval: 30
+          workspaceFolder: ''
         }
         
-        const defaultDetailed: DetailedSettings = {
-          uiTheme: 'auto',
-          logLevel: 'info',
-          autoLineBreak: true
-        }
+        const defaultDetailed: DetailedSettings = {}
         
         setLocalRecordingSettings(defaultRecording)
         setLocalTranscriptionSettings(defaultTranscription)
@@ -532,21 +498,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
               )}
             </div>
 
-            <div className="settings-item">
-              <label htmlFor="transcription-quality">品質:</label>
-              <select
-                id="transcription-quality"
-                value={localTranscriptionSettings.quality}
-                onChange={(e) => setLocalTranscriptionSettings(prev => ({
-                  ...prev,
-                  quality: e.target.value as TranscriptionQuality
-                }))}
-              >
-                <option value="high">高精度（処理時間長）</option>
-                <option value="medium">標準</option>
-                <option value="fast">高速（精度低）</option>
-              </select>
-            </div>
 
             <div className="settings-item">
               <label htmlFor="transcription-language">言語:</label>
@@ -606,75 +557,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
               <div className="settings-hint">録音・文字起こし結果の保存・読み込み先</div>
             </div>
 
-            <div className="settings-item">
-              <label htmlFor="auto-save-interval">自動保存間隔:</label>
-              <select
-                id="auto-save-interval"
-                value={localFileSettings.autoSaveInterval}
-                onChange={(e) => setLocalFileSettings(prev => ({
-                  ...prev,
-                  autoSaveInterval: parseInt(e.target.value)
-                }))}
-              >
-                <option value={1}>1秒</option>
-                <option value={3}>3秒</option>
-                <option value={5}>5秒</option>
-                <option value={10}>10秒</option>
-              </select>
-            </div>
           </section>
 
-          {/* 詳細設定 */}
-          <section className="settings-section">
-            <h3>🔧 詳細設定</h3>
-            
-            <div className="settings-item">
-              <label htmlFor="ui-theme">UIテーマ:</label>
-              <select
-                id="ui-theme"
-                value={localDetailedSettings.uiTheme}
-                onChange={(e) => setLocalDetailedSettings(prev => ({
-                  ...prev,
-                  uiTheme: e.target.value as 'light' | 'dark' | 'auto'
-                }))}
-              >
-                <option value="light">ライト</option>
-                <option value="dark">ダーク</option>
-                <option value="auto">システム設定に従う</option>
-              </select>
-            </div>
-
-            <div className="settings-item">
-              <label htmlFor="log-level">ログレベル:</label>
-              <select
-                id="log-level"
-                value={localDetailedSettings.logLevel}
-                onChange={(e) => setLocalDetailedSettings(prev => ({
-                  ...prev,
-                  logLevel: e.target.value as 'error' | 'warn' | 'info' | 'debug'
-                }))}
-              >
-                <option value="error">ERROR</option>
-                <option value="warn">WARN</option>
-                <option value="info">INFO</option>
-                <option value="debug">DEBUG</option>
-              </select>
-            </div>
-
-            <div className="settings-item">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={localDetailedSettings.autoLineBreak}
-                  onChange={(e) => setLocalDetailedSettings(prev => ({
-                    ...prev,
-                    autoLineBreak: e.target.checked
-                  }))}
-                />
-                文字起こし結果の自動改行
-              </label>
-            </div>
-          </section>
             </div>
           ) : (
             <div className="settings-modal__body">

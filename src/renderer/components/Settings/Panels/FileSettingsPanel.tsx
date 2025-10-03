@@ -37,27 +37,12 @@ const FileSettingsPanel: React.FC<FileSettingsPanelProps> = ({
     }
   }
 
-  // 自動保存間隔変更ハンドラー
-  const handleAutoSaveIntervalChange = (interval: number) => {
-    onSettingsChange({
-      ...settings,
-      autoSaveInterval: interval
-    })
-  }
 
   // エラーメッセージを取得
   const getFieldError = (fieldName: string) => {
     return validationErrors.find(error => error.field === fieldName)?.message
   }
 
-  // 自動保存間隔の選択肢
-  const autoSaveOptions = [
-    { value: 5, label: '5秒', description: '頻繁な保存、安全性重視' },
-    { value: 10, label: '10秒', description: '標準設定' },
-    { value: 30, label: '30秒', description: 'パフォーマンス重視' },
-    { value: 60, label: '1分', description: '最小限の自動保存' },
-    { value: 0, label: '無効', description: '手動保存のみ' }
-  ]
 
   // フォルダパスを短縮表示
   const getDisplayPath = (path: string) => {
@@ -101,31 +86,6 @@ const FileSettingsPanel: React.FC<FileSettingsPanelProps> = ({
         )}
       </div>
 
-      {/* 自動保存間隔設定 */}
-      <div className="settings-item">
-        <label htmlFor="auto-save-interval">自動保存間隔:</label>
-        <select
-          id="auto-save-interval"
-          value={settings.autoSaveInterval}
-          onChange={(e) => handleAutoSaveIntervalChange(parseInt(e.target.value))}
-          disabled={isDisabled}
-          className={getFieldError('autoSaveInterval') ? 'settings-input--error' : ''}
-        >
-          {autoSaveOptions.map(option => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <div className="settings-description">
-          {autoSaveOptions.find(opt => opt.value === settings.autoSaveInterval)?.description}
-        </div>
-        {getFieldError('autoSaveInterval') && (
-          <div className="settings-error-message">
-            {getFieldError('autoSaveInterval')}
-          </div>
-        )}
-      </div>
 
       {/* フォルダ情報表示 */}
       {settings.workspaceFolder && (

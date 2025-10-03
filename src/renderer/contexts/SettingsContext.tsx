@@ -15,20 +15,16 @@ export interface RecordingSettings {
 
 export interface TranscriptionSettings {
   model: string
-  quality: string
   language: string
   chunkDurationSeconds: number
 }
 
 export interface FileSettings {
   workspaceFolder: string
-  autoSaveInterval: number
 }
 
 export interface DetailedSettings {
-  uiTheme: string
-  logLevel: string
-  autoLineBreak: boolean
+  // 現在使用されていない設定項目は削除済み
 }
 
 export interface AppSettings {
@@ -65,19 +61,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   transcription: {
     model: 'kotoba-whisper-v1.0',
-    quality: 'high',
     language: 'ja',
     chunkDurationSeconds: 20
   },
   file: {
-    workspaceFolder: 'D:\\work\\recordings',
-    autoSaveInterval: 3
+    workspaceFolder: 'D:\\work\\recordings'
   },
-  detailed: {
-    uiTheme: 'light',
-    logLevel: 'info',
-    autoLineBreak: true
-  }
+  detailed: {}
 }
 
 // コンテキストの作成
