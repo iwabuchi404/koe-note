@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { TranscriptionSettings, SettingsPanelProps } from '../types'
-import { TranscriptionQuality, SupportedLanguage } from '../../../state/TranscriptionState'
+import { SupportedLanguage } from '../../../state/TranscriptionState'
+import { modelDownloadService } from '../../../services/ModelDownloadService'
 
 interface TranscriptionSettingsPanelProps extends SettingsPanelProps {
   settings: TranscriptionSettings
@@ -17,6 +18,28 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
   isDisabled = false,
   onSettingsChange
 }) => {
+  // インストール済みモデルの状態管理
+  const [installedModels, setInstalledModels] = useState<Array<{id: string, name: string}>>([])
+
+  // インストール済みモデルの取得
+  useEffect(() => {
+    const loadInstalledModels = async () => {
+      try {
+        const models = await modelDownloadService.getInstalledModels()
+        setInstalledModels(models)
+      } catch (error) {
+        console.error('モデル一覧の取得に失敗しました:', error)
+        setInstalledModels([])
+      }
+    }
+
+    loadInstalledModels()
+    
+    // 5秒ごとにモデル一覧を更新
+    const interval = setInterval(loadInstalledModels, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
   // 設定変更ハンドラー
   const handleSettingChange = <K extends keyof TranscriptionSettings>(
     field: K,
@@ -32,14 +55,6 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
   const getFieldError = (fieldName: string) => {
     return validationErrors.find(error => error.field === fieldName)?.message
   }
-
-  // モデル選択肢
-  const modelOptions = [
-    { value: 'kotoba-whisper-v1.0', label: 'Kotoba-Whisper v1.0', description: '日本語特化、高精度' },
-    { value: 'whisper-large', label: 'Whisper Large', description: '最高精度、処理時間長' },
-    { value: 'whisper-base', label: 'Whisper Base', description: '標準精度、処理時間短' },
-    { value: 'whisper-small', label: 'Whisper Small', description: '軽量、高速処理' }
-  ]
 
 
   // 言語選択肢
@@ -67,17 +82,27 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
           id="transcription-model"
           value={settings.model}
           onChange={(e) => handleSettingChange('model', e.target.value)}
-          disabled={isDisabled}
+          disabled={isDisabled || installedModels.length === 0}
           className={getFieldError('model') ? 'settings-input--error' : ''}
         >
-          {modelOptions.map(option => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {installedModels.length > 0 ? (
+            installedModels.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name || m.id}
+              </option>
+            ))
+          ) : (
+            <option value="" disabled>モデルをダウンロードしてください</option>
+          )}
         </select>
         <div className="settings-description">
-          {modelOptions.find(opt => opt.value === settings.model)?.description}
+          {installedModels.length > 0 ? (
+            installedModels.find(m => m.id === settings.model)?.name || settings.model
+          ) : (
+            <span style={{ color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+              📥 モデル管理タブからモデルをダウンロードしてください
+            </span>
+          )}
         </div>
         {getFieldError('model') && (
           <div className="settings-error-message">
@@ -147,7 +172,11 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
           <div className="settings-summary__item">
             <span className="settings-summary__label">モデル:</span>
             <span className="settings-summary__value">
-              {modelOptions.find(opt => opt.value === settings.model)?.label}
+              {installedModels.length > 0 ? (
+                installedModels.find(m => m.id === settings.model)?.name || settings.model
+              ) : (
+                'モデルがインストールされていません'
+              )}
             </span>
           </div>
           <div className="settings-summary__item">

@@ -54,7 +54,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
           className="model-selector__select"
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
-          disabled={isChanging}
+          disabled={isChanging || installedModels.length === 0}
         >
           {installedModels.length > 0 ? (
             installedModels.map(m => (
@@ -63,13 +63,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               </option>
             ))
           ) : (
-            <>
-              <option value="tiny">tiny</option>
-              <option value="base">base</option>
-              <option value="small">small</option>
-              <option value="medium">medium</option>
-              <option value="large-v2">large-v2</option>
-            </>
+            <option value="" disabled>モデルをダウンロードしてください</option>
           )}
         </select>
         
@@ -81,7 +75,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
       </div>
       
       <div className="model-selector__description">
-        {modelDescriptions[selectedModel]}
+        {installedModels.length > 0 ? (
+          modelDescriptions[selectedModel]
+        ) : (
+          <span style={{ color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+            📥 モデル管理タブからモデルをダウンロードしてください
+          </span>
+        )}
       </div>
       
       {selectedModel !== currentModel && !isChanging && (

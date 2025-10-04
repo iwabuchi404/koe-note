@@ -193,7 +193,7 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
             id="model-select"
             value={selectedModel}
             onChange={handleModelChange}
-            disabled={isChangingModel}
+            disabled={isChangingModel || installedModels.length === 0}
             style={{
               width: '100%',
               padding: '6px 8px',
@@ -202,8 +202,8 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
               borderRadius: '4px',
               backgroundColor: 'var(--color-bg-primary)',
               color: 'var(--color-text-primary)',
-              cursor: isChangingModel ? 'not-allowed' : 'pointer',
-              opacity: isChangingModel ? 0.6 : 1
+              cursor: (isChangingModel || installedModels.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (isChangingModel || installedModels.length === 0) ? 0.6 : 1
             }}
           >
             {installedModels.length > 0 ? (
@@ -213,13 +213,29 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
                 </option>
               ))
             ) : (
-              <>
-                <option value="small">Small (高速)</option>
-                <option value="medium">Medium (バランス)</option>
-                <option value="large-v2">Large-v2 (最高精度)</option>
-              </>
+              <option value="" disabled>モデルをダウンロードしてください</option>
             )}
           </select>
+          
+          {/* モデルがインストールされていない場合のメッセージ */}
+          {installedModels.length === 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              marginTop: '4px',
+              padding: '4px 8px',
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--color-text-secondary)',
+              backgroundColor: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '4px',
+              zIndex: 10
+            }}>
+              📥 モデル管理タブからモデルをダウンロードしてください
+            </div>
+          )}
           
           {/* モデル変更中のローディング表示 */}
           {isChangingModel && (

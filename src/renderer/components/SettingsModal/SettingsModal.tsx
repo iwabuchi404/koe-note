@@ -490,11 +490,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
                     <option key={m.id} value={m.id}>{m.name || m.id}</option>
                   ))
                 ) : (
-                  <option value="" disabled>インストール済みモデルがありません</option>
+                  <option value="" disabled>モデルをダウンロードしてください</option>
                 )}
               </select>
               {installedModels.length === 0 && (
-                <div className="settings-hint">モデル管理タブからモデルをインストールしてください</div>
+                <div className="settings-hint">📥 モデル管理タブからモデルをダウンロードしてください</div>
               )}
             </div>
 

@@ -245,7 +245,7 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                           model: e.target.value
                         }
                       })}
-                      disabled={isRecording}
+                      disabled={isRecording || installedModels.length === 0}
                       className="setting-select"
                     >
                       {installedModels.length > 0 ? (
@@ -255,13 +255,19 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                           </option>
                         ))
                       ) : (
-                        <>
-                          <option value="small">Small (高速)</option>
-                          <option value="medium">Medium (バランス)</option>
-                          <option value="large-v2">Large-v2 (高精度)</option>
-                        </>
+                        <option value="" disabled>モデルをダウンロードしてください</option>
                       )}
                     </select>
+                    {installedModels.length === 0 && (
+                      <div style={{
+                        marginTop: '4px',
+                        fontSize: '12px',
+                        color: 'var(--color-text-secondary)',
+                        fontStyle: 'italic'
+                      }}>
+                        📥 モデル管理タブからモデルをダウンロードしてください
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
