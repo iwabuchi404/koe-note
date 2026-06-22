@@ -7,7 +7,24 @@
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
       "Bash(npx electron:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "mcp__serena__list_dir",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(kamox electron:*)",
+      "Bash(timeout /t 15 /nobreak)",
+      "Bash(kamox:*)",
+      "Bash(node -e:*)",
+      "Bash(set ELECTRON_PATH=d:workKoeNotenode_moduleselectrondistelectron.exe:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm root:*)",
+      "Bash(where:*)",
+      "Bash(npm install:*)",
+      "Bash(npx kamox electron:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(curl:*)"
     ],
     "deny": []
   }

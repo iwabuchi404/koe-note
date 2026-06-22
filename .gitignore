@@ -88,3 +88,31 @@ lerna-debug.log
 # System Files
 .DS_Store
 Thumbs.db
+
+nul
+how 5b03a9d --name-only
+whisper-server/
+
+# Models (downloaded artifacts)
+models/
+
+# Release builds
+release/
+
+# Recordings
+rec/
+
+# Screenshotsscreenshot/
+
+# Tooling configs
+.crush/
+.kamox/
+.serena/
+serena/
+.mcp.json
+kamox.config.json
+
+# Project-specific tool docs
+CLAUDE.md
+CRUSH.md
+doc/testfile.txt

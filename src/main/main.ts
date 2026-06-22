@@ -50,14 +50,34 @@ function resolveModelsRoot(): string {
 
 // モデル定義（id <-> repo 対応）
 const MODEL_CONFIGS: Record<string, { id: string; repo: string; files: string[] }> = {
+  tiny: {
+    id: 'tiny',
+    repo: 'Systran/faster-whisper-tiny',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
+  base: {
+    id: 'base',
+    repo: 'Systran/faster-whisper-base',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
   small: {
     id: 'small',
     repo: 'Systran/faster-whisper-small',
     files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
   },
+  medium: {
+    id: 'medium',
+    repo: 'Systran/faster-whisper-medium',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
   'large-v2': {
     id: 'large-v2',
     repo: 'Systran/faster-whisper-large-v2',
+    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
+  },
+  'large-v3': {
+    id: 'large-v3',
+    repo: 'Systran/faster-whisper-large-v3',
     files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
   },
   'kotoba-whisper-v2.0-faster': {
@@ -1284,6 +1304,133 @@ ipcMain.handle('models:getInstalledModels', async (): Promise<string[]> => {
   }
 });
 
+// モデル検証結果の型定義
+interface ModelVerificationResult {
+  valid: boolean;
+  modelId: string;
+  missingFiles: string[];
+  corruptFiles: string[];
+  totalFiles: number;
+  checkedFiles: number;
+  errors: string[];
+}
+
+// 内部検証関数（IPCハンドラとダウンロード完了時の検証で共有）
+async function verifyModelInternal(modelId: string): Promise<ModelVerificationResult> {
+  const result: ModelVerificationResult = {
+    valid: false,
+    modelId,
+    missingFiles: [],
+    corruptFiles: [],
+    totalFiles: 0,
+    checkedFiles: 0,
+    errors: []
+  };
+
+  try {
+    writeLog(`Verifying model: ${modelId}`);
+    
+    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
+    if (!config) {
+      result.errors.push(`Unknown model: ${modelId}`);
+      writeLog(`Model verification failed: ${modelId} - unknown model`);
+      return result;
+    }
+
+    const modelsPath = resolveModelsRoot();
+    const snapshotsDir = path.join(modelsPath, repoToFolder(config.repo), 'snapshots', 'main');
+    
+    if (!fs.existsSync(snapshotsDir)) {
+      result.errors.push(`Model directory not found: ${snapshotsDir}`);
+      writeLog(`Model verification failed: ${modelId} - directory not found`);
+      return result;
+    }
+
+    result.totalFiles = config.files.length;
+    
+    // 各ファイルをチェック
+    for (const fileName of config.files) {
+      const filePath = path.join(snapshotsDir, fileName);
+      result.checkedFiles++;
+      
+      if (!fs.existsSync(filePath)) {
+        result.missingFiles.push(fileName);
+        result.errors.push(`Missing file: ${fileName}`);
+        writeLog(`Model verification: ${modelId} - missing file: ${fileName}`);
+        continue;
+      }
+
+      // ファイルサイズチェック（0バイトファイルは破損とみなす）
+      const stats = fs.statSync(filePath);
+      if (stats.size === 0) {
+        result.corruptFiles.push(fileName);
+        result.errors.push(`Corrupt file (0 bytes): ${fileName}`);
+        writeLog(`Model verification: ${modelId} - corrupt file (0 bytes): ${fileName}`);
+        continue;
+      }
+
+      // JSONファイルの場合はパース可能かチェック
+      if (fileName.endsWith('.json')) {
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          JSON.parse(content);
+        } catch (parseError) {
+          result.corruptFiles.push(fileName);
+          result.errors.push(`Invalid JSON: ${fileName}`);
+          writeLog(`Model verification: ${modelId} - invalid JSON: ${fileName}`);
+        }
+      }
+    }
+
+    // 検証結果の判定
+    result.valid = result.missingFiles.length === 0 && result.corruptFiles.length === 0 && result.errors.length === 0;
+    
+    if (result.valid) {
+      writeLog(`Model verification passed: ${modelId}`);
+    } else {
+      writeLog(`Model verification failed: ${modelId} - ${result.errors.length} errors`);
+    }
+
+    return result;
+  } catch (error) {
+    const errorMsg = `Verification error: ${error}`;
+    result.errors.push(errorMsg);
+    writeLog(`Model verification error: ${modelId} - ${error}`);
+    return result;
+  }
+}
+
+// IPCハンドラ: モデルの詳細検証
+ipcMain.handle('models:verifyModel', async (event, modelId: string): Promise<ModelVerificationResult> => {
+  return verifyModelInternal(modelId);
+});
+
+// 破損モデルのクリーンアップ
+ipcMain.handle('models:cleanupCorruptedModel', async (event, modelId: string): Promise<boolean> => {
+  try {
+    writeLog(`Cleaning up corrupted model: ${modelId}`);
+    
+    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
+    if (!config) {
+      writeLog(`Cleanup failed: Unknown model ${modelId}`);
+      return false;
+    }
+
+    const modelsPath = resolveModelsRoot();
+    const modelDir = path.join(modelsPath, repoToFolder(config.repo));
+    
+    if (fs.existsSync(modelDir)) {
+      fs.rmSync(modelDir, { recursive: true, force: true });
+      writeLog(`Cleaned up model directory: ${modelDir}`);
+    }
+    
+    return true;
+  } catch (error) {
+    writeLog(`Cleanup error: ${modelId} - ${error}`);
+    return false;
+  }
+});
+
 // 任意URLの単一ファイルダウンロード（将来の拡張用）
 ipcMain.handle('models:downloadModel', async (event, options: {
   modelId: string;
@@ -1403,16 +1550,37 @@ ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Pr
       completedFiles++;
     }
 
-    // 完了通知
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      event.sender.send('models:downloadProgress', { 
-        modelId, 
-        percent: 100, 
-        message: 'Download completed' 
-      });
-    }
+    // ダウンロード完了後、自動検証
+    writeLog(`Starting post-download verification for: ${modelId}`);
     
-    writeLog(`Model download completed: ${modelId}`);
+    // 検証を実行
+    const verificationResult = await verifyModelInternal(modelId);
+    
+    // 検証結果を通知
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (verificationResult.valid) {
+        event.sender.send('models:downloadProgress', { 
+          modelId, 
+          percent: 100, 
+          message: 'Download completed and verified',
+          verified: true
+        });
+        writeLog(`Model download completed and verified: ${modelId}`);
+      } else {
+        // 検証失敗時は破損モデルとして通知
+        event.sender.send('models:downloadProgress', { 
+          modelId, 
+          percent: 100, 
+          message: 'Download completed but verification failed',
+          verified: false,
+          errors: verificationResult.errors.length > 0 ? verificationResult.errors : ['Unknown verification error']
+        });
+        writeLog(`Model download completed but verification failed: ${modelId}`);
+        
+        // エラーをスローして呼び出し元に通知
+        throw new Error(`Model verification failed: ${verificationResult.errors.join(', ')}`);
+      }
+    }
     
   } catch (error) {
     writeLog(`Model download error: ${modelId}, error: ${error}`);

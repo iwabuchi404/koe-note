@@ -90,6 +90,8 @@ export interface ElectronAPI {
   downloadWhisperModel: (modelId: string) => Promise<void>;
   removeModel: (modelPath: string) => Promise<void>;
   cancelModelDownload: (modelId: string) => Promise<void>;
+  verifyModel: (modelId: string) => Promise<ModelVerificationResult>;
+  cleanupCorruptedModel: (modelId: string) => Promise<boolean>;
   
   // イベントリスナー
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
@@ -219,6 +221,17 @@ export interface ChunkProgress {
   currentProcessingChunk: number;
   averageProcessingTime: number;
   estimatedTimeRemaining: number;
+}
+
+// モデル検証結果の型定義
+export interface ModelVerificationResult {
+  valid: boolean;
+  modelId: string;
+  missingFiles: string[];
+  corruptFiles: string[];
+  totalFiles: number;
+  checkedFiles: number;
+  errors: string[];
 }
 
 // Electron APIをレンダラープロセスに公開
@@ -371,6 +384,10 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('models:removeModel', modelPath),
   cancelModelDownload: (modelId: string) =>
     ipcRenderer.invoke('models:cancelDownload', modelId),
+  verifyModel: (modelId: string) =>
+    ipcRenderer.invoke('models:verifyModel', modelId),
+  cleanupCorruptedModel: (modelId: string) =>
+    ipcRenderer.invoke('models:cleanupCorruptedModel', modelId),
   
   // イベントリスナー
   on: (channel: string, callback: (event: any, ...args: any[]) => void) => 

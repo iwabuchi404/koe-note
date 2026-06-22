@@ -60,7 +60,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     }
   },
   transcription: {
-    model: 'kotoba-whisper-v1.0',
+    model: 'kotoba-whisper-v2.0-faster',
     language: 'ja',
     chunkDurationSeconds: 20
   },
