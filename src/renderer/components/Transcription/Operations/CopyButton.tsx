@@ -6,8 +6,11 @@
  * - コピー状態の表示
  */
 
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useState } from 'react'
 import { TranscriptionResult } from '../../../../preload/preload'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface CopyButtonProps {
   transcriptionResult: TranscriptionResult | null
@@ -45,7 +48,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({
       setTimeout(() => setCopyStatus('idle'), 2000)
       
     } catch (error) {
-      console.error('クリップボードコピーエラー:', error)
+      logger.error('クリップボードコピーエラー:', error)
       setCopyStatus('error')
       setTimeout(() => setCopyStatus('idle'), 3000)
     }

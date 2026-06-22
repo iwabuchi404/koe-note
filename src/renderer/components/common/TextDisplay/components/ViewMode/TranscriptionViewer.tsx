@@ -3,9 +3,12 @@
  * VSCode風の行番号付きテキスト表示で文字起こしセグメントを表示
  */
 
+import { LoggerFactory, LogCategories } from '../../../../../utils/LoggerFactory'
 import React, { useRef, useEffect, useState } from 'react'
 import { TranscriptionSegment, TextSelection } from '../../types/TextDisplayTypes'
 import { MetadataParser } from '../../utils/MetadataParser'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface TranscriptionViewerProps {
   segments: TranscriptionSegment[]
@@ -102,7 +105,7 @@ const TranscriptionViewer: React.FC<TranscriptionViewerProps> = ({
     const lineNumbers = lineNumbersRef.current
     
     if (!textContent || !lineNumbers) {
-      console.warn('Scroll sync refs not available:', { textContent: !!textContent, lineNumbers: !!lineNumbers })
+      logger.warn('Scroll sync refs not available:', { textContent: !!textContent, lineNumbers: !!lineNumbers })
       return
     }
     

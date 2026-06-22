@@ -83,12 +83,12 @@ const App: React.FC = () => {
   // ログシステム初期化
   useEffect(() => {
     const initializeLogging = async () => {
+      const appLogger = LoggerFactory.getLogger(LogCategories.APP)
       try {
         // ログシステム初期化
         await initializeLogger()
 
         // アプリケーション開始ログ
-        const appLogger = LoggerFactory.getLogger(LogCategories.APP)
         appLogger.info('KoeNoteアプリケーション開始', {
           userAgent: navigator.userAgent,
           url: window.location.href,
@@ -102,7 +102,7 @@ const App: React.FC = () => {
         }
 
       } catch (error) {
-        console.error('ログシステム初期化エラー:', error)
+        appLogger.error('ログシステム初期化エラー:', error)
       }
     }
 

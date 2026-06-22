@@ -1,9 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, desktopCapturer } from 'electron';
-import type { AppSettings } from '../preload/preload';
+import type { AppSettings, AudioFile, TranscriptionFile, TranscriptionSegmentExtended, ClipboardCopyRecord, AIChatFile, ChunkSettings, ChunkProgress } from '../preload/preload';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, exec, ChildProcess } from 'child_process';
+import { spawn, exec, ChildProcess, SpawnOptions } from 'child_process';
 import * as https from 'https';
 import * as http from 'http';
 
@@ -253,7 +253,7 @@ class KotobaWhisperManager {
         cwd = path.dirname(whisperServerExePath);
       }
       
-      const spawnOptions: any = {
+      const spawnOptions: SpawnOptions = {
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: cwd,
         env: {
@@ -381,7 +381,7 @@ class KotobaWhisperManager {
           resolve(true);
         });
 
-        ws.on('error', (error: any) => {
+        ws.on('error', (error: Error) => {
           writeLog(`外部サーバーチェック: 接続エラー - ${error.message || error}`);
           clearTimeout(timeout);
           resolve(false);
@@ -589,6 +589,31 @@ ipcMain.handle('dialog:selectFolder', async (): Promise<string | null> => {
   return result.filePaths[0];
 });
 
+// ファイル選択ダイアログ
+ipcMain.handle('dialog:selectFile', async (event, filters?: Array<{ name: string; extensions: string[] }>): Promise<{ path: string; name: string } | null> => {
+  if (!mainWindow) {
+    return null;
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    title: 'ファイルを選択',
+    filters: filters || [
+      { name: '音声ファイル', extensions: ['wav', 'mp3', 'webm', 'm4a', 'flac'] },
+      { name: 'テキストファイル', extensions: ['txt', 'md', 'rtf'] },
+      { name: 'すべてのファイル', extensions: ['*'] }
+    ]
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  const filePath = result.filePaths[0];
+  const name = path.basename(filePath);
+  return { path: filePath, name };
+});
+
 // ファイル保存
 ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subfolder?: string): Promise<string> => {
   try {
@@ -793,7 +818,7 @@ ipcMain.handle('file:read', async (event, filePath: string): Promise<Buffer> => 
 });
 
 // メタデータファイル保存
-ipcMain.handle('file:saveMetadata', async (event, filename: string, metadata: any): Promise<void> => {
+ipcMain.handle('file:saveMetadata', async (event, filename: string, metadata: Record<string, unknown>): Promise<void> => {
   try {
     // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
     const saveFolder = path.join(app.getPath('desktop'), 'VoiceRecordings');
@@ -819,9 +844,9 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
     const files = fs.readdirSync(folderPath);
     
     // ファイルをカテゴリ別に分類
-    const audioFiles: any[] = [];
-    const textFiles: any[] = [];
-    const transcriptionFiles: any[] = [];
+    const audioFiles: AudioFile[] = [];
+    const textFiles: AudioFile[] = [];
+    const transcriptionFiles: (AudioFile & { baseFileName: string })[] = [];
     
     files.forEach(file => {
       const filePath = path.join(folderPath, file);
@@ -868,7 +893,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
           id: file,
           filename: file,
           filepath: filePath,
-          format: 'rt.txt' as any,
+          format: 'rt.txt',
           size: stats.size,
           createdAt: stats.birthtime,
           duration: 0,
@@ -889,7 +914,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
           id: file,
           filename: file,
           filepath: filePath,
-          format: 'txt' as any,
+          format: 'txt',
           size: stats.size,
           createdAt: stats.birthtime,
           duration: 0,
@@ -903,7 +928,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
             id: file,
             filename: file,
             filepath: filePath,
-            format: file.endsWith('.md') ? 'md' : 'txt' as any,
+            format: file.endsWith('.md') ? 'md' : 'txt',
             size: stats.size,
             createdAt: stats.birthtime,
             duration: 0,
@@ -915,7 +940,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
     });
 
     // 音声ファイルと文字起こしファイルのペアリング処理
-    const pairedFiles: any[] = [];
+    const pairedFiles: AudioFile[] = [];
     const processedAudioFiles = new Set<string>();
     const processedTranscriptionFiles = new Set<string>();
     
@@ -965,7 +990,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]>
           id: transcFile.filename,
           filename: transcFile.filename,
           filepath: transcFile.filepath,
-          format: 'txt' as any,
+          format: 'txt',
           size: transcFile.size,
           createdAt: transcFile.createdAt,
           duration: 0,
@@ -1232,6 +1257,11 @@ ipcMain.handle('debug:clearLogs', async (): Promise<void> => {
   } catch (error) {
     writeLog(`ログクリアエラー: ${error}`);
   }
+});
+
+// ログ出力（rendererプロセスから）
+ipcMain.handle('log:write', async (event, message: string): Promise<void> => {
+  writeLog(message);
 });
 
 // === Kotoba-Whisper音声認識機能 ===
@@ -1954,7 +1984,7 @@ ipcMain.handle('speech:changeModel', async (event, modelName: string): Promise<b
 });
 
 // 文字起こしファイル操作
-ipcMain.handle('transcription:save', async (event, audioFilePath: string, transcription: any): Promise<string> => {
+ipcMain.handle('transcription:save', async (event, audioFilePath: string, transcription: TranscriptionFile): Promise<string> => {
   try {
     writeLog(`文字起こしファイル保存: ${audioFilePath}`);
     
@@ -2019,12 +2049,12 @@ ipcMain.handle('transcription:delete', async (event, transFilePath: string): Pro
 });
 
 // AI対話記録操作
-ipcMain.handle('aichat:saveClipboard', async (event, audioFilePath: string, copyRecord: any): Promise<void> => {
+ipcMain.handle('aichat:saveClipboard', async (event, audioFilePath: string, copyRecord: ClipboardCopyRecord): Promise<void> => {
   try {
     writeLog(`クリップボード履歴保存: ${audioFilePath}`);
     
     const chatFilePath = getAIChatPath(audioFilePath);
-    let chatFile: any;
+    let chatFile: AIChatFile;
     
     // 既存ファイルがあれば読み込み、なければ新規作成
     if (fs.existsSync(chatFilePath)) {
@@ -2119,7 +2149,7 @@ function getAIChatPath(audioFilePath: string): string {
   return path.join(parsedPath.dir, `${parsedPath.name}.ai-chat.txt`);
 }
 
-function generateTranscriptionFileContent(transcription: any): string {
+function generateTranscriptionFileContent(transcription: TranscriptionFile): string {
   // メタデータセクション（YAML形式）
   const metadata = `---
 audio_file: ${transcription.metadata.audioFile}
@@ -2135,7 +2165,7 @@ coverage: ${transcription.metadata.coverage}
 `;
   
   // 文字起こし内容セクション
-  const segments = transcription.segments.map((segment: any) => {
+  const segments = transcription.segments.map((segment: TranscriptionSegmentExtended) => {
     const timestamp = formatTimestamp(segment.start);
     const speaker = segment.speaker ? `${segment.speaker}: ` : '';
     return `[${timestamp}] ${speaker}${segment.text}`;
@@ -2144,7 +2174,7 @@ coverage: ${transcription.metadata.coverage}
   return metadata + segments;
 }
 
-function parseTranscriptionFileContent(content: string): any {
+function parseTranscriptionFileContent(content: string): TranscriptionFile {
   const parts = content.split('---\n');
   if (parts.length < 3) {
     throw new Error('無効な文字起こしファイル形式');
@@ -2152,7 +2182,7 @@ function parseTranscriptionFileContent(content: string): any {
   
   // YAMLメタデータの解析（簡易版）
   const yamlContent = parts[1];
-  const metadata: any = {};
+  const metadata: Record<string, any> = {};
   
   yamlContent.split('\n').forEach(line => {
     const match = line.match(/^(\w+):\s*(.+)$/);
@@ -2214,13 +2244,13 @@ function parseTranscriptionFileContent(content: string): any {
       speakers: metadata.speakers,
       coverage: metadata.coverage
     },
-    segments,
+    segments: segments as TranscriptionSegmentExtended[],
     filePath: '',
     isModified: false
   };
 }
 
-function generateAIChatFileContent(chatFile: any): string {
+function generateAIChatFileContent(chatFile: AIChatFile): string {
   const metadata = `---
 source_file: ${chatFile.sourceFile}
 created_at: ${chatFile.createdAt}
@@ -2230,7 +2260,7 @@ total_interactions: ${chatFile.clipboardHistory.length}
 # クリップボードコピー履歴
 `;
   
-  const history = chatFile.clipboardHistory.map((record: any) => {
+  const history = chatFile.clipboardHistory.map((record: ClipboardCopyRecord) => {
     const time = new Date(record.timestamp).toLocaleTimeString('ja-JP', { hour12: false });
     return `[${time}] コピー: "${record.selectedText}"`;
   }).join('\n');
@@ -2238,7 +2268,7 @@ total_interactions: ${chatFile.clipboardHistory.length}
   return metadata + history;
 }
 
-function parseAIChatFileContent(content: string): any {
+function parseAIChatFileContent(content: string): AIChatFile {
   const parts = content.split('---\n');
   if (parts.length < 3) {
     return {
@@ -2250,7 +2280,7 @@ function parseAIChatFileContent(content: string): any {
   
   // YAMLメタデータの解析
   const yamlContent = parts[1];
-  const metadata: any = {};
+  const metadata: Record<string, string> = {};
   
   yamlContent.split('\n').forEach(line => {
     const match = line.match(/^(\w+):\s*(.+)$/);
@@ -2281,7 +2311,7 @@ function parseAIChatFileContent(content: string): any {
   return {
     sourceFile: metadata.source_file || '',
     createdAt: metadata.created_at || new Date().toISOString(),
-    clipboardHistory
+    clipboardHistory: clipboardHistory as ClipboardCopyRecord[]
   };
 }
 
@@ -2301,7 +2331,7 @@ function parseTimestamp(timestamp: string): number {
 // === チャンク分割文字起こし機能 ===
 
 // チャンク分割文字起こし開始
-ipcMain.handle('chunk:startTranscription', async (event, audioFilePath: string, settings: any): Promise<string> => {
+ipcMain.handle('chunk:startTranscription', async (event, audioFilePath: string, settings: ChunkSettings): Promise<string> => {
   try {
     writeLog(`チャンク分割文字起こし開始: ${audioFilePath}`);
     
@@ -2360,7 +2390,7 @@ ipcMain.handle('chunk:getProgress', async (event, sessionId: string): Promise<an
 });
 
 // チャンク分割文字起こし設定更新
-ipcMain.handle('chunk:updateSettings', async (event, settings: any): Promise<void> => {
+ipcMain.handle('chunk:updateSettings', async (event, settings: ChunkSettings): Promise<void> => {
   try {
     writeLog(`チャンク分割文字起こし設定更新: ${JSON.stringify(settings)}`);
     
@@ -2374,7 +2404,7 @@ ipcMain.handle('chunk:updateSettings', async (event, settings: any): Promise<voi
 });
 
 // チャンク分割文字起こし結果の統合保存
-ipcMain.handle('chunk:saveConsolidatedResult', async (event, audioFilePath: string, consolidatedResult: any): Promise<string> => {
+ipcMain.handle('chunk:saveConsolidatedResult', async (event, audioFilePath: string, consolidatedResult: TranscriptionFile): Promise<string> => {
   try {
     writeLog(`チャンク分割文字起こし結果統合保存: ${audioFilePath}`);
     

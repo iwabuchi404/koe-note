@@ -7,9 +7,12 @@
  * - 保存状態の管理
  */
 
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useState } from 'react'
 import { TranscriptionResult, AudioFile } from '../../../../preload/preload'
 import FileFormatSelector from './FileFormatSelector'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface TranscriptionExporterProps {
   transcriptionResult: TranscriptionResult | null
@@ -70,7 +73,7 @@ const TranscriptionExporter: React.FC<TranscriptionExporterProps> = ({
       setTimeout(() => setSaveStatus('idle'), 3000)
       
     } catch (error) {
-      console.error('自動保存エラー:', error)
+      logger.error('自動保存エラー:', error)
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 5000)
     } finally {
@@ -106,7 +109,7 @@ const TranscriptionExporter: React.FC<TranscriptionExporterProps> = ({
       setTimeout(() => setSaveStatus('idle'), 3000)
       
     } catch (error) {
-      console.error('エクスポートエラー:', error)
+      logger.error('エクスポートエラー:', error)
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 5000)
     } finally {

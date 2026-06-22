@@ -3,8 +3,11 @@
  * テキストのクリップボードコピー機能
  */
 
+import { LoggerFactory, LogCategories } from '../../../../../utils/LoggerFactory'
 import React from 'react'
 import { TextSelection, TranscriptionSegment } from '../../types/TextDisplayTypes'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface CopyButtonProps {
   // コピー対象
@@ -69,7 +72,7 @@ const CopyButton: React.FC<CopyButtonProps> = ({
           break
       }
     } catch (error) {
-      console.error('コピーエラー:', error)
+      logger.error('コピーエラー:', error)
     }
   }
   

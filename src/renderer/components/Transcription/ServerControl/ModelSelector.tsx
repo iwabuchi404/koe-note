@@ -1,6 +1,9 @@
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useEffect, useState } from 'react'
 import { modelDownloadService } from '../../../services/ModelDownloadService'
 import type { ModelInfo } from '../../../types/ModelTypes'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface ModelSelectorProps {
   selectedModel: string
@@ -27,7 +30,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         const models = await modelDownloadService.getInstalledModels()
         setInstalledModels(models)
       } catch (e) {
-        console.warn('インストール済みモデル取得失敗:', e)
+        logger.warn('インストール済みモデル取得失敗:', e)
       }
     }
     loadInstalled()

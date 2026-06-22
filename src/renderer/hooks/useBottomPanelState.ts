@@ -8,9 +8,12 @@
  * - UI表示状態の管理
  */
 
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { MicrophoneMonitor, MicrophoneStatus, MicrophoneAlert } from '../audio/services/core/MicrophoneMonitorService'
 import { AudioMixingService, MixingConfig, AudioLevels } from '../audio/services/core/AudioMixingService'
+
+const logger = LoggerFactory.getLogger(LogCategories.HOOK_BOTTOM_PANEL_STATE)
 
 export type InputType = 'microphone' | 'desktop' | 'stereo-mix' | 'mixing'
 
@@ -63,13 +66,13 @@ export const useBottomPanelState = () => {
    * 入力タイプを変更
    */
   const setInputType = useCallback((newType: InputType) => {
-    console.log('🎛️ InputType変更:', state.inputType, '→', newType)
+    logger.debug('🎛️ InputType変更', { from: state.inputType, to: newType })
     
     setState(prev => ({ ...prev, inputType: newType }))
     
     // 入力タイプが変更された場合、既存のマイクモニタリングを停止
     if (newType !== 'microphone' && micMonitorRef.current) {
-      console.log('🎤 入力タイプ変更によりマイクモニタリングを停止:', newType)
+      logger.debug('🎤 入力タイプ変更によりマイクモニタリングを停止:', newType)
       try {
         micMonitorRef.current.stopMonitoring()
         micMonitorRef.current = null
@@ -79,7 +82,7 @@ export const useBottomPanelState = () => {
           micAlerts: []
         }))
       } catch (error) {
-        console.error('マイクモニタリング停止エラー:', error)
+        logger.error('マイクモニタリング停止エラー:', error)
       }
     }
   }, [state.inputType])
@@ -89,12 +92,12 @@ export const useBottomPanelState = () => {
    */
   const startMicrophoneMonitoring = useCallback(async (deviceId: string) => {
     if (state.inputType !== 'microphone') {
-      console.log('🎤 マイクロフォンモード以外では監視を開始しません')
+      logger.debug('🎤 マイクロフォンモード以外では監視を開始しません')
       return
     }
 
     try {
-      console.log('🎤 マイクロフォン監視開始:', deviceId)
+      logger.debug('🎤 マイクロフォン監視開始:', deviceId)
       
       // 既存の監視を停止
       if (micMonitorRef.current) {
@@ -120,10 +123,10 @@ export const useBottomPanelState = () => {
       
       // 監視開始
       await micMonitorRef.current.startMonitoring(undefined, deviceId)
-      console.log('🎤 マイクロフォン監視開始成功')
+      logger.debug('🎤 マイクロフォン監視開始成功')
       
     } catch (error) {
-      console.error('🎤 マイクロフォン監視開始エラー:', error)
+      logger.error('🎤 マイクロフォン監視開始エラー:', error)
       setState(prev => ({
         ...prev,
         error: `マイクロフォン監視の開始に失敗しました: ${error instanceof Error ? error.message : String(error)}`
@@ -136,7 +139,7 @@ export const useBottomPanelState = () => {
    */
   const stopMicrophoneMonitoring = useCallback(() => {
     if (micMonitorRef.current) {
-      console.log('🎤 マイクロフォン監視停止')
+      logger.debug('🎤 マイクロフォン監視停止')
       try {
         micMonitorRef.current.stopMonitoring()
         micMonitorRef.current = null
@@ -146,7 +149,7 @@ export const useBottomPanelState = () => {
           micAlerts: []
         }))
       } catch (error) {
-        console.error('マイクロフォン監視停止エラー:', error)
+        logger.error('マイクロフォン監視停止エラー:', error)
       }
     }
   }, [])
@@ -155,7 +158,7 @@ export const useBottomPanelState = () => {
    * ミキシング設定を更新
    */
   const updateMixingConfig = useCallback((config: Partial<MixingConfig>) => {
-    console.log('🎛️ ミキシング設定更新:', config)
+    logger.debug('🎛️ ミキシング設定更新:', config)
     setState(prev => ({
       ...prev,
       mixingConfig: { ...prev.mixingConfig, ...config }
@@ -167,7 +170,7 @@ export const useBottomPanelState = () => {
    */
   const initializeAudioMixingService = useCallback(() => {
     if (!audioMixingServiceRef.current) {
-      console.log('🎛️ AudioMixingService初期化')
+      logger.debug('🎛️ AudioMixingService初期化')
       audioMixingServiceRef.current = new AudioMixingService()
       
       // 音声レベル更新コールバック設定
@@ -205,7 +208,7 @@ export const useBottomPanelState = () => {
    * クリーンアップ
    */
   const cleanup = useCallback(() => {
-    console.log('🧹 useBottomPanelState: クリーンアップ開始')
+    logger.debug('🧹 useBottomPanelState: クリーンアップ開始')
     
     // マイク監視のクリーンアップ
     if (micMonitorRef.current) {
@@ -219,7 +222,7 @@ export const useBottomPanelState = () => {
       audioMixingServiceRef.current = null
     }
     
-    console.log('🧹 useBottomPanelState: クリーンアップ完了')
+    logger.debug('🧹 useBottomPanelState: クリーンアップ完了')
   }, [])
 
   // コンポーネントアンマウント時のクリーンアップ

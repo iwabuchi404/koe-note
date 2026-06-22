@@ -8,9 +8,12 @@
  * - ファイル保存のみ（文字起こし・チャンク分割なし）
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useRef, useEffect } from 'react';
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats } from '../../audio/services/AudioWorkletRecordingService';
 import styles from './ToneRecorderTest.module.css';
+
+const logger = LoggerFactory.getLogger(LogCategories.DEBUG_GENERAL)
 
 export const ToneRecorderTest: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -26,7 +29,7 @@ export const ToneRecorderTest: React.FC = () => {
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const logMessage = `[${timestamp}] ${message}`;
-    console.log(logMessage);
+    logger.debug(logMessage);
     setLogs(prev => [...prev, logMessage]);
   };
 
@@ -84,7 +87,7 @@ export const ToneRecorderTest: React.FC = () => {
     } catch (error) {
       addLog(`🎵 録音開始エラー: ${error instanceof Error ? error.message : String(error)}`);
       setError(error instanceof Error ? error.message : String(error));
-      console.error('ToneRecorderTest: 録音開始エラー', error);
+      logger.error('ToneRecorderTest: 録音開始エラー', error);
     }
   };
 
@@ -129,7 +132,7 @@ export const ToneRecorderTest: React.FC = () => {
       
     } catch (error) {
       addLog(`🎵 録音停止エラー: ${error instanceof Error ? error.message : String(error)}`);
-      console.error('ToneRecorderTest: 録音停止エラー', error);
+      logger.error('ToneRecorderTest: 録音停止エラー', error);
     }
   };
 

@@ -94,20 +94,12 @@ const MainControlPanel: React.FC = () => {
   // ファイル選択処理
   const handleFileSelection = useCallback(async (type: 'audio' | 'text') => {
     try {
-      // TODO: 実際のファイル選択API実装まで一時的にモック処理
-      // if (window.electronAPI?.selectFile) {
-      //   const fileTypes = type === 'audio' 
-      //     ? ['wav', 'mp3', 'webm', 'm4a', 'flac']
-      //     : ['txt', 'md', 'rtf']
-      //   
-      //   const selectedFile = await window.electronAPI.selectFile(fileTypes)
-      
-      // モック: ファイル選択ダイアログ
-      const selectedFile = {
-        path: type === 'audio' ? '/mock/sample.wav' : '/mock/sample.txt',
-        name: type === 'audio' ? 'sample.wav' : 'sample.txt'
-      }
-        
+      const filters = type === 'audio'
+        ? [{ name: '音声ファイル', extensions: ['wav', 'mp3', 'webm', 'm4a', 'flac'] }]
+        : [{ name: 'テキストファイル', extensions: ['txt', 'md', 'rtf'] }]
+
+      const selectedFile = await window.electronAPI?.selectFile(filters)
+
       if (selectedFile) {
         if (type === 'audio') {
           createTab(TabType.PLAYER, {
@@ -122,10 +114,10 @@ const MainControlPanel: React.FC = () => {
             fileType: 'text'
           })
         }
-        logger.info('ファイル選択完了', { 
-          type, 
+        logger.info('ファイル選択完了', {
+          type,
           fileName: selectedFile.name,
-          filePath: selectedFile.path 
+          filePath: selectedFile.path
         })
       }
     } catch (error) {

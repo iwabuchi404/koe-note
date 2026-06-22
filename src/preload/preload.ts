@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface ElectronAPI {
   // ダイアログ
   selectFolder: () => Promise<string | null>;
+  selectFile: (filters?: Array<{ name: string; extensions: string[] }>) => Promise<{ path: string; name: string } | null>;
   
   // ファイル操作
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => Promise<string>;
@@ -12,7 +13,7 @@ export interface ElectronAPI {
   getFileList: (folderPath: string) => Promise<AudioFile[]>;
   deleteFile: (filePath: string) => Promise<boolean>;
   loadAudioFile: (filePath: string) => Promise<string | null>;
-  saveMetadata: (filename: string, metadata: any) => Promise<void>;
+  saveMetadata: (filename: string, metadata: Record<string, unknown>) => Promise<void>;
   getFileSize: (filePath: string) => Promise<number>;
   getDiskSpace: (dirPath: string) => Promise<{ free: number; total: number }>;
   readFile: (filePath: string) => Promise<Buffer>;
@@ -94,8 +95,9 @@ export interface ElectronAPI {
   cleanupCorruptedModel: (modelId: string) => Promise<boolean>;
   
   // イベントリスナー
-  on: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
-  removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => void;
+  on: (channel: string, callback: (event: unknown, ...args: any[]) => void) => void;
+  removeListener: (channel: string, callback: (event: unknown, ...args: any[]) => void) => void;
+  logWrite: (message: string) => Promise<void>;
 }
 
 // 型定義
@@ -238,6 +240,8 @@ export interface ModelVerificationResult {
 const electronAPI: ElectronAPI = {
   // ダイアログ
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectFile: (filters?: Array<{ name: string; extensions: string[] }>) => 
+    ipcRenderer.invoke('dialog:selectFile', filters),
   
   // ファイル操作
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => 
@@ -259,7 +263,7 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('file:delete', filePath),
   loadAudioFile: (filePath: string) => 
     ipcRenderer.invoke('file:loadAudio', filePath),
-  saveMetadata: (filename: string, metadata: any) => 
+  saveMetadata: (filename: string, metadata: Record<string, unknown>) => 
     ipcRenderer.invoke('file:saveMetadata', filename, metadata),
   getFileSize: (filePath: string) => 
     ipcRenderer.invoke('file:getSize', filePath),
@@ -390,10 +394,12 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('models:cleanupCorruptedModel', modelId),
   
   // イベントリスナー
-  on: (channel: string, callback: (event: any, ...args: any[]) => void) => 
+  on: (channel: string, callback: (event: unknown, ...args: any[]) => void) => 
     ipcRenderer.on(channel, callback),
-  removeListener: (channel: string, callback: (event: any, ...args: any[]) => void) => 
+  removeListener: (channel: string, callback: (event: unknown, ...args: any[]) => void) => 
     ipcRenderer.removeListener(channel, callback),
+  logWrite: (message: string) => 
+    ipcRenderer.invoke('log:write', message),
 };
 
 // Context Bridgeを使用してAPIを安全に公開

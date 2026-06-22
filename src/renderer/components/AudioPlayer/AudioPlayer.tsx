@@ -1,8 +1,11 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useEffect } from 'react'
 import { useAudioPlayer } from '../../audio/hooks/useAudioPlayer'
 import SeekBar from './SeekBar'
 import PlaybackControls from './PlaybackControls'
 import { useAppContext } from '../../App' 
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface AudioPlayerProps {
   filePath?: string
@@ -27,7 +30,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (selectedFile?.filepath) {
       // 録音中のファイルかチェック
       if (selectedFile.isRecording) {
-        console.log('AudioPlayer: 録音中のファイルのため読み込みスキップ:', selectedFile.filename)
+        logger.debug('AudioPlayer: 録音中のファイルのため読み込みスキップ:', selectedFile.filename)
         audioPlayer.stop()
         return
       }
@@ -38,15 +41,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       const isRecentRecording = fileName.startsWith('recording_') && fileName.includes(today)
       
       if (isRecentRecording) {
-        console.log('AudioPlayer: 録音直後のファイルのため500ms遅延して読み込み:', fileName)
+        logger.debug('AudioPlayer: 録音直後のファイルのため500ms遅延して読み込み:', fileName)
         setTimeout(() => {
           audioPlayer.loadAudio(selectedFile.filepath, selectedFile.duration).catch((error: any) => {
-            console.error('AudioPlayer: 遅延ファイル読み込みエラー:', error)
+            logger.error('AudioPlayer: 遅延ファイル読み込みエラー:', error)
           })
         }, 500)
       } else {
         audioPlayer.loadAudio(selectedFile.filepath, selectedFile.duration).catch((error: any) => {
-          console.error('AudioPlayer: ファイル読み込みエラー:', error)
+          logger.error('AudioPlayer: ファイル読み込みエラー:', error)
         })
       }
     } else {

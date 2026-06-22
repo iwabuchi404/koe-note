@@ -32,7 +32,7 @@ export interface LogEntry {
   message: string
   context?: LogContext
   data?: any
-  error?: Error
+  error?: Error | unknown
 }
 
 /**
@@ -130,7 +130,7 @@ export class Logger {
   /**
    * ログエントリ作成
    */
-  private createLogEntry(level: LogLevel, message: string, data?: any, error?: Error): LogEntry {
+  private createLogEntry(level: LogLevel, message: string, data?: any, error?: Error | unknown): LogEntry {
     return {
       timestamp: new Date().toISOString(),
       level,
@@ -175,10 +175,12 @@ export class Logger {
       }
     }
 
-    // 本番環境では重要なログのみファイル出力（将来の実装用）
+    // 本番環境では重要なログをファイル出力
     if (!Logger.isDevelopment && entry.level >= LogLevel.WARN) {
-      // TODO: ファイル出力の実装
-      // this.writeToFile(LogFormatter.formatForFile(entry))
+      const fileLine = LogFormatter.formatForFile(entry)
+      window.electronAPI?.logWrite(fileLine).catch(() => {
+        // IPC呼び出し失敗時はサイレントに無視
+      })
     }
   }
 
@@ -201,7 +203,7 @@ export class Logger {
   /**
    * WARNレベルログ
    */
-  warn(message: string, data?: any, error?: Error): void {
+  warn(message: string, data?: any, error?: Error | unknown): void {
     const entry = this.createLogEntry(LogLevel.WARN, message, data, error)
     this.output(entry)
   }
@@ -209,7 +211,7 @@ export class Logger {
   /**
    * ERRORレベルログ
    */
-  error(message: string, error?: Error, data?: any): void {
+  error(message: string, error?: Error | unknown, data?: any): void {
     const entry = this.createLogEntry(LogLevel.ERROR, message, data, error)
     this.output(entry)
   }
@@ -229,7 +231,7 @@ export class Logger {
     if (condition) this.warn(message, data)
   }
 
-  errorIf(condition: boolean, message: string, error?: Error, data?: any): void {
+  errorIf(condition: boolean, message: string, error?: Error | unknown, data?: any): void {
     if (condition) this.error(message, error, data)
   }
 

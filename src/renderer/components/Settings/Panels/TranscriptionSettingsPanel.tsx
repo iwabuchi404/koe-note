@@ -1,6 +1,9 @@
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
 import { TranscriptionSettings, SettingsPanelProps, SupportedLanguage } from '../types'
 import { modelDownloadService } from '../../../services/ModelDownloadService'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface TranscriptionSettingsPanelProps extends SettingsPanelProps {
   settings: TranscriptionSettings
@@ -27,7 +30,7 @@ const TranscriptionSettingsPanel: React.FC<TranscriptionSettingsPanelProps> = ({
         const models = await modelDownloadService.getInstalledModels()
         setInstalledModels(models)
       } catch (error) {
-        console.error('モデル一覧の取得に失敗しました:', error)
+        logger.error('モデル一覧の取得に失敗しました:', error)
         setInstalledModels([])
       }
     }

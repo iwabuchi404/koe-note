@@ -1,5 +1,8 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useCallback, useRef, useState, useEffect } from 'react'
 import { formatTime } from '../../audio/hooks/useAudioPlayer'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface SeekBarProps {
   currentTime: number
@@ -74,7 +77,7 @@ const SeekBar: React.FC<SeekBarProps> = ({
     cleanupEventListeners()
     
     const progress = getProgressFromEvent(event)
-    console.log('SeekBar: Drag Start at progress:', progress)
+    logger.debug('SeekBar: Drag Start at progress:', progress)
     
     setIsDragging(true)
     setDragPosition(progress)
@@ -93,7 +96,7 @@ const SeekBar: React.FC<SeekBarProps> = ({
     const handleMouseUp = (e: MouseEvent) => {
       e.preventDefault()
       
-      console.log('SeekBar: Drag End')
+      logger.debug('SeekBar: Drag End')
       
       if (seekBarRef.current && duration > 0 && isFinite(duration)) {
         const finalProgress = getProgressFromEvent(e)
@@ -101,10 +104,10 @@ const SeekBar: React.FC<SeekBarProps> = ({
         
         // 数値バリデーション
         if (isFinite(seekTime) && seekTime >= 0 && seekTime <= duration) {
-          console.log('SeekBar: Seek Execute', seekTime)
+          logger.debug('SeekBar: Seek Execute', seekTime)
           onSeek(seekTime)
         } else {
-          console.warn('SeekBar: Invalid seek time', {
+          logger.warn('SeekBar: Invalid seek time', {
             seekTime,
             duration,
             finalProgress,
@@ -113,7 +116,7 @@ const SeekBar: React.FC<SeekBarProps> = ({
           })
         }
       } else {
-        console.warn('SeekBar: Cannot seek - invalid duration', JSON.stringify({
+        logger.warn('SeekBar: Cannot seek - invalid duration', JSON.stringify({
           duration,
           isFiniteDuration: isFinite(duration),
           hasSeekBarRef: !!seekBarRef.current
@@ -129,14 +132,14 @@ const SeekBar: React.FC<SeekBarProps> = ({
       // イベントリスナーを削除
       cleanupEventListeners()
       
-      console.log('SeekBar: Event Listeners Cleaned')
+      logger.debug('SeekBar: Event Listeners Cleaned')
     }
     
     // refに保存
     mouseMoveHandlerRef.current = handleMouseMove
     mouseUpHandlerRef.current = handleMouseUp
     
-    console.log('SeekBar: ドラッグ開始')
+    logger.debug('SeekBar: ドラッグ開始')
     
     // イベントリスナーを追加
     document.addEventListener('mousemove', handleMouseMove, true)
@@ -152,10 +155,10 @@ const SeekBar: React.FC<SeekBarProps> = ({
     
     // 数値バリデーション
     if (isFinite(seekTime) && seekTime >= 0 && seekTime <= duration) {
-      console.log('SeekBar: Click Seek Execute', seekTime)
+      logger.debug('SeekBar: Click Seek Execute', seekTime)
       onSeek(seekTime)
     } else {
-      console.warn('SeekBar: Invalid click seek time', {
+      logger.warn('SeekBar: Invalid click seek time', {
         seekTime,
         duration,
         progress,
@@ -168,7 +171,7 @@ const SeekBar: React.FC<SeekBarProps> = ({
   // コンポーネントアンマウント時のクリーンアップ
   useEffect(() => {
     return () => {
-      console.log('SeekBar: コンポーネントアンマウント - イベントリスナーをクリーンアップ')
+      logger.debug('SeekBar: コンポーネントアンマウント - イベントリスナーをクリーンアップ')
       cleanupEventListeners()
     }
   }, [cleanupEventListeners])

@@ -147,14 +147,21 @@ describe('Logger', () => {
       Logger.setDevelopmentMode(false)
       Logger.setLevel(LogLevel.DEBUG)
       
+      const logWriteMock = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('window', { electronAPI: { logWrite: logWriteMock } })
+      
       const logger = new Logger('test')
       logger.warn('警告メッセージ')
       logger.error('エラーメッセージ')
       
-      // 本番環境では現在ファイル出力のみで、コンソール出力は行われない
-      // 将来ファイル出力が実装された時にここを更新する
+      // 本番環境ではコンソール出力は行われない
       expect(consoleSpy.warn).toHaveBeenCalledTimes(0)
       expect(consoleSpy.error).toHaveBeenCalledTimes(0)
+      
+      // ファイル出力（IPC経由）が呼ばれること
+      expect(logWriteMock).toHaveBeenCalledTimes(2)
+      
+      vi.unstubAllGlobals()
     })
   })
 })

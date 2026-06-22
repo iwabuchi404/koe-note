@@ -3,6 +3,7 @@
  * クリップボードへのコピー機能と状態管理
  */
 
+import { LoggerFactory, LogCategories } from '../../../../utils/LoggerFactory'
 import { useState, useCallback, useRef } from 'react'
 import { UseTextCopyReturn, TextSelection, TranscriptionSegment } from '../types/TextDisplayTypes'
 
@@ -11,6 +12,8 @@ type CopyType = 'selection' | 'full-text' | 'segments' | 'formatted'
 /**
  * テキストコピー機能Hook
  */
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
+
 export function useTextCopy(): UseTextCopyReturn {
   
   // 状態管理
@@ -68,7 +71,7 @@ export function useTextCopy(): UseTextCopyReturn {
       return true
       
     } catch (error) {
-      console.error('コピーエラー:', error)
+      logger.error('コピーエラー:', error)
       setCopyStatus('error')
       
       // エラー状態を一定時間後にリセット

@@ -1,6 +1,9 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 
 // 音声ファイル情報
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
+
 export interface AudioFileInfo {
   id: string
   fileName: string
@@ -168,7 +171,7 @@ export const useAudioPlayer = () => {
     }
     
     const handleCanPlay = () => {
-      console.log('useAudioPlayer: canplay event', {
+      logger.debug('useAudioPlayer: canplay event', {
         audioDuration: audio.duration,
         isFiniteAudioDuration: isFinite(audio.duration),
         readyState: audio.readyState,
@@ -177,7 +180,7 @@ export const useAudioPlayer = () => {
     }
     
     const handleCanPlayThrough = () => {
-      console.log('useAudioPlayer: canplaythrough event', {
+      logger.debug('useAudioPlayer: canplaythrough event', {
         audioDuration: audio.duration,
         isFiniteAudioDuration: isFinite(audio.duration),
         readyState: audio.readyState,
@@ -188,7 +191,7 @@ export const useAudioPlayer = () => {
       if (isFinite(audio.duration) && audio.duration > 0) {
         setState(prev => {
           if (prev.duration === 0) {
-            console.log('Updating duration from canplaythrough:', audio.duration)
+            logger.debug('Updating duration from canplaythrough:', audio.duration)
             return { 
               ...prev, 
               duration: audio.duration,
@@ -251,7 +254,7 @@ export const useAudioPlayer = () => {
     const handleEnded = () => {
       // 終了時に、現在の時間を正確なdurationとして記録
       const actualDuration = audio.currentTime
-      console.log('Audio ended, actual duration:', actualDuration)
+      logger.debug('Audio ended, actual duration:', actualDuration)
       
       setState(prev => ({ 
         ...prev, 
@@ -367,9 +370,9 @@ export const useAudioPlayer = () => {
   // 再生コントロール関数
   const play = useCallback(() => {
     if (audioRef.current && !state.loading) {
-      console.log('Playing audio with src:', audioRef.current.src.substring(0, 100) + '...')
+      logger.debug('Playing audio with src:', audioRef.current.src.substring(0, 100) + '...')
       audioRef.current.play().catch(error => {
-        console.error('音声再生エラー詳細:', {
+        logger.error('音声再生エラー詳細:', {
           error,
           errorName: error.name,
           errorMessage: error.message,
@@ -415,7 +418,7 @@ export const useAudioPlayer = () => {
     if (audioRef.current && state.duration > 0 && isFinite(state.duration)) {
       // 入力値の厳密なバリデーション
       if (!isFinite(time) || isNaN(time)) {
-        console.warn('useAudioPlayer: Invalid seek time - not finite or NaN', time)
+        logger.warn('useAudioPlayer: Invalid seek time - not finite or NaN', time)
         return
       }
       
@@ -423,7 +426,7 @@ export const useAudioPlayer = () => {
       
       // クランプ後も再度チェック
       if (!isFinite(clampedTime) || isNaN(clampedTime)) {
-        console.warn('useAudioPlayer: Invalid clamped time', {
+        logger.warn('useAudioPlayer: Invalid clamped time', {
           originalTime: time,
           clampedTime,
           duration: state.duration
@@ -431,12 +434,12 @@ export const useAudioPlayer = () => {
         return
       }
       
-      console.log('useAudioPlayer: Seeking to', clampedTime)
+      logger.debug('useAudioPlayer: Seeking to', clampedTime)
       
       try {
         audioRef.current.currentTime = clampedTime
       } catch (error) {
-        console.error('useAudioPlayer: Seek error', error)
+        logger.error('useAudioPlayer: Seek error', error)
         
         const seekError = createAudioError(
           'seek_error',
@@ -453,7 +456,7 @@ export const useAudioPlayer = () => {
         }))
       }
     } else {
-      console.warn('useAudioPlayer: Cannot seek', {
+      logger.warn('useAudioPlayer: Cannot seek', {
         hasAudio: !!audioRef.current,
         duration: state.duration,
         isFiniteDuration: isFinite(state.duration)
@@ -478,11 +481,11 @@ export const useAudioPlayer = () => {
   const loadFile = useCallback(async (filePath: string, metadataDuration?: number) => {
     if (!audioRef.current) return
     if (currentFilePathRef.current === filePath) {
-      console.log('Audio File Already Loaded:', filePath)
+      logger.debug('Audio File Already Loaded:', filePath)
       return
     }
     
-    console.log('Audio File Loading:', { filePath, metadataDuration })
+    logger.debug('Audio File Loading:', { filePath, metadataDuration })
     
     audioRef.current.pause()
     
@@ -524,12 +527,12 @@ export const useAudioPlayer = () => {
         audioRef.current.src = dataUrl
         audioRef.current.load() // load()を呼び出してイベントを発火させる
         currentFilePathRef.current = filePath
-        console.log('Audio source set. Waiting for events...')
+        logger.debug('Audio source set. Waiting for events...')
       } else {
         throw new Error('Main process returned an empty data URL.')
       }
     } catch (error) {
-      console.error('Audio File Loading Error:', error)
+      logger.error('Audio File Loading Error:', error)
       
       const loadError = createAudioError(
         'load_error',

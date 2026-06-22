@@ -1,6 +1,9 @@
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
 // 設定の型定義
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
+
 export interface RecordingSettings {
   microphone: {
     deviceId: string
@@ -107,9 +110,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       }
 
       setSettings(loadedSettings)
-      console.log('設定を読み込みました:', loadedSettings)
+      logger.debug('設定を読み込みました:', loadedSettings)
     } catch (error) {
-      console.error('設定読み込みエラー:', error)
+      logger.error('設定読み込みエラー:', error)
       setSettings(DEFAULT_SETTINGS)
     }
   }
@@ -122,9 +125,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       localStorage.setItem('koeNote_fileSettings', JSON.stringify(settings.file))
       localStorage.setItem('koeNote_detailedSettings', JSON.stringify(settings.detailed))
       
-      console.log('設定を保存しました:', settings)
+      logger.debug('設定を保存しました:', settings)
     } catch (error) {
-      console.error('設定保存エラー:', error)
+      logger.error('設定保存エラー:', error)
     }
   }
 

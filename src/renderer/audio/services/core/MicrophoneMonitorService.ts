@@ -3,6 +3,10 @@
  * リアルタイムで音声レベルを監視し、サイレンス検出を行う
  */
 
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
+
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_MICROPHONE_MONITOR)
+
 export interface MicrophoneStatus {
   isActive: boolean
   inputLevel: number        // 0-100の音声レベル
@@ -56,7 +60,7 @@ export class MicrophoneMonitor {
    */
   async startMonitoring(existingStream?: MediaStream, deviceId?: string): Promise<boolean> {
     try {
-      console.log('🎤 マイク監視開始')
+      logger.debug('🎤 マイク監視開始')
       
       // 既に監視中の場合は停止
       if (this.isMonitoring) {
@@ -65,11 +69,11 @@ export class MicrophoneMonitor {
       
       // 既存のストリームがある場合はそれを使用、なければ新規取得
       if (existingStream && existingStream.getAudioTracks().length > 0) {
-        console.log('🎤 既存の録音ストリームを使用してマイク監視開始')
+        logger.debug('🎤 既存の録音ストリームを使用してマイク監視開始')
         this.stream = existingStream
         this.shouldStopStreamOnStop = false // 既存ストリームは停止しない
       } else {
-        console.log('🎤 新しいストリームを取得してマイク監視開始')
+        logger.debug('🎤 新しいストリームを取得してマイク監視開始')
         // マイクアクセス権限を取得
         const constraints: MediaStreamConstraints = {
           audio: deviceId ? { deviceId: { exact: deviceId } } : true,
@@ -100,12 +104,12 @@ export class MicrophoneMonitor {
       // レベル監視ループを開始
       this.monitorLoop()
       
-      console.log('✅ マイク監視開始成功')
+      logger.debug('✅ マイク監視開始成功')
       
       return true
       
     } catch (error) {
-      console.error('❌ マイク監視開始エラー:', error)
+      logger.error('❌ マイク監視開始エラー:', error)
       
       let alertType: MicrophoneAlert['type'] = 'device_error'
       let message = 'マイクアクセスに失敗しました'
@@ -139,7 +143,7 @@ export class MicrophoneMonitor {
    * マイク監視を停止
    */
   stopMonitoring(): void {
-    console.log('🎤 マイク監視停止')
+    logger.debug('🎤 マイク監視停止')
     
     this.isMonitoring = false
     
@@ -179,7 +183,7 @@ export class MicrophoneMonitor {
    */
   private monitorLoop(): void {
     if (!this.isMonitoring || !this.analyser || !this.dataArray) {
-      console.log('🎤 マイク監視ループ終了 - 監視状態:', this.isMonitoring)
+      logger.debug('🎤 マイク監視ループ終了 - 監視状態:', this.isMonitoring)
       this.animationId = null
       return
     }
@@ -254,7 +258,7 @@ export class MicrophoneMonitor {
       try {
         callback(status)
       } catch (error) {
-        console.error('マイクステータスコールバックエラー:', error)
+        logger.error('マイクステータスコールバックエラー:', error)
       }
     })
     
@@ -265,7 +269,7 @@ export class MicrophoneMonitor {
     if (this.isMonitoring) {
       this.animationId = requestAnimationFrame(() => this.monitorLoop())
     } else {
-      console.log('🎤 監視停止のため、次のフレームをキャンセル')
+      logger.debug('🎤 監視停止のため、次のフレームをキャンセル')
       this.animationId = null
     }
   }
@@ -315,16 +319,16 @@ export class MicrophoneMonitor {
    * アラート送信
    */
   private sendAlert(alert: MicrophoneAlert): void {
-    console.log(`🎤 マイクアラート [${alert.severity}]: ${alert.message}`)
+    logger.debug(`🎤 マイクアラート [${alert.severity}]: ${alert.message}`)
     if (alert.recommendation) {
-      console.log(`   推奨対策: ${alert.recommendation}`)
+      logger.debug(`   推奨対策: ${alert.recommendation}`)
     }
     
     this.alertCallbacks.forEach(callback => {
       try {
         callback(alert)
       } catch (error) {
-        console.error('マイクアラートコールバックエラー:', error)
+        logger.error('マイクアラートコールバックエラー:', error)
       }
     })
   }
@@ -358,7 +362,7 @@ export class MicrophoneMonitor {
       this.lowVolumeThreshold = settings.lowVolumeThreshold
     }
     
-    console.log('🎤 マイク監視設定更新:', {
+    logger.debug('🎤 マイク監視設定更新:', {
       silenceThreshold: this.silenceThreshold,
       silenceAlertTime: this.silenceAlertTime,
       lowVolumeThreshold: this.lowVolumeThreshold

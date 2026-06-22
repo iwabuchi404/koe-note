@@ -242,8 +242,33 @@ const LeftPanel: React.FC = () => {
   // コンテキストメニュー（将来的に実装）
   const handleContextMenu = useCallback((event: React.MouseEvent, file: ExtendedAudioFile) => {
     event.preventDefault()
-    // TODO: コンテキストメニューの実装
-  }, [])
+    
+    const actions = [
+      file.isAudioFile ? 'ファイルを開く' : null,
+      file.hasTranscriptionFile ? '文字起こしを表示' : null,
+      'ファイルを削除',
+    ].filter(Boolean) as string[]
+
+    const action = window.confirm(
+      `${file.filename}\n\n操作を選択:\n${actions.map((a, i) => `${i + 1}. ${a}`).join('\n')}\n\n番号を入力してください:`
+    )
+
+    if (!action) return
+
+    const input = window.prompt(`操作番号 (1-${actions.length}):`, '1')
+    const index = input ? parseInt(input, 10) - 1 : -1
+
+    if (index < 0 || index >= actions.length) return
+
+    const selectedAction = actions[index]
+    if (selectedAction === 'ファイルを開く') {
+      handleFileAction('open', file.id)
+    } else if (selectedAction === '文字起こしを表示') {
+      handleFileAction('toggleTranscription', file.id)
+    } else if (selectedAction === 'ファイルを削除') {
+      handleFileAction('delete', file.id)
+    }
+  }, [handleFileAction])
 
   return (
     <div style={{

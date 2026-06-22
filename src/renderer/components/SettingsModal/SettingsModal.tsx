@@ -1,3 +1,4 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
 import { useAppContext } from '../../App'
 import { useSettings } from '../../contexts/SettingsContext'
@@ -6,6 +7,8 @@ import { modelDownloadService } from '../../services/ModelDownloadService'
 import './SettingsModal.css'
 
 import { SupportedLanguage } from '../Settings/types'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -105,7 +108,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         const models = await modelDownloadService.getInstalledModels()
         setInstalledModels(models.map(m => ({ id: m.id, name: m.name })))
       } catch (e) {
-        console.warn('インストール済みモデル取得失敗:', e)
+        logger.warn('インストール済みモデル取得失敗:', e)
       }
     }
     loadInstalled()
@@ -154,7 +157,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       }
       
       setDeviceLoadError(deviceError)
-      console.error('デバイス取得エラー:', error)
+      logger.error('デバイス取得エラー:', error)
     }
   }
 
@@ -227,7 +230,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         const installed = await modelDownloadService.getInstalledModels()
         selectedModelInstalled = installed.some(m => m.id === localTranscriptionSettings.model)
       } catch (e) {
-        console.warn('インストール済みモデル確認失敗（保存は継続）:', e)
+        logger.warn('インストール済みモデル確認失敗（保存は継続）:', e)
       }
       
       // SettingsContextに設定を反映
@@ -246,10 +249,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
           await window.electronAPI.speechChangeModel(localTranscriptionSettings.model)
         }
       } catch (e) {
-        console.warn('モデル変更要求に失敗しました（後で再試行可）:', e)
+        logger.warn('モデル変更要求に失敗しました（後で再試行可）:', e)
       }
       
-      console.log('設定を保存しました:', {
+      logger.debug('設定を保存しました:', {
         recording: localRecordingSettings,
         transcription: localTranscriptionSettings,
         file: localFileSettings,
@@ -271,7 +274,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
       }
       
       setValidationErrors([saveError])
-      console.error('設定保存エラー:', error)
+      logger.error('設定保存エラー:', error)
     } finally {
       setIsSaving(false)
     }
@@ -349,7 +352,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         setValidationErrors([])
         setDeviceLoadError(null)
         
-        console.log('設定をデフォルトに戻しました')
+        logger.debug('設定をデフォルトに戻しました')
         
       } catch (error) {
         const resetError: SettingsError = {
@@ -359,7 +362,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }
         
         setValidationErrors([resetError])
-        console.error('設定リセットエラー:', error)
+        logger.error('設定リセットエラー:', error)
       }
     }
   }
@@ -375,7 +378,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
         }))
       }
     } catch (error) {
-      console.error('フォルダ選択エラー:', error)
+      logger.error('フォルダ選択エラー:', error)
     }
   }
 

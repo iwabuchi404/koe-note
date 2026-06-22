@@ -8,8 +8,11 @@
 // lamejsはグローバルスコープから取得（<script>タグで読み込み済み）
 declare const lamejs: any;
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import { TranscriptionWebSocketService, TranscriptionResult, TranscriptionProgress } from './TranscriptionWebSocketService';
 import { AudioMixingService, MixingConfig } from './core/AudioMixingService';
+
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
 
 export interface AudioSourceConfig {
   type: 'microphone' | 'desktop' | 'mix';
@@ -87,7 +90,7 @@ export class AudioWorkletRecordingService {
     onTranscriptionProgressCallback?: (progress: TranscriptionProgress) => void
   ) {
     this.onChunkReady = onChunkReadyCallback;
-    this.onError = onErrorCallback || ((error) => console.error('🎵 録音エラー:', error));
+    this.onError = onErrorCallback || ((error) => logger.error('🎵 録音エラー:', error));
     this.onStatsUpdate = onStatsUpdateCallback || (() => {});
     this.onTranscriptionResult = onTranscriptionResultCallback;
     this.onTranscriptionProgress = onTranscriptionProgressCallback;
@@ -98,7 +101,7 @@ export class AudioWorkletRecordingService {
    */
   setTranscriptionConfig(config: TranscriptionConfig): void {
     this.transcriptionConfig = config;
-    console.log('🎵 文字起こし設定更新:', config);
+    logger.debug('🎵 文字起こし設定更新:', config);
   }
 
   /**
@@ -106,7 +109,7 @@ export class AudioWorkletRecordingService {
    */
   async startWithConfig(config: AudioSourceConfig): Promise<void> {
     try {
-      console.log('🎵 AudioWorkletRecordingService: 録音開始', config);
+      logger.debug('🎵 AudioWorkletRecordingService: 録音開始', config);
       
       // 音声ストリーム取得
       const stream = await this.getAudioStream(config);
@@ -122,12 +125,12 @@ export class AudioWorkletRecordingService {
    * 音声ストリーム取得
    */
   private async getAudioStream(config: AudioSourceConfig): Promise<MediaStream> {
-    console.log('🎵 音声ストリーム取得開始:', config.type);
+    logger.debug('🎵 音声ストリーム取得開始:', config.type);
 
     switch (config.type) {
       case 'microphone':
         try {
-          console.log('🎤 マイクロフォン音声取得を開始');
+          logger.debug('🎤 マイクロフォン音声取得を開始');
           
           const micStream = await navigator.mediaDevices.getUserMedia({
             audio: {
@@ -141,7 +144,7 @@ export class AudioWorkletRecordingService {
             video: false
           });
           
-          console.log('🎤 マイクロフォンストリーム取得成功');
+          logger.debug('🎤 マイクロフォンストリーム取得成功');
           return micStream;
           
         } catch (error) {
@@ -159,7 +162,7 @@ export class AudioWorkletRecordingService {
 
       case 'desktop':
         try {
-          console.log('🖥️ デスクトップ音声取得を開始（画面共有ダイアログが表示されます）');
+          logger.debug('🖥️ デスクトップ音声取得を開始（画面共有ダイアログが表示されます）');
           
           // @ts-ignore - getDisplayMediaの音声取得
           const desktopStream = await navigator.mediaDevices.getDisplayMedia({
@@ -172,7 +175,7 @@ export class AudioWorkletRecordingService {
             video: { width: { ideal: 1 }, height: { ideal: 1 } }
           });
           
-          console.log('🖥️ デスクトップストリーム取得成功');
+          logger.debug('🖥️ デスクトップストリーム取得成功');
           
           // 映像トラックを削除
           const videoTracks = desktopStream.getVideoTracks();
@@ -187,7 +190,7 @@ export class AudioWorkletRecordingService {
             throw new Error('デスクトップ音声が取得できませんでした。画面共有時に「システム音声を共有」にチェックを入れてください。');
           }
           
-          console.log('🎵 デスクトップ音声トラック確認完了:', audioTracks.length);
+          logger.debug('🎵 デスクトップ音声トラック確認完了:', audioTracks.length);
           return desktopStream;
           
         } catch (error) {
@@ -205,7 +208,7 @@ export class AudioWorkletRecordingService {
 
       case 'mix':
         try {
-          console.log('🎧 マイク＋デスクトップミックス録音開始');
+          logger.debug('🎧 マイク＋デスクトップミックス録音開始');
           
           // AudioMixingServiceを使用してミックスストリームを作成
           if (!this.audioMixingService) {
@@ -222,7 +225,7 @@ export class AudioWorkletRecordingService {
           };
           
           const mixedStream = await this.audioMixingService.createMixedStream(mixingConfig);
-          console.log('🎧 ミックスストリーム作成完了:', {
+          logger.debug('🎧 ミックスストリーム作成完了:', {
             audioTracks: mixedStream.getAudioTracks().length,
             videoTracks: mixedStream.getVideoTracks().length
           });
@@ -230,9 +233,9 @@ export class AudioWorkletRecordingService {
           return mixedStream;
           
         } catch (error) {
-          console.error('❌ ミックス録音エラー:', error);
+          logger.error('❌ ミックス録音エラー:', error);
           // フォールバック: マイクのみで録音
-          console.warn('🎵 ミックス録音に失敗、マイクのみで録音を継続します');
+          logger.warn('🎵 ミックス録音に失敗、マイクのみで録音を継続します');
           return await navigator.mediaDevices.getUserMedia({
             audio: {
               deviceId: config.deviceId ? { exact: config.deviceId } : undefined,
@@ -256,7 +259,7 @@ export class AudioWorkletRecordingService {
    */
   async start(stream: MediaStream): Promise<void> {
     try {
-      console.log('🎵 AudioWorkletRecordingService: 録音初期化開始');
+      logger.debug('🎵 AudioWorkletRecordingService: 録音初期化開始');
       
       // AudioContext初期化
       this.audioContext = new AudioContext({
@@ -264,7 +267,7 @@ export class AudioWorkletRecordingService {
         latencyHint: 'interactive'
       });
       
-      console.log('🎵 AudioContext作成完了:', {
+      logger.debug('🎵 AudioContext作成完了:', {
         sampleRate: this.audioContext.sampleRate,
         state: this.audioContext.state
       });
@@ -276,7 +279,7 @@ export class AudioWorkletRecordingService {
       
       try {
         await this.audioContext.audioWorklet.addModule(workletUrl);
-        console.log('🎵 AudioWorklet モジュール登録完了');
+        logger.debug('🎵 AudioWorklet モジュール登録完了');
       } finally {
         URL.revokeObjectURL(workletUrl);
       }
@@ -289,7 +292,7 @@ export class AudioWorkletRecordingService {
         this.handleWorkletMessage(event.data);
       };
       
-      console.log('🎵 AudioWorkletNode作成完了');
+      logger.debug('🎵 AudioWorkletNode作成完了');
 
       // 音声ストリームをAudioWorkletに接続
       this.stream = stream;
@@ -304,7 +307,7 @@ export class AudioWorkletRecordingService {
       this.sourceNode.connect(this.analyserNode);
       this.analyserNode.connect(this.workletNode);
       
-      console.log('🎵 音声ストリーム接続完了');
+      logger.debug('🎵 音声ストリーム接続完了');
 
       // MP3エンコーダー初期化
       this.initializeMp3Encoder();
@@ -328,16 +331,16 @@ export class AudioWorkletRecordingService {
         try {
           await this.initializeTranscriptionService();
         } catch (error) {
-          console.warn('🎵 文字起こしサービス初期化失敗、録音は継続します:', error);
+          logger.warn('🎵 文字起こしサービス初期化失敗、録音は継続します:', error);
           // 文字起こしサービスの初期化に失敗しても録音は継続
           this.transcriptionService = null;
         }
       }
       
-      console.log('🎵 AudioWorkletRecordingService: 録音開始完了');
+      logger.debug('🎵 AudioWorkletRecordingService: 録音開始完了');
       
     } catch (error) {
-      console.error('🎵 録音開始エラー:', error);
+      logger.error('🎵 録音開始エラー:', error);
       await this.cleanup();
       throw error;
     }
@@ -356,7 +359,7 @@ export class AudioWorkletRecordingService {
           super();
           this.processCount = 0;
           this.lastReportTime = 0;
-          console.log('🎵 PCMProcessorWorklet: 初期化完了');
+          logger.debug('🎵 PCMProcessorWorklet: 初期化完了');
         }
 
         process(inputs, outputs, parameters) {
@@ -396,7 +399,7 @@ export class AudioWorkletRecordingService {
             }
 
           } catch (error) {
-            console.error('🎵 PCMProcessorWorklet: データ送信エラー:', error);
+            logger.error('🎵 PCMProcessorWorklet: データ送信エラー:', error);
             
             this.port.postMessage({
               type: 'error',
@@ -411,7 +414,7 @@ export class AudioWorkletRecordingService {
 
       // AudioWorkletProcessorとして登録
       registerProcessor('pcm-processor', PCMProcessorWorklet);
-      console.log('🎵 PCMProcessorWorklet: AudioWorkletProcessor登録完了');
+      logger.debug('🎵 PCMProcessorWorklet: AudioWorkletProcessor登録完了');
     `;
   }
 
@@ -420,29 +423,29 @@ export class AudioWorkletRecordingService {
    */
   private async initializeTranscriptionService(): Promise<void> {
     if (!this.transcriptionConfig?.enabled) {
-      console.log('🎵 文字起こし機能は無効です');
+      logger.debug('🎵 文字起こし機能は無効です');
       return;
     }
 
     try {
-      console.log('🎵 文字起こしサービス初期化開始');
+      logger.debug('🎵 文字起こしサービス初期化開始');
       
       const serverUrl = this.transcriptionConfig.serverUrl || 'ws://localhost:8770';
       
       this.transcriptionService = new TranscriptionWebSocketService(serverUrl, {
         onConnectionChange: (connected) => {
-          console.log('🎵 文字起こしサーバー接続状態:', connected);
+          logger.debug('🎵 文字起こしサーバー接続状態:', connected);
         },
         onTranscriptionResult: (result) => {
-          console.log('🎵 文字起こし結果受信:', result.text);
+          logger.debug('🎵 文字起こし結果受信:', result.text);
           this.onTranscriptionResult?.(result);
         },
         onTranscriptionProgress: (progress) => {
-          console.log('🎵 文字起こし進捗:', progress.status);
+          logger.debug('🎵 文字起こし進捗:', progress.status);
           this.onTranscriptionProgress?.(progress);
         },
         onError: (error) => {
-          console.error('🎵 文字起こしエラー:', error);
+          logger.error('🎵 文字起こしエラー:', error);
           this.onError(new Error(`文字起こしエラー: ${error}`));
         }
       });
@@ -450,13 +453,13 @@ export class AudioWorkletRecordingService {
       // サーバーに接続
       const connected = await this.transcriptionService.connect();
       if (connected) {
-        console.log('🎵 文字起こしサービス初期化完了');
+        logger.debug('🎵 文字起こしサービス初期化完了');
       } else {
-        console.warn('🎵 文字起こしサーバーへの接続に失敗');
+        logger.warn('🎵 文字起こしサーバーへの接続に失敗');
       }
       
     } catch (error) {
-      console.error('🎵 文字起こしサービス初期化エラー:', error);
+      logger.error('🎵 文字起こしサービス初期化エラー:', error);
       this.transcriptionService = null;
     }
   }
@@ -466,14 +469,14 @@ export class AudioWorkletRecordingService {
    */
   private initializeMp3Encoder(): void {
     try {
-      console.log('🎵 MP3エンコーダー初期化開始');
+      logger.debug('🎵 MP3エンコーダー初期化開始');
       
       // lamejsが定義されているかチェック（グローバル変数）
       if (typeof lamejs === 'undefined') {
         throw new Error('lamejsライブラリがグローバルスコープにロードされていません。index.htmlのscriptタグを確認してください。');
       }
       
-      console.log('🎵 グローバルlamejs確認:', { 
+      logger.debug('🎵 グローバルlamejs確認:', { 
         lamejs: typeof lamejs, 
         Mp3Encoder: typeof lamejs?.Mp3Encoder,
         keys: lamejs ? Object.keys(lamejs) : 'undefined'
@@ -486,13 +489,13 @@ export class AudioWorkletRecordingService {
       
       // モノラル、44.1kHz、128kbps
       this.mp3Encoder = new lamejs.Mp3Encoder(1, 44100, 128);
-      console.log('🎵 MP3エンコーダー初期化完了');
+      logger.debug('🎵 MP3エンコーダー初期化完了');
       
     } catch (error) {
-      console.error('🎵 MP3エンコーダー初期化エラー:', error);
+      logger.error('🎵 MP3エンコーダー初期化エラー:', error);
       
       // エラー時はフォールバック（WAV形式）
-      console.warn('🎵 MP3エンコーダー初期化失敗、WAV形式にフォールバック');
+      logger.warn('🎵 MP3エンコーダー初期化失敗、WAV形式にフォールバック');
       this.mp3Encoder = {
         isWavFallback: true,
         initialized: true,
@@ -514,19 +517,19 @@ export class AudioWorkletRecordingService {
           
         case 'stats':
           // Worklet側の統計情報（デバッグ用）
-          console.log('🎵 Worklet統計:', data);
+          logger.debug('🎵 Worklet統計:', data);
           break;
           
         case 'error':
-          console.error('🎵 Workletエラー:', data.message);
+          logger.error('🎵 Workletエラー:', data.message);
           this.onError(new Error(`AudioWorkletエラー: ${data.message}`));
           break;
           
         default:
-          console.warn('🎵 未知のWorkletメッセージ:', data.type);
+          logger.warn('🎵 未知のWorkletメッセージ:', data.type);
       }
     } catch (error) {
-      console.error('🎵 Workletメッセージ処理エラー:', error);
+      logger.error('🎵 Workletメッセージ処理エラー:', error);
       this.onError(error as Error);
     }
   }
@@ -571,7 +574,7 @@ export class AudioWorkletRecordingService {
       this.checkAndFlushChunk();
       
     } catch (error) {
-      console.error('🎵 PCMデータ処理エラー:', error);
+      logger.error('🎵 PCMデータ処理エラー:', error);
       this.onError(error as Error);
     }
   }
@@ -626,7 +629,7 @@ export class AudioWorkletRecordingService {
       return new Blob(wavData, { type: 'audio/wav' });
       
     } catch (error) {
-      console.error('🎵 WAVファイル作成エラー:', error);
+      logger.error('🎵 WAVファイル作成エラー:', error);
       // エラー時はPCMデータをそのまま返す
       return new Blob(pcmBuffers, { type: 'audio/pcm' });
     }
@@ -674,7 +677,7 @@ export class AudioWorkletRecordingService {
         size: chunkBlob.size
       };
       
-      console.log('🎵 チャンク生成完了:', {
+      logger.debug('🎵 チャンク生成完了:', {
         chunkNumber: this.chunkCount,
         size: chunkBlob.size,
         bufferChunks: this.mp3Buffer.length
@@ -687,17 +690,17 @@ export class AudioWorkletRecordingService {
       // 録音中のみ送信
       if (this.isRecording) {
         this.sendChunkForTranscription(chunkEvent).catch(error => {
-          console.error('🎵 文字起こしチャンク送信エラー:', error);
+          logger.error('🎵 文字起こしチャンク送信エラー:', error);
         });
       } else {
-        console.log('🎵 録音停止中のためチャンク送信をスキップ:', chunkEvent.chunkNumber);
+        logger.debug('🎵 録音停止中のためチャンク送信をスキップ:', chunkEvent.chunkNumber);
       }
       
       // バッファクリア
       this.mp3Buffer = [];
       
     } catch (error) {
-      console.error('🎵 チャンクフラッシュエラー:', error);
+      logger.error('🎵 チャンクフラッシュエラー:', error);
       this.onError(error as Error);
     }
   }
@@ -757,7 +760,7 @@ export class AudioWorkletRecordingService {
    * 録音停止
    */
   async stop(): Promise<Blob> {
-    console.log('🎵 AudioWorkletRecordingService: 録音停止開始');
+    logger.debug('🎵 AudioWorkletRecordingService: 録音停止開始');
     
     try {
       this.isRecording = false;
@@ -772,7 +775,7 @@ export class AudioWorkletRecordingService {
               this.mp3Buffer.push(new Int8Array(finalMp3buf));
             }
           } catch (error) {
-            console.warn('🎵 MP3エンコーダーフラッシュエラー:', error);
+            logger.warn('🎵 MP3エンコーダーフラッシュエラー:', error);
           }
         }
         
@@ -798,7 +801,7 @@ export class AudioWorkletRecordingService {
       // クリーンアップ
       await this.cleanup();
       
-      console.log('🎵 AudioWorkletRecordingService: 録音停止完了', {
+      logger.debug('🎵 AudioWorkletRecordingService: 録音停止完了', {
         chunksGenerated: this.chunkCount,
         totalDataSize: this.totalDataSize
       });
@@ -806,7 +809,7 @@ export class AudioWorkletRecordingService {
       return finalBlob;
       
     } catch (error) {
-      console.error('🎵 録音停止エラー:', error);
+      logger.error('🎵 録音停止エラー:', error);
       throw error;
     }
   }
@@ -815,7 +818,7 @@ export class AudioWorkletRecordingService {
    * リソースクリーンアップ
    */
   private async cleanup(): Promise<void> {
-    console.log('🎵 AudioWorkletRecordingService: クリーンアップ開始');
+    logger.debug('🎵 AudioWorkletRecordingService: クリーンアップ開始');
     
     try {
       // 統計更新停止
@@ -871,10 +874,10 @@ export class AudioWorkletRecordingService {
         this.audioMixingService = null;
       }
       
-      console.log('🎵 AudioWorkletRecordingService: クリーンアップ完了');
+      logger.debug('🎵 AudioWorkletRecordingService: クリーンアップ完了');
       
     } catch (error) {
-      console.error('🎵 クリーンアップエラー:', error);
+      logger.error('🎵 クリーンアップエラー:', error);
     }
   }
 
@@ -904,7 +907,7 @@ export class AudioWorkletRecordingService {
    */
   setChunkSizeThreshold(sizeInBytes: number): void {
     this.chunkSizeThreshold = Math.max(64 * 1024, sizeInBytes); // 最小64KB
-    console.log('🎵 チャンクサイズ閾値更新:', this.chunkSizeThreshold);
+    logger.debug('🎵 チャンクサイズ閾値更新:', this.chunkSizeThreshold);
   }
 
   /**
@@ -917,7 +920,7 @@ export class AudioWorkletRecordingService {
     }
 
     try {
-      console.log(`🎵 チャンク#${chunkEvent.chunkNumber}を文字起こしサーバーに送信開始`);
+      logger.debug(`🎵 チャンク#${chunkEvent.chunkNumber}を文字起こしサーバーに送信開始`);
 
       // TranscriptionChunk形式に変換
       const transcriptionChunk = {
@@ -930,13 +933,13 @@ export class AudioWorkletRecordingService {
       const success = await this.transcriptionService.sendChunkForTranscription(transcriptionChunk);
       
       if (success) {
-        console.log(`🎵 チャンク#${chunkEvent.chunkNumber}送信成功`);
+        logger.debug(`🎵 チャンク#${chunkEvent.chunkNumber}送信成功`);
       } else {
-        console.warn(`🎵 チャンク#${chunkEvent.chunkNumber}送信失敗`);
+        logger.warn(`🎵 チャンク#${chunkEvent.chunkNumber}送信失敗`);
       }
 
     } catch (error) {
-      console.error('🎵 文字起こしチャンク送信処理エラー:', error);
+      logger.error('🎵 文字起こしチャンク送信処理エラー:', error);
       throw error;
     }
   }
@@ -949,9 +952,9 @@ export class AudioWorkletRecordingService {
       try {
         this.transcriptionService.disconnect();
         this.transcriptionService = null;
-        console.log('🎵 文字起こしサービス切断完了');
+        logger.debug('🎵 文字起こしサービス切断完了');
       } catch (error) {
-        console.error('🎵 文字起こしサービス切断エラー:', error);
+        logger.error('🎵 文字起こしサービス切断エラー:', error);
       }
     }
   }

@@ -3,12 +3,15 @@
  * 表示モード ↔ 編集モード の切り替えと状態管理
  */
 
+import { LoggerFactory, LogCategories } from '../../../../utils/LoggerFactory'
 import { useState, useCallback, useRef } from 'react'
 import { DisplayMode, UseTextDisplayModeOptions, UseTextDisplayModeReturn } from '../types/TextDisplayTypes'
 
 /**
  * テキスト表示モード管理Hook
  */
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
+
 export function useTextDisplayMode(options: UseTextDisplayModeOptions): UseTextDisplayModeReturn {
   const {
     initialMode = 'view',
@@ -49,7 +52,7 @@ export function useTextDisplayMode(options: UseTextDisplayModeOptions): UseTextD
       }
       return success
     } catch (error) {
-      console.error('保存エラー:', error)
+      logger.error('保存エラー:', error)
       return false
     }
   }, [onSave])

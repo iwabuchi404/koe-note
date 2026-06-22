@@ -1,6 +1,9 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react';
 import { TranscriptionSegment } from '../../../preload/preload';
 import { useAppContext } from '../../App';
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SPEECH_RECOGNITION)
 
 interface ChunkTranscriptionDisplayProps {
   audioFileName: string;
@@ -46,7 +49,7 @@ const ChunkTranscriptionDisplay: React.FC<ChunkTranscriptionDisplayProps> = ({
   useEffect(() => {
     const handleChunkTranscriptionStart = (event: any) => {
       const { totalChunks: total, chunkSize: size } = event.detail;
-      console.log('チャンク分割文字起こし開始:', total, 'チャンク');
+      logger.debug('チャンク分割文字起こし開始', { totalChunks: total });
       
       setTotalChunks(total);
       setIsTranscribing(true);
@@ -78,7 +81,7 @@ const ChunkTranscriptionDisplay: React.FC<ChunkTranscriptionDisplayProps> = ({
   useEffect(() => {
     const handleChunkCompleted = (event: any) => {
       const { chunkId, segments, status, error, processingTime } = event.detail;
-      console.log('チャンク完了:', chunkId, status, segments?.length || 0, 'セグメント');
+      logger.debug('チャンク完了', { chunkId, status, segmentCount: segments?.length || 0 });
       
       setChunkSegments(prev => 
         prev.map(chunk => 
@@ -117,7 +120,7 @@ const ChunkTranscriptionDisplay: React.FC<ChunkTranscriptionDisplayProps> = ({
   useEffect(() => {
     const handleChunkTranscriptionComplete = (event: any) => {
       const consolidatedResult = event.detail;
-      console.log('チャンク分割文字起こし完了:', consolidatedResult);
+      logger.debug('チャンク分割文字起こし完了:', consolidatedResult);
       
       setIsTranscribing(false);
       

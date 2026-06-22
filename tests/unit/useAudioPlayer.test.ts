@@ -89,7 +89,8 @@ describe('useAudioPlayer', () => {
                 }
               }, 10) // 10ms の遅延
             })
-          })
+          }),
+          logWrite: vi.fn().mockResolvedValue(undefined)
         },
         writable: true
       })

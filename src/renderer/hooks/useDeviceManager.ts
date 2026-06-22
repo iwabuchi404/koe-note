@@ -8,7 +8,10 @@
  * - デバイス変更の検出と更新
  */
 
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import { useState, useEffect, useCallback } from 'react'
+
+const logger = LoggerFactory.getLogger(LogCategories.HOOK_DEVICE_MANAGER)
 
 export interface DeviceInfo {
   deviceId: string
@@ -61,7 +64,7 @@ export const useDeviceManager = () => {
    */
   const updateAudioDevices = useCallback(async () => {
     try {
-      console.log('🎤 マイクロフォンデバイス一覧取得開始')
+      logger.debug('🎤 マイクロフォンデバイス一覧取得開始')
       
       const devices = await navigator.mediaDevices.enumerateDevices()
       const audioInputs = devices.filter(device => device.kind === 'audioinput')
@@ -73,9 +76,9 @@ export const useDeviceManager = () => {
         groupId: device.groupId
       }))
       
-      console.log('🎤 検出されたマイクロフォンデバイス:', deviceList.length, '台')
+      logger.debug('🎤 検出されたマイクロフォンデバイス', { count: deviceList.length })
       deviceList.forEach((device, index) => {
-        console.log(`  ${index + 1}: ${device.label} (${device.deviceId.slice(0, 8)})`)
+        logger.debug(`  ${index + 1}: ${device.label} (${device.deviceId.slice(0, 8)})`)
       })
       
       setState(prev => ({
@@ -86,7 +89,7 @@ export const useDeviceManager = () => {
       }))
       
     } catch (error) {
-      console.error('🎤 マイクロフォンデバイス取得エラー:', error)
+      logger.error('🎤 マイクロフォンデバイス取得エラー:', error)
       setState(prev => ({
         ...prev,
         error: `マイクロフォンデバイスの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`
@@ -99,7 +102,7 @@ export const useDeviceManager = () => {
    */
   const updateSystemAudioDevices = useCallback(async () => {
     try {
-      console.log('🔊 システム音声デバイス取得開始')
+      logger.debug('🔊 システム音声デバイス取得開始')
       
       const devices = await navigator.mediaDevices.enumerateDevices()
       const audioInputs = devices.filter(device => device.kind === 'audioinput')
@@ -124,9 +127,9 @@ export const useDeviceManager = () => {
         groupId: device.groupId
       }))
       
-      console.log('🔊 検出されたシステム音声デバイス:', systemDeviceList.length, '台')
+      logger.debug('🔊 検出されたシステム音声デバイス', { count: systemDeviceList.length })
       systemDeviceList.forEach((device, index) => {
-        console.log(`  ${index + 1}: ${device.label}`)
+        logger.debug(`  ${index + 1}: ${device.label}`)
       })
       
       setState(prev => ({
@@ -137,7 +140,7 @@ export const useDeviceManager = () => {
       }))
       
     } catch (error) {
-      console.error('🔊 システム音声デバイス取得エラー:', error)
+      logger.error('🔊 システム音声デバイス取得エラー:', error)
       setState(prev => ({
         ...prev,
         error: `システム音声デバイスの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`
@@ -150,18 +153,18 @@ export const useDeviceManager = () => {
    */
   const updateDesktopSources = useCallback(async () => {
     try {
-      console.log('🖥️ デスクトップキャプチャソース取得開始')
+      logger.debug('🖥️ デスクトップキャプチャソース取得開始')
       
       const sources = await window.electronAPI.getDesktopSources()
       
-      console.log('🔍 デスクトップソース詳細分析:', sources.length, '個')
+      logger.debug('🔍 デスクトップソース詳細分析', { count: sources.length })
       sources.forEach((source, index) => {
-        console.log(`  ${index + 1}: ID="${source.id}", Name="${source.name}"`)
+        logger.debug(`  ${index + 1}: ID="${source.id}", Name="${source.name}"`)
       })
       
       // スクリーンソース優先選択（screen: で始まるもの）
       const screenSources = sources.filter(source => source.id.startsWith('screen:'))
-      console.log('🖥️ スクリーンソース候補:', screenSources.length, '個')
+      logger.debug('🖥️ スクリーンソース候補', { count: screenSources.length })
       
       // 最優先: メインスクリーンを特定（英語・日本語両対応）
       let selectedSource = screenSources.find(source => {
@@ -196,13 +199,13 @@ export const useDeviceManager = () => {
       }))
       
       if (selectedSource) {
-        console.log('✅ 選択されたデスクトップソース:', selectedSource)
+        logger.debug('✅ 選択されたデスクトップソース:', selectedSource)
       } else {
-        console.warn('⚠️ 適切なスクリーンソースが見つかりません')
+        logger.warn('⚠️ 適切なスクリーンソースが見つかりません')
       }
       
     } catch (error) {
-      console.error('🖥️ デスクトップソース取得エラー:', error)
+      logger.error('🖥️ デスクトップソース取得エラー:', error)
       setState(prev => ({
         ...prev,
         error: `デスクトップソースの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`
@@ -223,7 +226,7 @@ export const useDeviceManager = () => {
         updateDesktopSources()
       ])
     } catch (error) {
-      console.error('🔄 デバイス一括更新エラー:', error)
+      logger.error('🔄 デバイス一括更新エラー:', error)
     } finally {
       setState(prev => ({ ...prev, isLoading: false }))
     }
@@ -233,17 +236,17 @@ export const useDeviceManager = () => {
    * デバイス選択を更新
    */
   const selectDevice = useCallback((deviceId: string) => {
-    console.log('🎤 マイクロフォンデバイス選択:', deviceId)
+    logger.debug('🎤 マイクロフォンデバイス選択:', deviceId)
     setState(prev => ({ ...prev, selectedDevice: deviceId }))
   }, [])
 
   const selectDesktopSource = useCallback((sourceId: string) => {
-    console.log('🖥️ デスクトップソース選択:', sourceId)
+    logger.debug('🖥️ デスクトップソース選択:', sourceId)
     setState(prev => ({ ...prev, selectedDesktopSource: sourceId }))
   }, [])
 
   const selectSystemDevice = useCallback((deviceId: string) => {
-    console.log('🔊 システム音声デバイス選択:', deviceId)
+    logger.debug('🔊 システム音声デバイス選択:', deviceId)
     setState(prev => ({ ...prev, selectedSystemDevice: deviceId }))
   }, [])
 
@@ -260,7 +263,7 @@ export const useDeviceManager = () => {
     
     // デバイス変更の監視
     const handleDeviceChange = () => {
-      console.log('🔄 デバイス変更検出 - デバイス一覧を更新')
+      logger.debug('🔄 デバイス変更検出 - デバイス一覧を更新')
       refreshAllDevices()
     }
     

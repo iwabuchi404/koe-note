@@ -3,8 +3,11 @@
  * VSCode風の行番号付きテキスト表示でプレーンテキストを表示
  */
 
+import { LoggerFactory, LogCategories } from '../../../../../utils/LoggerFactory'
 import React, { useRef, useEffect, useState } from 'react'
 import { TextSelection } from '../../types/TextDisplayTypes'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface PlainTextViewerProps {
   content: string
@@ -52,7 +55,7 @@ const PlainTextViewer: React.FC<PlainTextViewerProps> = ({
   useEffect(() => {
     // 大量データでは同期をスキップ
     if (lines.length > 1000) {
-      console.log('Large file detected, skipping dynamic height sync for performance')
+      logger.debug('Large file detected, skipping dynamic height sync for performance')
       return
     }
     
@@ -170,7 +173,7 @@ const PlainTextViewer: React.FC<PlainTextViewerProps> = ({
     const lineNumbers = lineNumbersRef.current
     
     if (!textContent || !lineNumbers) {
-      console.warn('Scroll sync refs not available:', { textContent: !!textContent, lineNumbers: !!lineNumbers })
+      logger.warn('Scroll sync refs not available:', { textContent: !!textContent, lineNumbers: !!lineNumbers })
       return
     }
     
@@ -181,7 +184,7 @@ const PlainTextViewer: React.FC<PlainTextViewerProps> = ({
       
       // デバッグログ（開発時のみ）
       if (process.env.NODE_ENV === 'development') {
-        console.log('Scroll sync:', { 
+        logger.debug('Scroll sync:', { 
           textScrollTop: scrollTop, 
           lineNumbersScrollTop: lineNumbers.scrollTop,
           textContentHeight: textContent.scrollHeight,

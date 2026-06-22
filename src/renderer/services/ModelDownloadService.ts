@@ -3,11 +3,14 @@
  * Whisperモデルのダウンロード、インストール、管理を担当
  */
 
+import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import { ModelInfo, DownloadProgress, ModelDownloadOptions, ModelDownloadService as IModelDownloadService } from '../types/ModelTypes'
 import { AVAILABLE_MODELS } from '../types/ModelTypes'
 import modelsConfig from '../config/models.json'
 
 type ModelConfigEntry = Omit<ModelInfo, 'isInstalled' | 'isDownloading' | 'downloadProgress'>
+
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
 
 export class ModelDownloadService implements IModelDownloadService {
   private downloadProgress = new Map<string, DownloadProgress>()
@@ -31,7 +34,7 @@ export class ModelDownloadService implements IModelDownloadService {
         this.installedModels.add(modelId)
       })
     } catch (error) {
-      console.error('Failed to initialize installed models:', error)
+      logger.error('Failed to initialize installed models:', error)
     }
   }
 
@@ -236,7 +239,7 @@ export class ModelDownloadService implements IModelDownloadService {
       
       this.installedModels.delete(modelId)
     } catch (error) {
-      console.error(`Failed to remove model ${modelId}:`, error)
+      logger.error(`Failed to remove model ${modelId}:`, error)
       throw error
     }
   }

@@ -35,7 +35,10 @@ Object.defineProperty(window, 'electronAPI', {
     showSaveDialog: vi.fn().mockResolvedValue({
       canceled: false,
       filePath: '/mock/save/file.wav'
-    })
+    }),
+    
+    // ログ出力
+    logWrite: vi.fn().mockResolvedValue(undefined)
   },
   writable: true
 })

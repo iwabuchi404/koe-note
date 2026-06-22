@@ -4,6 +4,7 @@
  * グローバル録音状態を使用してタブ切り替え時も状態を維持
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useCallback, useEffect } from 'react'
 import { AdvancedRecordingTabData } from '../../types/TabTypes'
 import { useRecordingContext, AdvancedRecordingConfig } from '../../contexts/RecordingContext'
@@ -11,6 +12,8 @@ import { AudioChunkCalculator } from '../../utils/AudioChunkCalculator'
 import { modelDownloadService } from '../../services/ModelDownloadService'
 import type { ModelInfo } from '../../types/ModelTypes'
 import './AdvancedRecordingCard.css'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface AdvancedRecordingCardProps {
   tabId: string
@@ -29,7 +32,7 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
         const models = await modelDownloadService.getInstalledModels()
         setInstalledModels(models)
       } catch (e) {
-        console.warn('インストール済みモデル取得失敗:', e)
+        logger.warn('インストール済みモデル取得失敗:', e)
       }
     }
     loadInstalled()
@@ -64,9 +67,9 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
     
     try {
       await globalStartRecording(config)
-      console.log('🚀 AdvancedRecording 録音開始完了')
+      logger.debug('🚀 AdvancedRecording 録音開始完了')
     } catch (error) {
-      console.error('🚀 AdvancedRecording 録音開始エラー:', error)
+      logger.error('🚀 AdvancedRecording 録音開始エラー:', error)
     }
   }, [globalStartRecording, recordingData.recordingSettings, recordingData.transcriptionSettings])
 
@@ -367,7 +370,7 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                       .join('\n')
                     if (allText) {
                       navigator.clipboard.writeText(allText)
-                      console.log('全文字起こし結果をクリップボードにコピーしました')
+                      logger.debug('全文字起こし結果をクリップボードにコピーしました')
                     }
                   }}
                   disabled={!recordingData.chunks.some(chunk => chunk.transcriptionText)}

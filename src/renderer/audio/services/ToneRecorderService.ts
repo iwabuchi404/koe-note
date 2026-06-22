@@ -5,10 +5,13 @@
  * 最小限の録音・MP3エンコード・保存機能
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import * as Tone from 'tone';
 // lamejsはグローバルスコープから取得（<script>タグで読み込み済み）
 declare const lamejs: any;
 import { AudioMixingService, MixingConfig } from './core/AudioMixingService';
+
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
 
 export interface AudioSourceConfig {
   type: 'microphone' | 'desktop' | 'mix';
@@ -38,7 +41,7 @@ export class ToneRecorderService {
   }
 
   private async getAudioStream(config: AudioSourceConfig): Promise<MediaStream> {
-    console.log('🎵 ToneRecorderService: 音声ストリーム取得開始', config);
+    logger.debug('🎵 ToneRecorderService: 音声ストリーム取得開始', config);
 
     switch (config.type) {
       case 'microphone':
@@ -80,12 +83,12 @@ export class ToneRecorderService {
 
   async start(stream: MediaStream): Promise<void> {
     try {
-      console.log('🎵 ToneRecorderService: 録音開始処理開始');
+      logger.debug('🎵 ToneRecorderService: 録音開始処理開始');
       
       // Tone.jsの初期化
       if (Tone.getContext().state !== 'running') {
         await Tone.start();
-        console.log('🎵 ToneRecorderService: Tone.js AudioContext開始');
+        logger.debug('🎵 ToneRecorderService: Tone.js AudioContext開始');
       }
 
       this.stream = stream;
@@ -96,7 +99,7 @@ export class ToneRecorderService {
       const userMedia = new Tone.UserMedia();
       await userMedia.open();
       
-      console.log('🎵 ToneRecorderService: UserMedia接続成功');
+      logger.debug('🎵 ToneRecorderService: UserMedia接続成功');
 
       // Tone.Recorderを作成（内部でAudioWorkletNodeを使用）
       this.recorder = new Tone.Recorder();
@@ -104,19 +107,19 @@ export class ToneRecorderService {
       // UserMediaをRecorderに接続
       userMedia.connect(this.recorder);
       
-      console.log('🎵 ToneRecorderService: Recorder接続完了');
+      logger.debug('🎵 ToneRecorderService: Recorder接続完了');
 
       // 録音開始
       this.recorder.start();
       this.isRecording = true;
       
-      console.log('🎵 ToneRecorderService: 録音開始成功');
+      logger.debug('🎵 ToneRecorderService: 録音開始成功');
 
       // 定期的にチャンクを生成（20秒間隔）
       this.startChunkGeneration();
 
     } catch (error) {
-      console.error('🎵 ToneRecorderService: 録音開始エラー:', error);
+      logger.error('🎵 ToneRecorderService: 録音開始エラー:', error);
       throw error;
     }
   }
@@ -132,7 +135,7 @@ export class ToneRecorderService {
         // 現在の録音データを取得（BlobとしてWAVデータが返される）
         const recordingBlob = await this.recorder.stop();
         
-        console.log('🎵 ToneRecorderService: チャンク生成', {
+        logger.debug('🎵 ToneRecorderService: チャンク生成', {
           size: recordingBlob.size,
           type: recordingBlob.type
         });
@@ -150,14 +153,14 @@ export class ToneRecorderService {
         }
 
       } catch (error) {
-        console.error('🎵 ToneRecorderService: チャンク生成エラー:', error);
+        logger.error('🎵 ToneRecorderService: チャンク生成エラー:', error);
         clearInterval(chunkInterval);
       }
     }, 20000); // 20秒間隔
   }
 
   private async convertBlobToMp3(recordingBlob: Blob): Promise<Blob> {
-    console.log('🎵 ToneRecorderService: Blob→MP3変換開始');
+    logger.debug('🎵 ToneRecorderService: Blob→MP3変換開始');
     
     // BlobをArrayBufferに変換
     const arrayBuffer = await recordingBlob.arrayBuffer();
@@ -170,7 +173,7 @@ export class ToneRecorderService {
   }
 
   private async encodeToMp3(audioBuffer: AudioBuffer): Promise<Blob> {
-    console.log('🎵 ToneRecorderService: MP3エンコード開始');
+    logger.debug('🎵 ToneRecorderService: MP3エンコード開始');
     
     // AudioBufferからPCMデータを抽出
     const pcmData = audioBuffer.getChannelData(0); // モノラル
@@ -204,7 +207,7 @@ export class ToneRecorderService {
     // BlobとしてMP3データを返す
     const mp3Blob = new Blob(mp3Data, { type: 'audio/mp3' });
     
-    console.log('🎵 ToneRecorderService: MP3エンコード完了', {
+    logger.debug('🎵 ToneRecorderService: MP3エンコード完了', {
       originalSize: int16Data.length * 2,
       mp3Size: mp3Blob.size,
       compressionRatio: (int16Data.length * 2) / mp3Blob.size
@@ -216,10 +219,10 @@ export class ToneRecorderService {
   async stop(): Promise<Blob> {
     return new Promise(async (resolve, reject) => {
       try {
-        console.log('🎵 ToneRecorderService: 録音停止処理開始');
+        logger.debug('🎵 ToneRecorderService: 録音停止処理開始');
         
         if (!this.recorder || !this.isRecording) {
-          console.log('🎵 ToneRecorderService: レコーダーが非アクティブ');
+          logger.debug('🎵 ToneRecorderService: レコーダーが非アクティブ');
           resolve(new Blob(this.chunks, { type: 'audio/mp3' }));
           return;
         }
@@ -228,7 +231,7 @@ export class ToneRecorderService {
 
         // 最終チャンクを取得
         const finalRecordingBlob = await this.recorder.stop();
-        console.log('🎵 ToneRecorderService: 最終チャンク取得完了');
+        logger.debug('🎵 ToneRecorderService: 最終チャンク取得完了');
         
         // 最終チャンクをそのまま使用
         this.chunks.push(finalRecordingBlob);
@@ -243,7 +246,7 @@ export class ToneRecorderService {
         await this.audioMixingService.cleanup();
 
         const recordingDuration = (Date.now() - this.recordingStartTime) / 1000;
-        console.log('🎵 ToneRecorderService: 録音停止完了', {
+        logger.debug('🎵 ToneRecorderService: 録音停止完了', {
           finalSize: finalBlob.size,
           duration: recordingDuration,
           chunks: this.chunks.length
@@ -256,7 +259,7 @@ export class ToneRecorderService {
         resolve(finalBlob);
         
       } catch (error) {
-        console.error('🎵 ToneRecorderService: 録音停止エラー:', error);
+        logger.error('🎵 ToneRecorderService: 録音停止エラー:', error);
         reject(error);
       }
     });

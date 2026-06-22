@@ -7,9 +7,12 @@
  * - 音声認識モデルの選択/変更
  */
 
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
 import { modelDownloadService } from '../../../services/ModelDownloadService'
 import type { ModelInfo } from '../../../types/ModelTypes'
+
+const logger = LoggerFactory.getLogger(LogCategories.NETWORK_API)
 
 interface ServerStatus {
   isRunning: boolean
@@ -47,7 +50,7 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
         const status = await window.electronAPI.speechGetServerStatus()
         setServerStatus(status)
       } catch (error) {
-        console.error('サーバー状態取得エラー:', error)
+        logger.error('サーバー状態取得エラー:', error)
       }
     }
 
@@ -64,7 +67,7 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
         const models = await modelDownloadService.getInstalledModels()
         setInstalledModels(models)
       } catch (error) {
-        console.error('インストール済みモデル取得エラー:', error)
+        logger.error('インストール済みモデル取得エラー:', error)
       }
     }
 

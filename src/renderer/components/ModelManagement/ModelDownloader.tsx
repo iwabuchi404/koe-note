@@ -2,10 +2,13 @@
  * モデルダウンロードUIコンポーネント
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
 import { ModelInfo, DownloadProgress } from '../../types/ModelTypes'
 import { modelDownloadService } from '../../services/ModelDownloadService'
 import './ModelDownloader.css'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface ModelDownloaderProps {
   onModelInstalled?: (modelId: string) => void
@@ -108,7 +111,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
         return newMap
       })
     } catch (err) {
-      console.error('Failed to cancel download:', err)
+      logger.error('Failed to cancel download:', err)
     }
   }
 

@@ -56,7 +56,7 @@
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.4",
     "jsdom": "^26.1.0",
-    "kamox": "^0.1.8",
+    "kamox": "^0.1.10",
     "rimraf": "^5.0.5",
     "style-loader": "^3.3.3",
     "ts-loader": "^9.5.1",

@@ -1,9 +1,12 @@
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import { useState, useEffect } from 'react'
 
 /**
  * モデル制御ロジックを管理するフック
  * Whisperモデルの選択・変更を担当
  */
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
+
 export const useModelControl = (currentModel: string, setCurrentModel: (model: string) => void) => {
   const [selectedModel, setSelectedModel] = useState<string>(currentModel)
   const [isChangingModel, setIsChangingModel] = useState(false)
@@ -25,7 +28,7 @@ export const useModelControl = (currentModel: string, setCurrentModel: (model: s
       const success = await window.electronAPI.speechChangeModel(newModel)
       if (success) {
         setCurrentModel(newModel) // AppContextのcurrentModelを更新
-        console.log('モデル変更成功:', newModel)
+        logger.debug('モデル変更成功:', newModel)
         setError('')
       } else {
         setError('モデル変更に失敗しました')

@@ -1,5 +1,8 @@
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import React, { useState } from 'react'
 import { FileSettings, SettingsPanelProps } from '../types'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
 
 interface FileSettingsPanelProps extends SettingsPanelProps {
   settings: FileSettings
@@ -31,7 +34,7 @@ const FileSettingsPanel: React.FC<FileSettingsPanelProps> = ({
         })
       }
     } catch (error) {
-      console.error('フォルダ選択エラー:', error)
+      logger.error('フォルダ選択エラー:', error)
     } finally {
       setIsFolderSelecting(false)
     }
@@ -101,7 +104,7 @@ const FileSettingsPanel: React.FC<FileSettingsPanelProps> = ({
               type="button"
               onClick={() => {
                 // フォルダを開く機能は将来的な実装予定
-                console.log('フォルダを開く:', settings.workspaceFolder)
+                logger.debug('フォルダを開く:', settings.workspaceFolder)
               }}
               disabled={isDisabled}
               className="settings-folder-info__open-button"

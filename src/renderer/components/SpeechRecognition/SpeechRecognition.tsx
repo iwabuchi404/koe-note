@@ -8,6 +8,7 @@
  * - 保守性・拡張性の大幅向上
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
 import { TranscriptionResult, AudioFile } from '../../../preload/preload'
 import { useAppContext } from '../../App'
@@ -20,6 +21,8 @@ import { TranscriptionProgressIndicator } from '../Transcription/Control'
 // 新しいTextDisplayシステム
 import { TextDisplayViewer } from '../common/TextDisplay'
 import { TranscriptionAdapter } from '../common/TextDisplay/adapters/TranscriptionAdapter'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_SPEECH_RECOGNITION)
 
 interface SpeechRecognitionProps {
   selectedFile: AudioFile | null
@@ -43,7 +46,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
   useEffect(() => {
     const handleTranscriptionComplete = (event: any) => {
       const result = event.detail
-      console.log('新しい音声認識結果を受信:', result)
+      logger.debug('新しい音声認識結果を受信:', result)
       setTranscriptionResult(result)
       setIsProcessing(false)
       
@@ -64,7 +67,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
   useEffect(() => {
     const handleChunkTranscriptionComplete = (event: any) => {
       const consolidatedResult = event.detail
-      console.log('チャンク分割文字起こし完了:', consolidatedResult)
+      logger.debug('チャンク分割文字起こし完了:', consolidatedResult)
       
       setShowChunkDisplay(false)
       setTranscriptionDisplayData(consolidatedResult)
@@ -112,13 +115,13 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
       const success = await window.electronAPI.saveTextFile(transcriptionPath, content)
       
       if (success) {
-        console.log('文字起こし結果が保存されました:', transcriptionPath)
+        logger.debug('文字起こし結果が保存されました:', transcriptionPath)
         await updateFileList()
       }
       
       return success
     } catch (error) {
-      console.error('保存エラー:', error)
+      logger.error('保存エラー:', error)
       return false
     }
   }
@@ -152,7 +155,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
       
       setFileList(extendedFiles)
     } catch (error) {
-      console.error('ファイル一覧更新エラー:', error)
+      logger.error('ファイル一覧更新エラー:', error)
     }
   }
 

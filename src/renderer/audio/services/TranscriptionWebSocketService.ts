@@ -87,7 +87,7 @@ export class TranscriptionWebSocketService {
           const data = JSON.parse(event.data);
           this.handleServerMessage(data);
         } catch (error) {
-          console.error('🔗 サーバーメッセージパースエラー:', error);
+          this.logger.error('🔗 サーバーメッセージパースエラー:', error);
           this.onError('サーバーメッセージの解析に失敗しました');
         }
       };
@@ -106,14 +106,14 @@ export class TranscriptionWebSocketService {
       
       // エラー処理
       this.ws.onerror = (error) => {
-        console.error('🔗 WebSocketエラー:', error);
+        this.logger.error('🔗 WebSocketエラー:', error);
         this.onError('WebSocket接続エラーが発生しました');
       };
       
       // 接続完了を待機（タイムアウト10秒）
       return new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
-          console.warn('🔗 WebSocket接続タイムアウト');
+          this.logger.warn('🔗 WebSocket接続タイムアウト');
           resolve(false);
         }, 10000); // 10秒でタイムアウト
 
@@ -132,7 +132,7 @@ export class TranscriptionWebSocketService {
       });
       
     } catch (error) {
-      console.error('🔗 WebSocket接続エラー:', error);
+      this.logger.error('🔗 WebSocket接続エラー:', error);
       this.onError('WebSocket接続の初期化に失敗しました');
       return false;
     }
@@ -222,10 +222,10 @@ export class TranscriptionWebSocketService {
             segments: data.result.segments || [],
             timestamp: Date.now()
           };
-          console.log('🔗 変換後の結果:', result);
+          this.logger.debug('🔗 変換後の結果:', result);
           this.onTranscriptionResult(result);
         } else {
-          console.log('🔗 文字起こし失敗:', data);
+          this.logger.debug('🔗 文字起こし失敗:', data);
           this.onTranscriptionProgress({
             chunkNumber: data.chunkNumber || 0,
             status: 'failed',
@@ -235,12 +235,12 @@ export class TranscriptionWebSocketService {
         break;
         
       case 'error':
-        console.error('🔗 サーバーエラー:', data.message);
+        this.logger.error('🔗 サーバーエラー:', data.message);
         this.onError(data.message);
         break;
         
       default:
-        console.warn('🔗 未知のメッセージタイプ:', data.type);
+        this.logger.warn('🔗 未知のメッセージタイプ:', data.type);
     }
   }
 
@@ -249,7 +249,7 @@ export class TranscriptionWebSocketService {
    */
   async sendChunkForTranscription(chunk: TranscriptionChunk): Promise<boolean> {
     if (!this.isConnected || !this.ws) {
-      console.warn('🔗 サーバーに接続されていません');
+      this.logger.warn('🔗 サーバーに接続されていません');
       this.onError('サーバーに接続されていません');
       return false;
     }
@@ -257,7 +257,7 @@ export class TranscriptionWebSocketService {
     try {
       // サイズ制限チェック（5MB以上は送信しない）
       if (chunk.audioData.size > 5 * 1024 * 1024) {
-        console.warn(`🔗 チャンク#${chunk.chunkNumber}が大きすぎます (${(chunk.audioData.size / 1024 / 1024).toFixed(1)}MB)`);
+        this.logger.warn(`🔗 チャンク#${chunk.chunkNumber}が大きすぎます (${(chunk.audioData.size / 1024 / 1024).toFixed(1)}MB)`);
         this.onError('チャンクサイズが大きすぎます');
         return false;
       }
@@ -287,13 +287,13 @@ export class TranscriptionWebSocketService {
       this.pendingChunks.set(chunk.timestamp.toString(), chunk.chunkNumber);
       this.lastSentChunkNumber = chunk.chunkNumber; // 最後に送信したチャンク番号を記録
       
-      console.log(`🔗 チャンク#${chunk.chunkNumber}を送信 (${(chunk.audioData.size / 1024).toFixed(1)}KB)`, { chunkNumber: chunk.chunkNumber, timestamp: chunk.timestamp, pendingChunks: this.pendingChunks.size });
+      this.logger.debug(`🔗 チャンク#${chunk.chunkNumber}を送信 (${(chunk.audioData.size / 1024).toFixed(1)}KB)`, { chunkNumber: chunk.chunkNumber, timestamp: chunk.timestamp, pendingChunks: this.pendingChunks.size });
       this.ws.send(JSON.stringify(message));
       
       return true;
       
     } catch (error) {
-      console.error('🔗 チャンク送信エラー:', error);
+      this.logger.error('🔗 チャンク送信エラー:', error);
       this.onError('チャンクの送信に失敗しました');
       return false;
     }
@@ -304,7 +304,7 @@ export class TranscriptionWebSocketService {
    */
   private async attemptReconnect(): Promise<void> {
     this.reconnectAttempts++;
-    console.log(`🔗 再接続試行 ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+    this.logger.debug(`🔗 再接続試行 ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
     
     setTimeout(async () => {
       await this.connect();
@@ -323,7 +323,7 @@ export class TranscriptionWebSocketService {
       this.ws.send(JSON.stringify({ type: 'health_check' }));
       return true;
     } catch (error) {
-      console.error('🔗 ヘルスチェックエラー:', error);
+      this.logger.error('🔗 ヘルスチェックエラー:', error);
       return false;
     }
   }
@@ -332,7 +332,7 @@ export class TranscriptionWebSocketService {
    * 接続切断
    */
   disconnect(): void {
-    console.log('🔗 Whisperサーバー接続を切断');
+    this.logger.debug('🔗 Whisperサーバー接続を切断');
     
     if (this.ws) {
       this.ws.close(1000, 'Client disconnecting');

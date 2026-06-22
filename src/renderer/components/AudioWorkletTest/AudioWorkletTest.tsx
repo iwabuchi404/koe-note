@@ -4,10 +4,13 @@
  * AudioWorklet + lamejsによるリアルタイムMP3エンコード録音のテスト
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useRef, useCallback } from 'react';
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats, TranscriptionConfig } from '../../audio/services/AudioWorkletRecordingService';
 import { TranscriptionResult, TranscriptionProgress } from '../../audio/services/TranscriptionWebSocketService';
 import styles from './AudioWorkletTest.module.css';
+
+const logger = LoggerFactory.getLogger(LogCategories.DEBUG_GENERAL)
 
 export const AudioWorkletTest: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -30,7 +33,7 @@ export const AudioWorkletTest: React.FC = () => {
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev.slice(-20), `[${timestamp}] ${message}`]);
-    console.log(`🎵 AudioWorkletTest: ${message}`);
+    logger.debug(`🎵 AudioWorkletTest: ${message}`);
   }, []);
 
   // チャンク準備完了コールバック

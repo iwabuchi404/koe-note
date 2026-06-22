@@ -3,8 +3,11 @@
  * FileListPanelの代替として、基本的な機能のみを提供
  */
 
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React from 'react'
 import { ExtendedAudioFile } from '../FileManagement/types'
+
+const logger = LoggerFactory.getLogger(LogCategories.UI_FILE_LIST)
 
 interface SimpleFileListProps {
   files: ExtendedAudioFile[]
@@ -148,12 +151,12 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
         const hasPath = !!file.transcriptionPath;
         
         if (isPaired) {
-          console.log(`🔍 ペアファイル調査: ${file.filename}`);
-          console.log(`  isPairedFile: ${isPaired} (${typeof isPaired})`);
-          console.log(`  hasTranscriptionFile: ${hasTranscription} (${typeof hasTranscription})`);
-          console.log(`  transcriptionPath: "${file.transcriptionPath}" (${typeof file.transcriptionPath})`);
-          console.log(`  hasPath: ${hasPath} (${typeof hasPath})`);
-          console.log(`  shouldShowChild: ${isPaired && hasTranscription && hasPath}`);
+          logger.debug(`🔍 ペアファイル調査: ${file.filename}`);
+          logger.debug(`  isPairedFile: ${isPaired} (${typeof isPaired})`);
+          logger.debug(`  hasTranscriptionFile: ${hasTranscription} (${typeof hasTranscription})`);
+          logger.debug(`  transcriptionPath: "${file.transcriptionPath}" (${typeof file.transcriptionPath})`);
+          logger.debug(`  hasPath: ${hasPath} (${typeof hasPath})`);
+          logger.debug(`  shouldShowChild: ${isPaired && hasTranscription && hasPath}`);
         }
         
         return (
@@ -257,7 +260,7 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
           {(() => {
             const shouldShow = file.isPairedFile && file.hasTranscriptionFile && file.transcriptionPath;
             if (file.isPairedFile) {
-              console.log(`🎯 子ノード表示判定: ${file.filename} = ${shouldShow}`);
+              logger.debug(`🎯 子ノード表示判定: ${file.filename} = ${shouldShow}`);
             }
             return shouldShow;
           })() && (() => {

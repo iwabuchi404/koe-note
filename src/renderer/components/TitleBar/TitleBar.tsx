@@ -1,3 +1,4 @@
+import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect, useCallback } from 'react'
 
 /**
@@ -14,7 +15,7 @@ const TitleBar: React.FC = () => {
         const maximized = await window.electronAPI.windowIsMaximized()
         setIsMaximized(maximized)
       } catch (error) {
-        console.error('最大化状態取得エラー:', error)
+        logger.error('最大化状態取得エラー:', error)
       }
     }
     checkMaximized()
@@ -25,7 +26,7 @@ const TitleBar: React.FC = () => {
     try {
       await window.electronAPI.windowMinimize()
     } catch (error) {
-      console.error('最小化エラー:', error)
+      logger.error('最小化エラー:', error)
     }
   }, [])
 
@@ -35,7 +36,7 @@ const TitleBar: React.FC = () => {
       const maximized = await window.electronAPI.windowIsMaximized()
       setIsMaximized(maximized)
     } catch (error) {
-      console.error('最大化エラー:', error)
+      logger.error('最大化エラー:', error)
     }
   }, [])
 
@@ -43,7 +44,7 @@ const TitleBar: React.FC = () => {
     try {
       await window.electronAPI.windowClose()
     } catch (error) {
-      console.error('ウィンドウ閉じるエラー:', error)
+      logger.error('ウィンドウ閉じるエラー:', error)
     }
   }, [])
 
@@ -78,5 +79,7 @@ const TitleBar: React.FC = () => {
     </div>
   )
 }
+
+const logger = LoggerFactory.getLogger(LogCategories.APP)
 
 export default TitleBar

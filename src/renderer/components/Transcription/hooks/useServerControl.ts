@@ -1,4 +1,7 @@
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
 import { useState, useEffect } from 'react'
+
+const logger = LoggerFactory.getLogger(LogCategories.NETWORK_API)
 
 interface ServerStatus {
   isRunning: boolean
@@ -20,7 +23,7 @@ export const useServerControl = () => {
         const status = await window.electronAPI.speechGetServerStatus()
         setServerStatus(status)
       } catch (error) {
-        console.error('サーバー状態取得エラー:', error)
+        logger.error('サーバー状態取得エラー:', error)
       }
     }
 
@@ -32,10 +35,10 @@ export const useServerControl = () => {
 
   // サーバー起動
   const startServer = async () => {
-    console.log('🔴 startServer called')
+    logger.debug('🔴 startServer called')
     try {
       setError('')
-      console.log('🔴 Calling speechStartServer()')
+      logger.debug('🔴 Calling speechStartServer()')
       const success = await window.electronAPI.speechStartServer()
       
       if (success) {
@@ -54,10 +57,10 @@ export const useServerControl = () => {
 
   // サーバー停止
   const stopServer = async () => {
-    console.log('🔴 stopServer called')
+    logger.debug('🔴 stopServer called')
     try {
       setError('')
-      console.log('🔴 Calling speechStopServer()')
+      logger.debug('🔴 Calling speechStopServer()')
       await window.electronAPI.speechStopServer()
       
       // 停止後少し待ってから状態を確認

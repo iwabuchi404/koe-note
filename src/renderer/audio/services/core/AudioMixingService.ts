@@ -3,6 +3,10 @@
  * Web Audio APIを使用してマイク音声とデスクトップ音声をミキシングする
  */
 
+import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
+
+const logger = LoggerFactory.getLogger(LogCategories.SERVICE_AUDIO_MIXING)
+
 export interface MixingConfig {
   enableMicrophone: boolean;
   enableDesktop: boolean;
@@ -41,7 +45,7 @@ export class AudioMixingService {
   private onLevelsUpdate: ((levels: AudioLevels) => void) | null = null;
   
   constructor() {
-    console.log('🎛️ AudioMixingService初期化');
+    logger.debug('🎛️ AudioMixingService初期化');
   }
   
   /**
@@ -49,12 +53,12 @@ export class AudioMixingService {
    */
   async createMixedStream(config: MixingConfig): Promise<MediaStream> {
     try {
-      console.log('🎬 ミキシングストリーム作成開始', config);
+      logger.debug('🎬 ミキシングストリーム作成開始', config);
       
       // AudioContext初期化
       if (!this.audioContext) {
         this.audioContext = new AudioContext();
-        console.log('🔊 AudioContext作成完了');
+        logger.debug('🔊 AudioContext作成完了');
       }
       
       // 既存のストリームをクリーンアップ
@@ -62,7 +66,7 @@ export class AudioMixingService {
       
       // 出力先ノード作成
       this.destination = this.audioContext.createMediaStreamDestination();
-      console.log('📡 出力先ノード作成完了');
+      logger.debug('📡 出力先ノード作成完了');
       
       // マイク音声の設定
       if (config.enableMicrophone) {
@@ -85,7 +89,7 @@ export class AudioMixingService {
       // 音声レベル監視開始
       this.startLevelMonitoring();
       
-      console.log('✅ ミキシングストリーム作成完了', {
+      logger.debug('✅ ミキシングストリーム作成完了', {
         audioTracks: this.mixedStream.getAudioTracks().length,
         micEnabled: config.enableMicrophone,
         desktopEnabled: config.enableDesktop
@@ -94,7 +98,7 @@ export class AudioMixingService {
       return this.mixedStream;
       
     } catch (error) {
-      console.error('❌ ミキシングストリーム作成エラー:', error);
+      logger.error('❌ ミキシングストリーム作成エラー:', error);
       await this.cleanup();
       throw error;
     }
@@ -105,7 +109,7 @@ export class AudioMixingService {
    */
   private async setupMicrophoneStream(deviceId?: string, gainValue: number = 0.7): Promise<void> {
     try {
-      console.log('🎤 マイク音声設定開始', { deviceId, gainValue });
+      logger.debug('🎤 マイク音声設定開始', { deviceId, gainValue });
       
       // マイクストリーム取得
       const constraints: MediaStreamConstraints = {
@@ -121,7 +125,7 @@ export class AudioMixingService {
       };
       
       this.microphoneStream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('🎤 マイクストリーム取得完了');
+      logger.debug('🎤 マイクストリーム取得完了');
       
       // Web Audio APIノード作成
       this.microphoneSource = this.audioContext!.createMediaStreamSource(this.microphoneStream);
@@ -140,10 +144,10 @@ export class AudioMixingService {
       this.microphoneGain.connect(this.microphoneAnalyser);
       this.microphoneAnalyser.connect(this.destination!);
       
-      console.log('✅ マイク音声設定完了');
+      logger.debug('✅ マイク音声設定完了');
       
     } catch (error) {
-      console.error('❌ マイク音声設定エラー:', error);
+      logger.error('❌ マイク音声設定エラー:', error);
       throw new Error(`マイク音声の設定に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -153,7 +157,7 @@ export class AudioMixingService {
    */
   private async setupDesktopStream(sourceId?: string, gainValue: number = 0.8): Promise<void> {
     try {
-      console.log('🖥️ デスクトップ音声設定開始', { sourceId, gainValue });
+      logger.debug('🖥️ デスクトップ音声設定開始', { sourceId, gainValue });
       
       // getDisplayMediaでデスクトップ音声取得
       // @ts-ignore
@@ -165,7 +169,7 @@ export class AudioMixingService {
         }
       });
       
-      console.log('🖥️ デスクトップストリーム取得完了');
+      logger.debug('🖥️ デスクトップストリーム取得完了');
       
       // 映像トラックを削除（音声のみ使用）
       const videoTracks = this.desktopStream.getVideoTracks();
@@ -191,10 +195,10 @@ export class AudioMixingService {
       this.desktopGain.connect(this.desktopAnalyser);
       this.desktopAnalyser.connect(this.destination!);
       
-      console.log('✅ デスクトップ音声設定完了');
+      logger.debug('✅ デスクトップ音声設定完了');
       
     } catch (error) {
-      console.error('❌ デスクトップ音声設定エラー:', error);
+      logger.error('❌ デスクトップ音声設定エラー:', error);
       throw new Error(`デスクトップ音声の設定に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -215,7 +219,7 @@ export class AudioMixingService {
       }
     }, 100);
     
-    console.log('📊 音声レベル監視開始');
+    logger.debug('📊 音声レベル監視開始');
   }
   
   /**
@@ -271,7 +275,7 @@ export class AudioMixingService {
       this.desktopGain.gain.value = Math.max(0, Math.min(1, desktopGain));
     }
     
-    console.log('🎚️ ゲイン更新:', { microphoneGain, desktopGain });
+    logger.debug('🎚️ ゲイン更新:', { microphoneGain, desktopGain });
   }
   
   /**
@@ -299,7 +303,7 @@ export class AudioMixingService {
    * クリーンアップ
    */
   async cleanup(): Promise<void> {
-    console.log('🧹 AudioMixingService クリーンアップ開始');
+    logger.debug('🧹 AudioMixingService クリーンアップ開始');
     
     // レベル監視停止
     if (this.levelMonitoringTimer) {
@@ -344,6 +348,6 @@ export class AudioMixingService {
     
     // AudioContextは保持（再利用のため）
     
-    console.log('✅ AudioMixingService クリーンアップ完了');
+    logger.debug('✅ AudioMixingService クリーンアップ完了');
   }
 }
