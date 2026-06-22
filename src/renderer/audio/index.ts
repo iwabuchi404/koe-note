@@ -34,7 +34,7 @@ export const AUDIO_UTILS = {
    */
   isValidAudioFormat: (filename: string): boolean => {
     const extension = filename.toLowerCase().split('.').pop()
-    return AUDIO_CONSTANTS.SUPPORTED_FORMATS.includes(extension as any)
+    return extension !== undefined && (AUDIO_CONSTANTS.SUPPORTED_FORMATS as readonly string[]).includes(extension)
   },
 
   /**

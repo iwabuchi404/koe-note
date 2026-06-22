@@ -1,7 +1,19 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 
-// 型安全な音声再生状態をインポート
-import { AudioFileInfo } from '../../state/ApplicationState'
+// 音声ファイル情報
+export interface AudioFileInfo {
+  id: string
+  fileName: string
+  filePath: string
+  size: number
+  duration: number
+  format: string
+  createdAt: Date
+  modifiedAt: Date
+  isRecording: boolean
+  isSelected: boolean
+  isPlaying: boolean
+}
 
 // 音声再生ステータス（型安全）
 export type AudioPlayerStatus = 

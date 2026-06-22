@@ -1,7 +1,5 @@
-import { 
-  TranscriptionQuality, 
-  SupportedLanguage 
-} from '../../../state/TranscriptionState'
+// 対応言語
+export type SupportedLanguage = 'ja' | 'en' | 'auto'
 
 // 型安全な設定インターフェース（後方互換性のため既存インターフェースを保持しつつ、型を強化）
 export interface RecordingSettings {

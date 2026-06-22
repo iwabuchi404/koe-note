@@ -24,14 +24,14 @@ export interface SaveResult {
   errors: string[]
 }
 
-export interface TranscriptionData {
+interface FileTranscriptionData {
   chunkNumber: number
   timestamp: Date
   text: string
   duration?: number
 }
 
-export interface TranscriptionMetadata {
+interface FileTranscriptionMetadata {
   audioFile: string
   model: string
   transcribedAt: string
@@ -40,14 +40,6 @@ export interface TranscriptionMetadata {
   language: string
   speakers: string[]
   coverage: number
-}
-
-export interface TranscriptionSegment {
-  start: number
-  end: number
-  text: string
-  speaker?: string
-  isEdited?: boolean
 }
 
 export class AdvancedRecordingFileService {
@@ -172,7 +164,7 @@ export class AdvancedRecordingFileService {
    * 文字起こしテキストファイル保存
    */
   private static async saveTranscriptionFile(
-    transcriptionData: TranscriptionData[],
+    transcriptionData: FileTranscriptionData[],
     directory: string,
     baseName: string,
     includeTimestamps: boolean
@@ -181,7 +173,7 @@ export class AdvancedRecordingFileService {
     const filePath = `${directory}/${fileName}`
 
     // YAML+テキスト形式で内容生成
-    const metadata = this.generateTranscriptionMetadata(transcriptionData, baseName)
+    const metadata = this.generateFileTranscriptionMetadata(transcriptionData, baseName)
     const content = this.formatTranscriptionContent(transcriptionData, metadata, includeTimestamps)
 
     try {
@@ -203,7 +195,7 @@ export class AdvancedRecordingFileService {
   /**
    * 文字起こしデータ抽出
    */
-  private static extractTranscriptionData(recordingData: AdvancedRecordingTabData): TranscriptionData[] {
+  private static extractTranscriptionData(recordingData: AdvancedRecordingTabData): FileTranscriptionData[] {
     return recordingData.chunks
       .filter(chunk => chunk.transcriptionText && chunk.transcriptionText.trim())
       .map(chunk => ({
@@ -363,9 +355,9 @@ export class AdvancedRecordingFileService {
         // ファイルが存在しない場合はヘッダーを作成
         if (includeTimestamps) {
           // 新規ファイル作成時はメタデータヘッダーを生成
-          const tempData: TranscriptionData[] = [{ chunkNumber, timestamp, text }]
-          const metadata = this.generateTranscriptionMetadata(tempData, baseName)
-          content = this.formatTranscriptionMetadataHeader(metadata)
+          const tempData: FileTranscriptionData[] = [{ chunkNumber, timestamp, text }]
+          const metadata = this.generateFileTranscriptionMetadata(tempData, baseName)
+          content = this.formatFileTranscriptionMetadataHeader(metadata)
         }
       }
 
@@ -423,10 +415,10 @@ export class AdvancedRecordingFileService {
   /**
    * 文字起こしメタデータ生成
    */
-  private static generateTranscriptionMetadata(
-    transcriptionData: TranscriptionData[],
+  private static generateFileTranscriptionMetadata(
+    transcriptionData: FileTranscriptionData[],
     baseName: string
-  ): TranscriptionMetadata {
+  ): FileTranscriptionMetadata {
     const now = new Date().toISOString()
     const totalDuration = transcriptionData.length > 0 
       ? (transcriptionData[transcriptionData.length - 1].timestamp.getTime() - transcriptionData[0].timestamp.getTime()) / 1000
@@ -448,8 +440,8 @@ export class AdvancedRecordingFileService {
    * YAML+テキスト形式で文字起こし内容をフォーマット
    */
   private static formatTranscriptionContent(
-    transcriptionData: TranscriptionData[],
-    metadata: TranscriptionMetadata,
+    transcriptionData: FileTranscriptionData[],
+    metadata: FileTranscriptionMetadata,
     includeTimestamps: boolean
   ): string {
     let content = ''
@@ -485,7 +477,7 @@ export class AdvancedRecordingFileService {
   /**
    * YAMLメタデータヘッダーのみ生成（追記モード用）
    */
-  private static formatTranscriptionMetadataHeader(metadata: TranscriptionMetadata): string {
+  private static formatFileTranscriptionMetadataHeader(metadata: FileTranscriptionMetadata): string {
     let content = ''
     content += '---\n'
     content += `audio_file: ${metadata.audioFile}\n`

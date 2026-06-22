@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { TranscriptionSettings, SettingsPanelProps } from '../types'
-import { SupportedLanguage } from '../../../state/TranscriptionState'
+import { TranscriptionSettings, SettingsPanelProps, SupportedLanguage } from '../types'
 import { modelDownloadService } from '../../../services/ModelDownloadService'
 
 interface TranscriptionSettingsPanelProps extends SettingsPanelProps {

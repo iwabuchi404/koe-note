@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, desktopCapturer } from 'electron';
+import type { AppSettings } from '../preload/preload';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -1016,25 +1017,42 @@ ipcMain.handle('file:delete', async (event, filePath: string): Promise<boolean> 
   }
 });
 
-// 設定の保存・読み込み（今後実装予定）
-ipcMain.handle('settings:load', async (): Promise<any> => {
-  // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
-  const defaultFolder = path.join(app.getPath('desktop'), 'VoiceRecordings');
-  
-  // TODO: 設定ファイルから読み込み
+// 設定ファイルのパス
+const settingsFilePath = path.join(app.getPath('userData'), 'settings.json');
+
+// デフォルト設定
+function getDefaultSettings() {
   return {
-    saveFolder: defaultFolder,
-    audioQuality: 'medium',
+    saveFolder: path.join(app.getPath('desktop'), 'VoiceRecordings'),
+    audioQuality: 'medium' as const,
     defaultVolume: 0.8,
     defaultInputDevice: '',
-    mp3Bitrate: 192,
+    mp3Bitrate: 192 as const,
     autoTranscribe: false,
   };
+}
+
+// 設定の保存・読み込み
+ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
+  try {
+    if (fs.existsSync(settingsFilePath)) {
+      const data = fs.readFileSync(settingsFilePath, 'utf-8');
+      const saved = JSON.parse(data);
+      return { ...getDefaultSettings(), ...saved };
+    }
+  } catch (error) {
+    writeLog(`設定読み込みエラー: ${error}`);
+  }
+  return getDefaultSettings();
 });
 
-ipcMain.handle('settings:save', async (event, settings: any): Promise<void> => {
-  // TODO: 設定ファイルへ保存
-  console.log('設定保存:', settings);
+ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
+  try {
+    fs.writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8');
+    writeLog('設定保存完了');
+  } catch (error) {
+    writeLog(`設定保存エラー: ${error}`);
+  }
 });
 
 // 入力デバイス一覧取得（レンダラープロセスで実装）

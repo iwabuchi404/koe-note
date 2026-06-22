@@ -219,7 +219,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...prev,
       chunks: prev.chunks.map(chunk => 
         chunk.id === progress.chunkNumber
-          ? { ...chunk, transcriptionStatus: status as any }
+          ? { ...chunk, transcriptionStatus: status }
           : chunk
       )
     }))
@@ -304,7 +304,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           `${baseFileNameRef.current}.trans.txt` : undefined,
         isPairedFile: config.transcriptionSettings.enabled
       }
-      setRecordingFile(recordingFileInfo as any)
+      setRecordingFile(recordingFileInfo)
 
       // 左ペインは setRecordingFile の変更で自動更新される
 

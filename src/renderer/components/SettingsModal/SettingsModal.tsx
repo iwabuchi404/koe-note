@@ -5,15 +5,7 @@ import { ModelManager } from '../ModelManagement/ModelManager'
 import { modelDownloadService } from '../../services/ModelDownloadService'
 import './SettingsModal.css'
 
-// 新しい型安全な設定型をインポート
-import { 
-  ApplicationSettings,
-  createNotification,
-  NotificationInfo
-} from '../../state/ApplicationState'
-import { 
-  SupportedLanguage 
-} from '../../state/TranscriptionState'
+import { SupportedLanguage } from '../Settings/types'
 
 interface SettingsModalProps {
   isOpen: boolean

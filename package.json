@@ -1,5 +1,5 @@
 {
-  "name": "voise-encoder",
+  "name": "koenote",
   "version": "1.0.0",
   "description": "音声録音・再生アプリケーション（TypeScript + Electron + React）",
   "main": "dist/main.js",
@@ -82,8 +82,8 @@
     "ws": "^8.18.3"
   },
   "build": {
-    "appId": "com.example.voise-encoder",
-    "productName": "Voise Encoder",
+    "appId": "com.koenote.app",
+    "productName": "KoeNote",
     "directories": {
       "output": "release"
     },

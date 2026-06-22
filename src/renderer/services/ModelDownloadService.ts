@@ -7,6 +7,8 @@ import { ModelInfo, DownloadProgress, ModelDownloadOptions, ModelDownloadService
 import { AVAILABLE_MODELS } from '../types/ModelTypes'
 import modelsConfig from '../config/models.json'
 
+type ModelConfigEntry = Omit<ModelInfo, 'isInstalled' | 'isDownloading' | 'downloadProgress'>
+
 export class ModelDownloadService implements IModelDownloadService {
   private downloadProgress = new Map<string, DownloadProgress>()
   private downloadControllers = new Map<string, AbortController>()
@@ -41,7 +43,7 @@ export class ModelDownloadService implements IModelDownloadService {
     const source = Array.isArray(modelsConfig) && modelsConfig.length > 0
       ? modelsConfig
       : AVAILABLE_MODELS
-    return source.map((model: any) => ({
+    return source.map((model: ModelConfigEntry) => ({
       ...model,
       isInstalled: this.installedModels.has(model.id),
       isDownloading: this.downloadProgress.has(model.id),
@@ -79,7 +81,7 @@ export class ModelDownloadService implements IModelDownloadService {
       const listSource = Array.isArray(modelsConfig) && modelsConfig.length > 0
         ? modelsConfig
         : AVAILABLE_MODELS
-      const modelInfo = listSource.find((m: any) => m.id === modelId)
+      const modelInfo = listSource.find((m: ModelConfigEntry) => m.id === modelId)
       if (!modelInfo) {
         throw new Error(`Model ${modelId} not found`)
       }
@@ -148,7 +150,7 @@ export class ModelDownloadService implements IModelDownloadService {
   ): Promise<void> {
     try {
       // 進捗リスナーを設定
-      const progressListener = (event: any, data: { modelId: string, percent: number, message?: string, bytesDownloaded?: number, totalBytes?: number, speed?: number, eta?: number }) => {
+      const progressListener = (_event: unknown, data: { modelId: string, percent: number, message?: string, bytesDownloaded?: number, totalBytes?: number, speed?: number, eta?: number }) => {
         if (data.modelId === modelInfo.id) {
           progress.progress = data.percent
           if (typeof data.bytesDownloaded === 'number') {
@@ -200,8 +202,7 @@ export class ModelDownloadService implements IModelDownloadService {
     }
     // Mainへもキャンセル要求
     try {
-      // @ts-ignore - exposed in preload
-      await (window.electronAPI as any).cancelModelDownload(modelId)
+      await window.electronAPI.cancelModelDownload(modelId)
     } catch {}
   }
 
