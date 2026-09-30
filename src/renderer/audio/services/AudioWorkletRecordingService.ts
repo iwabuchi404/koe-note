@@ -359,7 +359,6 @@ export class AudioWorkletRecordingService {
           super();
           this.processCount = 0;
           this.lastReportTime = 0;
-          logger.debug('🎵 PCMProcessorWorklet: 初期化完了');
         }
 
         process(inputs, outputs, parameters) {
@@ -399,8 +398,6 @@ export class AudioWorkletRecordingService {
             }
 
           } catch (error) {
-            logger.error('🎵 PCMProcessorWorklet: データ送信エラー:', error);
-            
             this.port.postMessage({
               type: 'error',
               message: error.message,
@@ -414,7 +411,6 @@ export class AudioWorkletRecordingService {
 
       // AudioWorkletProcessorとして登録
       registerProcessor('pcm-processor', PCMProcessorWorklet);
-      logger.debug('🎵 PCMProcessorWorklet: AudioWorkletProcessor登録完了');
     `;
   }
 
