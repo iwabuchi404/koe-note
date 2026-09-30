@@ -1,1 +1,0 @@
-export { default as FileActionsPanel } from './FileActionsPanel'
