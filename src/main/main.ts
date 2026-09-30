@@ -3,7 +3,7 @@ import type { AppSettings, AudioFile, TranscriptionFile, TranscriptionSegmentExt
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, exec, ChildProcess, SpawnOptions } from 'child_process';
+import { spawn, exec, execSync, ChildProcess, SpawnOptions } from 'child_process';
 import * as https from 'https';
 import * as http from 'http';
 
@@ -140,11 +140,127 @@ async function checkPythonAvailability(): Promise<boolean> {
 class KotobaWhisperManager {
   private pythonProcess: ChildProcess | null = null;
   private isRunning: boolean = false;
+  private isExternalServer: boolean = false;
+  private isShuttingDown: boolean = false;
+  private isStopping: boolean = false;
+  private isQuitting: boolean = false;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 3;
 
   constructor() {
     writeLog('KotobaWhisperManager初期化');
+
+    // プロセス終了時の同期クリーンアップ（クラッシュ・異常終了対応）
+    process.on('exit', () => {
+      this.syncCleanup();
+    });
+  }
+
+  // アプリ終了フラグを設定（再起動を完全に禁止）
+  setQuitting(value: boolean): void {
+    this.isQuitting = value;
+  }
+
+  // isStoppingをリセット（before-quitからstopServerを再実行できるようにする）
+  resetStopping(): void {
+    this.isStopping = false;
+  }
+
+  // rendererプロセスにサーバー状態変化を通知
+  private notifyServerStatus(status: 'starting' | 'running' | 'stopped' | 'failed' | 'external'): void {
+    writeLog(`Server status notification: ${status}`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('speech:serverStatus', { status, pid: this.pythonProcess?.pid });
+    }
+  }
+
+  // 同期クリーンアップ（process.on('exit')用・確実に子プロセスを殺す）
+  private syncCleanup(): void {
+    if (this.pythonProcess && this.pythonProcess.pid) {
+      writeLog(`syncCleanup: killing pid ${this.pythonProcess.pid}`);
+      try {
+        if (process.platform === 'win32') {
+          execSync(`taskkill /pid ${this.pythonProcess.pid} /f /t`, { stdio: 'ignore' });
+        } else {
+          this.pythonProcess.kill('SIGKILL');
+        }
+      } catch (e) {
+        // プロセスが既に終了している場合は無視
+      }
+    }
+  }
+
+  // WebSocket経由でgraceful shutdownを送信
+  private async sendGracefulShutdown(): Promise<boolean> {
+    if (!this.pythonProcess && !this.isExternalServer) {
+      return false;
+    }
+    try {
+      writeLog('Graceful shutdown要求を送信...');
+      const WebSocket = require('ws');
+      const ws = new WebSocket('ws://127.0.0.1:8770');
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          writeLog('Graceful shutdown: タイムアウト (5秒)');
+          try { ws.close(); } catch {}
+          resolve(false);
+        }, 5000);
+
+        ws.on('open', () => {
+          writeLog('Graceful shutdown: 接続成功、shutdownメッセージ送信');
+          try {
+            ws.send(JSON.stringify({ type: 'shutdown' }));
+          } catch {
+            clearTimeout(timeout);
+            resolve(false);
+          }
+        });
+
+        ws.on('message', (data: Buffer) => {
+          try {
+            const response = JSON.parse(data.toString());
+            if (response.type === 'shutdown_ack') {
+              writeLog('Graceful shutdown: ACK受信');
+              clearTimeout(timeout);
+              try { ws.close(); } catch {}
+              resolve(true);
+            }
+          } catch {}
+        });
+
+        ws.on('error', (error: Error) => {
+          writeLog(`Graceful shutdown: エラー - ${error.message}`);
+          clearTimeout(timeout);
+          resolve(false);
+        });
+
+        ws.on('close', () => {
+          clearTimeout(timeout);
+        });
+      });
+    } catch (error) {
+      writeLog(`Graceful shutdownエラー: ${error}`);
+      return false;
+    }
+  }
+
+  // ヘルスチェックでサーバー起動完了を待機
+  private async waitForServerReady(maxAttempts: number = 30, intervalMs: number = 1000): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (!this.pythonProcess) {
+        writeLog('waitForServerReady: プロセスが既に終了');
+        return false;
+      }
+      const ready = await this.checkExternalServer();
+      if (ready) {
+        writeLog(`waitForServerReady: サーバー準備完了 (${i + 1}回目)`);
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+    writeLog(`waitForServerReady: タイムアウト (${maxAttempts}回試行)`);
+    return false;
   }
 
   // Pythonサーバー起動（PyInstaller実行ファイル版）
@@ -154,22 +270,25 @@ class KotobaWhisperManager {
       return true;
     }
 
+    // 手動停止後の再起動フラグをリセット
+    this.isShuttingDown = false;
+
     try {
       // 既に外部で起動していないか事前チェック（ポート競合回避）
       const inUse = await isPortInUse(8770);
       if (inUse) {
         writeLog('Port 8770 is already in use. Skipping internal server start.');
         this.isRunning = false;
+        this.isExternalServer = true;
+        this.notifyServerStatus('external');
         return true; // 外部サーバー使用とみなす
       }
       writeLog('Kotoba-Whisper Pythonサーバー起動中（PyInstaller版）...');
+      this.notifyServerStatus('starting');
       
       // Electronアプリのベースディレクトリを特定
       const appPath = app.getAppPath();
       writeLog(`App path: ${appPath}`);
-      
-      // whisper-server実行ファイルのパス解決
-      let whisperServerExePath: string;
       
       // 開発環境かパッケージ化環境かを判定
       const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
@@ -179,78 +298,50 @@ class KotobaWhisperManager {
       const pythonAvailable = await checkPythonAvailability();
       writeLog(`Python available: ${pythonAvailable}`);
       
-      if (pythonAvailable) {
-        // Pythonが利用可能な場合、Pythonスクリプトを使用
-        whisperServerExePath = 'python';
-        writeLog('Using Python interpreter');
-      } else {
-        // Pythonが利用できない場合、実行ファイルを使用
-        if (isDevelopment) {
-          whisperServerExePath = path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe');
-        } else {
-          // 本番は resourcesPath を起点に解決
-          whisperServerExePath = path.join(process.resourcesPath, 'whisper-server.exe');
-        }
-        writeLog('Using standalone executable');
-      }
-      
-      writeLog(`Whisper server exe path: ${whisperServerExePath}`);
-      
-      // パス存在確認（フォールバック付き）
-      const pathCandidates = [
-        whisperServerExePath,
-        // 開発系
-        path.join(appPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-        path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
-        path.resolve(__dirname, '..', 'whisper-server', 'dist', 'whisper-server.exe'),
-        // 本番系（resources配下）
-        path.join(process.resourcesPath, 'whisper-server.exe'),
-        path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-        path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
-      ];
-      
-      let validPath: string | null = null;
-      for (const candidatePath of pathCandidates) {
-        writeLog(`Checking path candidate: ${candidatePath}`);
-        if (fs.existsSync(candidatePath)) {
-          validPath = candidatePath;
-          writeLog(`Found valid whisper-server exe: ${validPath}`);
-          break;
-        }
-      }
-      
-      if (!validPath) {
-        const errorMessage = `Whisper server exe not found in any of these locations:\n${pathCandidates.join('\n')}`;
-        writeLog(errorMessage);
-        throw new Error(errorMessage);
-      }
-      
-      whisperServerExePath = validPath;
-      
-      // 実行ファイルの存在確認
-      if (!fs.existsSync(whisperServerExePath)) {
-        const errorMessage = `whisper-server.exe not found: ${whisperServerExePath}`;
-        writeLog(errorMessage);
-        throw new Error(errorMessage);
-      }
-      
-      writeLog(`Found whisper-server.exe at: ${whisperServerExePath}`);
-      
-      // 実行方法に応じて引数を設定
+      // 実行方法に応じてcommand/args/cwdを設定
       let command: string;
       let args: string[];
       let cwd: string;
       
-      if (pythonAvailable) {
-        // Pythonスクリプトを実行
+      if (pythonAvailable && isDevelopment) {
+        // 開発環境のみPythonスクリプトを実行
         command = 'python';
         args = ['main.py'];
         cwd = path.join(appPath, 'whisper-server');
+        writeLog(`Using Python interpreter: ${command} ${args.join(' ')} (cwd: ${cwd})`);
       } else {
-        // 実行ファイルを実行
-        command = whisperServerExePath;
+        // 実行ファイルを検索（開発/本番の候補を順にチェック）
+        const exePathCandidates = [
+          // 開発系
+          path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
+          path.join(appPath, 'whisper-server', 'dist', 'whisper-server.exe'),
+          path.resolve(__dirname, '..', 'whisper-server', 'dist', 'whisper-server.exe'),
+          // 本番系（resources配下）
+          path.join(process.resourcesPath, 'whisper-server.exe'),
+          path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server.exe'),
+          path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
+        ];
+        
+        let validPath: string | null = null;
+        for (const candidatePath of exePathCandidates) {
+          writeLog(`Checking exe path candidate: ${candidatePath}`);
+          if (fs.existsSync(candidatePath)) {
+            validPath = candidatePath;
+            writeLog(`Found valid whisper-server exe: ${validPath}`);
+            break;
+          }
+        }
+        
+        if (!validPath) {
+          const errorMessage = `Whisper server exe not found in any of these locations:\n${exePathCandidates.join('\n')}`;
+          writeLog(errorMessage);
+          throw new Error(errorMessage);
+        }
+        
+        command = validPath;
         args = [];
-        cwd = path.dirname(whisperServerExePath);
+        cwd = path.dirname(validPath);
+        writeLog(`Using standalone executable: ${command} (cwd: ${cwd})`);
       }
       
       const spawnOptions: SpawnOptions = {
@@ -272,6 +363,7 @@ class KotobaWhisperManager {
       
       // プロセスを実行
       this.pythonProcess = spawn(command, args, spawnOptions);
+      this.isExternalServer = false;
 
       // 標準出力の監視
       if (this.pythonProcess.stdout) {
@@ -299,56 +391,158 @@ class KotobaWhisperManager {
         this.isRunning = false;
         this.pythonProcess = null;
         
+        // アプリ終了中、手動停止中、または正常終了の場合は再起動しない
+        if (this.isQuitting || this.isShuttingDown || code === 0) {
+          writeLog('再起動をスキップ（アプリ終了中/手動停止/正常終了）');
+          if (!this.isShuttingDown && !this.isQuitting) {
+            this.notifyServerStatus('stopped');
+          }
+          return;
+        }
+
         // 予期しない終了の場合は再起動を試行
-        if (code !== 0 && this.reconnectAttempts < this.maxReconnectAttempts) {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++;
           writeLog(`Pythonサーバー再起動試行 ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+          this.notifyServerStatus('failed');
           setTimeout(() => this.startServer(), 5000);
+        } else {
+          writeLog('再起動試行回数上限に到達');
+          this.notifyServerStatus('failed');
         }
       });
 
       // エラーハンドリング
       this.pythonProcess.on('error', (error) => {
         writeLog(`Python server spawn error: ${error.message}`);
-        writeLog(`Executable used: ${whisperServerExePath}`);
         writeLog(`Environment PATH: ${process.env.PATH}`);
         this.isRunning = false;
       });
 
-      this.isRunning = true;
       this.reconnectAttempts = 0;
       
-      // サーバー起動完了まで少し待機
-      await new Promise(resolve => setTimeout(resolve, 8000));
-      
-      writeLog('Kotoba-Whisper Pythonサーバー起動完了');
-      return true;
+      // ヘルスチェックで起動完了を判定（最大30秒）
+      const ready = await this.waitForServerReady(30, 1000);
+      if (ready) {
+        this.isRunning = true;
+        writeLog('Kotoba-Whisper Pythonサーバー起動完了');
+        this.notifyServerStatus('running');
+        return true;
+      } else {
+        writeLog('Kotoba-Whisper Pythonサーバー起動タイムアウト');
+        this.isRunning = false;
+        this.notifyServerStatus('failed');
+        return false;
+      }
 
     } catch (error) {
       writeLog(`Pythonサーバー起動エラー: ${error}`);
       this.isRunning = false;
+      this.notifyServerStatus('failed');
       return false;
     }
   }
 
-  // Pythonサーバー停止
-  stopServer(): void {
-    if (this.pythonProcess) {
-      writeLog('Kotoba-Whisper Pythonサーバー停止中...');
-      
-      // Windowsの場合はtaskkillを使用
-      if (process.platform === 'win32') {
-        spawn('taskkill', ['/pid', this.pythonProcess.pid!.toString(), '/f', '/t'], {
-          stdio: 'ignore'
-        });
-      } else {
-        this.pythonProcess.kill('SIGTERM');
-      }
-      
-      this.pythonProcess = null;
-      this.isRunning = false;
-      writeLog('Kotoba-Whisper Pythonサーバー停止完了');
+  // Pythonサーバー停止（async・graceful shutdown → taskkillフォールバック）
+  async stopServer(): Promise<void> {
+    if (this.isStopping) {
+      writeLog('stopServer既に実行中のためスキップ');
+      return;
     }
+    this.isStopping = true;
+    this.isShuttingDown = true;
+
+    // 外部サーバーの場合はgraceful shutdownのみ試行
+    if (this.isExternalServer && !this.pythonProcess) {
+      writeLog('外部サーバーのgraceful shutdownを試行...');
+      await this.sendGracefulShutdown();
+      this.isExternalServer = false;
+      this.isRunning = false;
+      this.isShuttingDown = false;
+      this.isStopping = false;
+      this.notifyServerStatus('stopped');
+      return;
+    }
+
+    if (!this.pythonProcess) {
+      writeLog('停止対象のプロセスがありません');
+      this.isRunning = false;
+      this.isShuttingDown = false;
+      this.isStopping = false;
+      return;
+    }
+
+    const pid = this.pythonProcess.pid;
+    writeLog(`Kotoba-Whisper Pythonサーバー停止中 (pid: ${pid})...`);
+
+    // 1. WebSocket経由のgraceful shutdownを試行
+    const graceful = await this.sendGracefulShutdown();
+
+    if (graceful) {
+      // 2. プロセス終了を待機（最大10秒）
+      const exited = await this.waitForExit(10000);
+      if (exited) {
+        writeLog('Kotoba-Whisper Pythonサーバー停止完了（graceful）');
+        this.isRunning = false;
+        this.isShuttingDown = false;
+        this.isStopping = false;
+        this.notifyServerStatus('stopped');
+        return;
+      }
+      writeLog('Graceful shutdown後にプロセスが終了しないため、強制終了します');
+    }
+
+    // 3. フォールバック: 強制終了
+    if (this.pythonProcess) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/pid', pid!.toString(), '/f', '/t'], {
+            stdio: 'ignore'
+          });
+        } else {
+          this.pythonProcess.kill('SIGTERM');
+        }
+      } catch (e) {
+        writeLog(`強制終了エラー: ${e}`);
+      }
+
+      // 終了を待機（最大5秒）
+      await this.waitForExit(5000);
+    }
+
+    this.pythonProcess = null;
+    this.isRunning = false;
+    this.isExternalServer = false;
+    this.isShuttingDown = false;
+    this.isStopping = false;
+    this.notifyServerStatus('stopped');
+    writeLog('Kotoba-Whisper Pythonサーバー停止完了');
+  }
+
+  // プロセス終了を待機
+  private waitForExit(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (!this.pythonProcess) {
+        resolve(true);
+        return;
+      }
+
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, timeoutMs);
+
+      this.pythonProcess!.on('exit', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(true);
+        }
+      });
+    });
   }
 
   // サーバー状態確認
@@ -362,37 +556,31 @@ class KotobaWhisperManager {
   // 外部サーバー状態チェック（WebSocket接続テスト）
   async checkExternalServer(): Promise<boolean> {
     try {
-      writeLog('外部サーバーチェック開始: ws://127.0.0.1:8770');
       const WebSocket = require('ws');
       const ws = new WebSocket('ws://127.0.0.1:8770');
 
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
-          writeLog('外部サーバーチェック: タイムアウト (3秒)');
-          ws.close();
+          try { ws.close(); } catch {}
           resolve(false);
         }, 3000);
 
         ws.on('open', () => {
-          writeLog('外部サーバーチェック: 接続成功');
           clearTimeout(timeout);
-          ws.close();
-          writeLog('外部Pythonサーバーが動作中です');
+          try { ws.close(); } catch {}
           resolve(true);
         });
 
-        ws.on('error', (error: Error) => {
-          writeLog(`外部サーバーチェック: 接続エラー - ${error.message || error}`);
+        ws.on('error', () => {
           clearTimeout(timeout);
           resolve(false);
         });
 
         ws.on('close', () => {
-          writeLog('外部サーバーチェック: 接続終了');
+          clearTimeout(timeout);
         });
       });
-    } catch (error) {
-      writeLog(`外部サーバーチェックエラー: ${error}`);
+    } catch {
       return false;
     }
   }
@@ -492,18 +680,11 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   createWindow();
 
-  // Pythonサーバーの自動起動を試行（失敗してもアプリは継続）
+  // Pythonサーバーの自動起動を試行（非ブロッキング・失敗してもアプリは継続）
   writeLog('Pythonサーバー自動起動を試行...');
-  try {
-    const success = await whisperManager.startServer();
-    if (success) {
-      writeLog('Pythonサーバー自動起動成功');
-    } else {
-      writeLog('Pythonサーバー自動起動失敗 - 手動起動を使用してください');
-    }
-  } catch (error) {
-    writeLog(`Pythonサーバー自動起動エラー: ${error} - 手動起動を使用してください`);
-  }
+  whisperManager.startServer()
+    .then(success => writeLog(success ? 'Pythonサーバー自動起動成功' : 'Pythonサーバー自動起動失敗 - 手動起動を使用してください'))
+    .catch(error => writeLog(`Pythonサーバー自動起動エラー: ${error} - 手動起動を使用してください`));
 
   app.on('activate', () => {
     // macOS対応: ドックアイコンがクリックされた際の処理
@@ -555,19 +736,25 @@ if (process.platform === 'darwin') {
 
 // すべてのウィンドウが閉じられたときの処理
 app.on('window-all-closed', () => {
-  // Pythonサーバーを停止
-  whisperManager.stopServer();
-  
-  // macOS以外では完全にアプリを終了
+  // macOS以外では完全にアプリを終了（サーバー停止はbefore-quitで処理）
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// アプリケーション終了前の処理
-app.on('before-quit', () => {
+// アプリケーション終了前の処理（graceful shutdownを待機するためasync）
+let isQuitting = false;
+app.on('before-quit', async (event) => {
+  if (isQuitting) return;
+  isQuitting = true;
   writeLog('アプリケーション終了処理開始');
-  whisperManager.stopServer();
+  event.preventDefault();
+  // サーバーの再起動を完全に禁止
+  whisperManager.setQuitting(true);
+  // isStoppingをリセットしてstopServer()が実際に実行されるようにする
+  whisperManager.resetStopping();
+  await whisperManager.stopServer().catch(e => writeLog(`before-quit stopServer error: ${e}`));
+  app.exit();
 });
 
 // IPC通信ハンドラー
@@ -1311,7 +1498,7 @@ ipcMain.handle('speech:startServer', async (): Promise<boolean> => {
 
 // Pythonサーバー停止
 ipcMain.handle('speech:stopServer', async (): Promise<void> => {
-  whisperManager.stopServer();
+  await whisperManager.stopServer();
 });
 
 // モデル管理関連のIPCハンドラー

@@ -53,6 +53,7 @@ export interface ElectronAPI {
   
   // 音声認識イベントリスナー
   onSpeechProgress: (callback: (progress: SpeechProgress) => void) => void;
+  onSpeechServerStatus: (callback: (status: { status: string; pid?: number }) => void) => void;
   
   // 文字起こしファイル操作
   saveTranscriptionFile: (audioFilePath: string, transcription: TranscriptionFile) => Promise<string>;
@@ -329,6 +330,9 @@ const electronAPI: ElectronAPI = {
   // 音声認識イベントリスナー
   onSpeechProgress: (callback: (progress: SpeechProgress) => void) => {
     ipcRenderer.on('speech:progress', (event, progress) => callback(progress));
+  },
+  onSpeechServerStatus: (callback: (status: { status: string; pid?: number }) => void) => {
+    ipcRenderer.on('speech:serverStatus', (event, status) => callback(status));
   },
   
   // 文字起こしファイル操作

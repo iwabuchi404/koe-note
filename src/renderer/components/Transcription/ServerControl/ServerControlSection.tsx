@@ -19,6 +19,8 @@ interface ServerStatus {
   pid?: number
 }
 
+type ServerStatusLabel = 'stopped' | 'starting' | 'running' | 'failed' | 'external'
+
 interface ServerControlSectionProps {
   currentModel: string
   onModelChange: (model: string) => void
@@ -35,6 +37,7 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
   onServerStop
 }) => {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({ isRunning: false })
+  const [statusLabel, setStatusLabel] = useState<ServerStatusLabel>('stopped')
   const [selectedModel, setSelectedModel] = useState<string>(currentModel)
   const [installedModels, setInstalledModels] = useState<ModelInfo[]>([])
 
@@ -58,6 +61,19 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
     const interval = setInterval(checkServerStatus, 5000)
 
     return () => clearInterval(interval)
+  }, [])
+
+  // リアルタイムのサーバー状態通知を受信
+  useEffect(() => {
+    window.electronAPI.onSpeechServerStatus((data) => {
+      logger.debug(`サーバー状態通知: ${data.status}`)
+      setStatusLabel(data.status as ServerStatusLabel)
+      if (data.status === 'running') {
+        setServerStatus({ isRunning: true, pid: data.pid })
+      } else if (data.status === 'stopped' || data.status === 'failed') {
+        setServerStatus({ isRunning: false })
+      }
+    })
   }, [])
 
   // インストール済みモデルの取得（初回＋定期）
@@ -114,14 +130,21 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
           </span>
           <span style={{ 
             fontSize: 'var(--font-size-sm)', 
-            color: serverStatus.isRunning ? 'var(--color-success)' : 'var(--color-error)',
+            color: statusLabel === 'running' || statusLabel === 'external' ? 'var(--color-success)' 
+                 : statusLabel === 'starting' ? 'var(--color-warning, #f0ad4e)'
+                 : statusLabel === 'failed' ? 'var(--color-error)'
+                 : 'var(--color-error)',
             fontWeight: 'var(--font-weight-medium)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px'
           }}>
-            {serverStatus.isRunning ? '🟢 起動中' : '🔴 停止中'}
-            {serverStatus.pid && (
+            {statusLabel === 'running' && '🟢 起動中'}
+            {statusLabel === 'starting' && '🟡 起動中...'}
+            {statusLabel === 'stopped' && '🔴 停止中'}
+            {statusLabel === 'failed' && '⚠️ 起動失敗'}
+            {statusLabel === 'external' && '🟢 外部サーバー'}
+            {serverStatus.pid && serverStatus.pid > 0 && (
               <span style={{ 
                 fontSize: 'var(--font-size-xs)',
                 color: 'var(--color-text-tertiary)'
@@ -139,16 +162,16 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
         }}>
           <button
             onClick={onServerStart}
-            disabled={serverStatus.isRunning}
+            disabled={statusLabel === 'running' || statusLabel === 'starting' || statusLabel === 'external'}
             style={{
               padding: '6px 12px',
               fontSize: 'var(--font-size-sm)',
-              backgroundColor: serverStatus.isRunning ? 'var(--color-bg-tertiary)' : 'var(--color-success)',
-              color: serverStatus.isRunning ? 'var(--color-text-secondary)' : 'white',
+              backgroundColor: (statusLabel === 'running' || statusLabel === 'starting' || statusLabel === 'external') ? 'var(--color-bg-tertiary)' : 'var(--color-success)',
+              color: (statusLabel === 'running' || statusLabel === 'starting' || statusLabel === 'external') ? 'var(--color-text-secondary)' : 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: serverStatus.isRunning ? 'not-allowed' : 'pointer',
-              opacity: serverStatus.isRunning ? 0.6 : 1,
+              cursor: (statusLabel === 'running' || statusLabel === 'starting' || statusLabel === 'external') ? 'not-allowed' : 'pointer',
+              opacity: (statusLabel === 'running' || statusLabel === 'starting' || statusLabel === 'external') ? 0.6 : 1,
               transition: 'all 0.2s ease'
             }}
           >
@@ -156,16 +179,16 @@ const ServerControlSection: React.FC<ServerControlSectionProps> = ({
           </button>
           <button
             onClick={onServerStop}
-            disabled={!serverStatus.isRunning}
+            disabled={statusLabel === 'stopped' || statusLabel === 'starting' || statusLabel === 'failed'}
             style={{
               padding: '6px 12px',
               fontSize: 'var(--font-size-sm)',
-              backgroundColor: !serverStatus.isRunning ? 'var(--color-bg-tertiary)' : 'var(--color-error)',
-              color: !serverStatus.isRunning ? 'var(--color-text-secondary)' : 'white',
+              backgroundColor: (statusLabel === 'stopped' || statusLabel === 'starting' || statusLabel === 'failed') ? 'var(--color-bg-tertiary)' : 'var(--color-error)',
+              color: (statusLabel === 'stopped' || statusLabel === 'starting' || statusLabel === 'failed') ? 'var(--color-text-secondary)' : 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: !serverStatus.isRunning ? 'not-allowed' : 'pointer',
-              opacity: !serverStatus.isRunning ? 0.6 : 1,
+              cursor: (statusLabel === 'stopped' || statusLabel === 'starting' || statusLabel === 'failed') ? 'not-allowed' : 'pointer',
+              opacity: (statusLabel === 'stopped' || statusLabel === 'starting' || statusLabel === 'failed') ? 0.6 : 1,
               transition: 'all 0.2s ease'
             }}
           >
