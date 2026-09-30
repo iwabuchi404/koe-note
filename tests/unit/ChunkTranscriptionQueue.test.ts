@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { ChunkQueue } from '@/chunk/queue/ChunkQueue'
-import { AudioChunk, ChunkResult, QueueItem } from '@/chunk/types'
+import { ChunkQueue } from '@renderer/chunk/queue/ChunkQueue'
+import { AudioChunk, ChunkResult, QueueItem, QueueStats } from '@renderer/chunk/types'
 
 describe('ChunkTranscriptionQueue', () => {
   let queue: ChunkQueue
@@ -124,7 +124,7 @@ describe('ChunkTranscriptionQueue', () => {
       
       let processedResult: ChunkResult | null = null
       
-      queue.onChunkProcessed((result) => {
+      queue.onChunkProcessed((result: ChunkResult) => {
         processedResult = result
       })
 
@@ -134,10 +134,11 @@ describe('ChunkTranscriptionQueue', () => {
       await new Promise(resolve => setTimeout(resolve, 50))
 
       expect(processedResult).toBeTruthy()
-      expect(processedResult?.chunkId).toBe('test-chunk-1')
-      expect(processedResult?.status).toBe('completed')
-      expect(processedResult?.segments).toHaveLength(1)
-      expect(processedResult?.segments[0].text).toBe('テスト音声')
+      const captured = processedResult as ChunkResult | null
+      expect(captured?.chunkId).toBe('test-chunk-1')
+      expect(captured?.status).toBe('completed')
+      expect(captured?.segments).toHaveLength(1)
+      expect(captured?.segments[0].text).toBe('テスト音声')
       
       // テスト後はfakeTimerに戻す
       vi.useFakeTimers()
@@ -167,7 +168,7 @@ describe('ChunkTranscriptionQueue', () => {
       
       const processedResults: ChunkResult[] = []
       
-      queue.onChunkProcessed((result) => {
+      queue.onChunkProcessed((result: ChunkResult) => {
         processedResults.push(result)
       })
 
@@ -209,7 +210,7 @@ describe('ChunkTranscriptionQueue', () => {
       })
 
       let finalResult: ChunkResult | null = null
-      queue.onChunkProcessed((result) => {
+      queue.onChunkProcessed((result: ChunkResult) => {
         finalResult = result
       })
 
@@ -219,8 +220,9 @@ describe('ChunkTranscriptionQueue', () => {
       await vi.advanceTimersByTimeAsync(15000) // 1000 + 2000 + 4000 + 8000ms
 
       expect(callCount).toBe(3) // 2回失敗 + 1回成功
-      expect(finalResult?.status).toBe('completed')
-      expect(finalResult?.segments[0].text).toBe('リトライ成功')
+      const captured = finalResult as ChunkResult | null
+      expect(captured?.status).toBe('completed')
+      expect(captured?.segments[0].text).toBe('リトライ成功')
     })
 
     it('最大リトライ回数に達した場合に失敗として処理されること', async () => {
@@ -322,9 +324,9 @@ describe('ChunkTranscriptionQueue', () => {
       // 実タイマーに戻す
       vi.useRealTimers()
       
-      const progressUpdates: any[] = []
+      const progressUpdates: QueueStats[] = []
       
-      queue.onProgress((stats) => {
+      queue.onProgress((stats: QueueStats) => {
         progressUpdates.push({ ...stats })
       })
 

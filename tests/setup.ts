@@ -1,74 +1,33 @@
 import '@testing-library/jest-dom'
+import { installElectronAPI } from './mocks/electronAPI'
 
-// モック: Electron APIs
-Object.defineProperty(window, 'electronAPI', {
-  value: {
-    // ファイル操作
-    loadAudioFile: vi.fn().mockResolvedValue('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj'),
-    saveFile: vi.fn().mockResolvedValue('/mock/path/file.wav'),
-    deleteFile: vi.fn().mockResolvedValue(true),
-    getFileSize: vi.fn().mockResolvedValue(1024),
-    
-    // 設定
-    loadSettings: vi.fn().mockResolvedValue({
-      saveFolder: '/mock/save/folder',
-      whisperServerUrl: 'http://localhost:5000',
-      chunkSize: 10,
-      overlapSize: 2
-    }),
-    saveSettings: vi.fn().mockResolvedValue(true),
-    
-    // 音声認識
-    speechTranscribe: vi.fn().mockResolvedValue({
-      segments: [
-        { start: 0, end: 5, text: 'モックテキスト' }
-      ],
-      duration: 5,
-      language: 'ja'
-    }),
-    
-    // システム
-    showOpenDialog: vi.fn().mockResolvedValue({
-      canceled: false,
-      filePaths: ['/mock/file.wav']
-    }),
-    showSaveDialog: vi.fn().mockResolvedValue({
-      canceled: false,
-      filePath: '/mock/save/file.wav'
-    }),
-    
-    // ログ出力
-    logWrite: vi.fn().mockResolvedValue(undefined)
-  },
-  writable: true
-})
+// モック: Electron APIs（ElectronAPI 型に追従するため mocks/electronAPI.ts に定義）
+installElectronAPI()
 
 // モック: MediaRecorder
 Object.defineProperty(window, 'MediaRecorder', {
   value: class MockMediaRecorder {
     static isTypeSupported = vi.fn().mockReturnValue(true)
-    
+
     state = 'inactive'
-    ondataavailable = null
-    onstart = null
-    onstop = null
-    
+    ondataavailable: ((event: CustomEvent<{ data: Blob }>) => void) | null = null
+    onstart: ((event: Event) => void) | null = null
+    onstop: ((event: Event) => void) | null = null
+
     start() {
       this.state = 'recording'
-      if (this.onstart) this.onstart(new Event('start'))
+      this.onstart?.(new Event('start'))
     }
-    
+
     stop() {
       this.state = 'inactive'
-      if (this.onstop) this.onstop(new Event('stop'))
+      this.onstop?.(new Event('stop'))
     }
-    
+
     requestData() {
-      if (this.ondataavailable) {
-        this.ondataavailable(new CustomEvent('dataavailable', {
-          detail: { data: new Blob(['mock audio data'], { type: 'audio/webm' }) }
-        }))
-      }
+      this.ondataavailable?.(new CustomEvent('dataavailable', {
+        detail: { data: new Blob(['mock audio data'], { type: 'audio/webm' }) }
+      }))
     }
   },
   writable: true

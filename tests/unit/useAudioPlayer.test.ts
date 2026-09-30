@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useAudioPlayer } from '@/audio/hooks/useAudioPlayer'
+import { useAudioPlayer } from '@renderer/audio/hooks/useAudioPlayer'
 
 // HTMLAudioElementのモック
 const createMockAudioElement = () => {
@@ -74,7 +74,7 @@ describe('useAudioPlayer', () => {
     })
 
     // ElectronAPIのモックを再設定（setup.tsのモックがrestoreAllMocksでクリアされるため）
-    if (!window.electronAPI?.loadAudioFile?.getMockImplementation) {
+    if (!vi.isMockFunction(window.electronAPI?.loadAudioFile)) {
       Object.defineProperty(window, 'electronAPI', {
         value: {
           ...window.electronAPI,

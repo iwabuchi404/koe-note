@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom", "react", "react-dom"]
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "scripts/**/*",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
+}
