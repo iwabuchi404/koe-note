@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpack = require('webpack');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   target: 'web',
@@ -56,7 +57,12 @@ module.exports = {
       process: 'process/browser',
       Buffer: ['buffer', 'Buffer'],
     }),
-  ],
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: 'node_modules/lamejs/lame.min.js', to: 'lame.min.js' },
+      ],
+    }),
+ ],
   devServer: {
     static: {
       directory: path.join(__dirname, 'dist/renderer'),
