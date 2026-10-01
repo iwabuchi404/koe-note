@@ -7,6 +7,7 @@ import React, { createContext, useContext, useRef, useState, useCallback, useEff
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats } from '../audio/services/AudioWorkletRecordingService'
 import { TranscriptionResult, TranscriptionProgress } from '../audio/services/TranscriptionWebSocketService'
 import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileService'
+import { durationFromBytes } from '../services/transcription/transcriptFormat'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import { useAppContext } from '../App'
@@ -100,6 +101,12 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const recordingStartTimeRef = useRef<number>(0)
   const baseFileNameRef = useRef<string>('')
 
+  // 文字起こしヘッダーのメタデータを実測値で書くための補助ref
+  // （非同期コールバックの中から最新のReact stateを参照できないため）
+  const chunkSizesRef = useRef<Map<number, number>>(new Map())
+  const transcribedSegmentCountRef = useRef<number>(0)
+  const transcriptionStartedAtRef = useRef<string>('')
+
   // エラー追加ヘルパー
   const addError = useCallback((type: 'recording' | 'transcription' | 'encoding', message: string) => {
     const newError = {
@@ -127,6 +134,11 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       blob: event.chunk,
       transcriptionStatus: 'pending' as const
     }
+
+    // 文字起こしヘッダー（duration）とセグメント位置（audioOffset）の算出に必要な
+    // バイト数を、Reactのstateと別に保持する。非同期コールバックの中から
+    // 最新stateを参照できないため。
+    chunkSizesRef.current.set(event.chunkNumber, event.size)
 
     setRecordingData(prev => ({
       ...prev,
@@ -190,16 +202,38 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // 文字起こし結果をファイルに追記
     if (result.text && result.text.trim()) {
       try {
-        const chunkTimestamp = new Date()
-        const filePath = await AdvancedRecordingFileService.appendTranscription(
-          result.chunkNumber,
-          result.text,
-          chunkTimestamp,
-          baseFileNameRef.current,
-          true
-        )
+        const config = currentConfigRef.current
+        const sizes = chunkSizesRef.current
+
+        // このチャンクより前のバイト数合計 = 音声上での開始位置
+        let bytesBefore = 0
+        let totalBytes = 0
+        sizes.forEach((size, chunkNumber) => {
+          totalBytes += size
+          if (chunkNumber < result.chunkNumber) {
+            bytesBefore += size
+          }
+        })
+
+        transcribedSegmentCountRef.current += 1
+        if (!transcriptionStartedAtRef.current) {
+          transcriptionStartedAtRef.current = new Date().toISOString()
+        }
+
+        const filePath = await AdvancedRecordingFileService.appendTranscription({
+          chunkNumber: result.chunkNumber,
+          audioOffsetSeconds: durationFromBytes(bytesBefore),
+          text: result.text,
+          baseName: baseFileNameRef.current,
+          audioFileName: `${baseFileNameRef.current}.${config.recordingSettings.format}`,
+          model: config.transcriptionSettings.model,
+          language: config.transcriptionSettings.language,
+          segmentCount: transcribedSegmentCountRef.current,
+          durationSeconds: durationFromBytes(totalBytes),
+          transcribedAt: transcriptionStartedAtRef.current
+        })
         logger.info(`グローバル録音 チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
-        
+
         // 文字起こしファイル保存後は左ペインが自動更新
       } catch (error) {
         const errorMessage = `チャンク#${result.chunkNumber}文字起こし追記失敗: ${error instanceof Error ? error.message : String(error)}`
@@ -245,6 +279,11 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         .replace(/[-T]/g, '_')
         .slice(0, 15) // YYYYMMDD_HHMMSS
       baseFileNameRef.current = `recording_${timestamp}`
+
+      // 文字起こしメタデータ用の補助refをセッション単位でリセット
+      chunkSizesRef.current = new Map()
+      transcribedSegmentCountRef.current = 0
+      transcriptionStartedAtRef.current = ''
 
       // AudioWorkletRecordingServiceインスタンス作成
       audioWorkletServiceRef.current = new AudioWorkletRecordingService(

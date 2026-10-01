@@ -1,280 +1,53 @@
 /**
- * AdvancedRecordingFileService - 新録音システム専用ファイル保存サービス
- * 音声ファイルと文字起こしテキストの統合保存機能
+ * AdvancedRecordingFileService - 録音のファイル保存
+ *
+ * 実運用で使われるのは次の2つだけ:
+ * - saveChunk: 録音チャンクを音声ファイルに追記
+ * - appendTranscription: 文字起こしセグメントを .trans.txt に追記
+ *
+ * 過去のバッチ書き出し処理（saveRecording / saveAudioFile /
+ * saveTranscriptionFile / getPresetOptions / showSaveDialog）は
+ * 呼び出し元が存在しないため削除済み。
+ *
+ * 既知の制約: 追記が毎回ファイル全体を読み書きするため O(n²)。
+ * Phase E でチャンク単位の manifest 導入時に置き換える。
  */
 
-import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
+import {
+  formatHeader,
+  formatSegment,
+  type TranscriptHeader,
+  type TranscriptSegment
+} from './transcription/transcriptFormat'
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
 
-export interface SaveFileOptions {
-  baseName?: string // ベースファイル名（省略時は自動生成）
-  saveAudio: boolean // 音声ファイルを保存するか
-  saveTranscription: boolean // 文字起こしテキストを保存するか
-  format: 'mp3' | 'wav' // 音声フォーマット
-  includeTimestamps: boolean // テキストにタイムスタンプを含めるか
-  workingDirectory?: string // 保存先ディレクトリ
-}
-
-export interface SaveResult {
-  success: boolean
-  audioFilePath?: string
-  textFilePath?: string
-  errors: string[]
-}
-
-interface FileTranscriptionData {
+export interface AppendTranscriptionParams {
   chunkNumber: number
-  timestamp: Date
+  /** 音声上での開始位置（秒）。結果の到着時刻ではない */
+  audioOffsetSeconds: number
   text: string
-  duration?: number
-}
-
-interface FileTranscriptionMetadata {
-  audioFile: string
+  baseName: string
+  /** ヘッダーに書く音声ファイル名 */
+  audioFileName: string
+  /** 実際に使用したモデル */
   model: string
-  transcribedAt: string
-  duration: number
-  segmentCount: number
   language: string
-  speakers: string[]
-  coverage: number
+  /** 追記済みセグメント数（呼び出し側の責務） */
+  segmentCount: number
+  /** 録音済み音声の長さ（秒） */
+  durationSeconds: number
+  /** 文字起こし開始時刻（ISO8601） */
+  transcribedAt: string
+  workingDirectory?: string
 }
 
 export class AdvancedRecordingFileService {
-  
   /**
-   * 録音データを統合保存
-   */
-  static async saveRecording(
-    recordingData: AdvancedRecordingTabData,
-    options: SaveFileOptions
-  ): Promise<SaveResult> {
-    const result: SaveResult = {
-      success: false,
-      errors: []
-    }
-
-    try {
-      logger.info('録音データ保存開始', { options, chunksCount: recordingData.chunks.length })
-
-      // ベースファイル名生成
-      const baseName = options.baseName || this.generateBaseName(recordingData.startTime)
-      
-      // 作業ディレクトリの確認
-      const workingDir = options.workingDirectory || await this.getDefaultWorkingDirectory()
-      
-      // 音声ファイル保存
-      if (options.saveAudio && recordingData.chunks.length > 0) {
-        try {
-          const audioFilePath = await this.saveAudioFile(
-            recordingData.chunks.map(chunk => chunk.blob),
-            workingDir,
-            baseName,
-            options.format
-          )
-          result.audioFilePath = audioFilePath
-          logger.info('音声ファイル保存完了', { path: audioFilePath })
-        } catch (error) {
-          const errorMessage = `音声ファイル保存失敗: ${error instanceof Error ? error.message : String(error)}`
-          result.errors.push(errorMessage)
-          logger.error('音声ファイル保存エラー', new Error(errorMessage))
-        }
-      }
-
-      // 文字起こしテキスト保存
-      if (options.saveTranscription) {
-        try {
-          const transcriptionData = this.extractTranscriptionData(recordingData)
-          
-          if (transcriptionData.length > 0) {
-            const textFilePath = await this.saveTranscriptionFile(
-              transcriptionData,
-              workingDir,
-              baseName,
-              options.includeTimestamps
-            )
-            result.textFilePath = textFilePath
-            logger.info('文字起こしファイル保存完了', { path: textFilePath })
-          } else {
-            result.errors.push('文字起こしデータが見つかりません')
-          }
-        } catch (error) {
-          const errorMessage = `文字起こしファイル保存失敗: ${error instanceof Error ? error.message : String(error)}`
-          result.errors.push(errorMessage)
-          logger.error('文字起こしファイル保存エラー', new Error(errorMessage))
-        }
-      }
-
-      // 成功判定
-      result.success = result.errors.length === 0 && 
-        ((!options.saveAudio || !!result.audioFilePath) && 
-         (!options.saveTranscription || !!result.textFilePath))
-
-      logger.info('録音データ保存完了', { success: result.success, errors: result.errors.length })
-      return result
-
-    } catch (error) {
-      const errorMessage = `保存処理エラー: ${error instanceof Error ? error.message : String(error)}`
-      result.errors.push(errorMessage)
-      logger.error('保存処理エラー', new Error(errorMessage))
-      return result
-    }
-  }
-
-  /**
-   * 音声ファイル保存
-   */
-  private static async saveAudioFile(
-    chunks: Blob[],
-    directory: string,
-    baseName: string,
-    format: 'mp3' | 'wav'
-  ): Promise<string> {
-    // チャンクを統合
-    const combinedBlob = new Blob(chunks, { 
-      type: format === 'mp3' ? 'audio/mp3' : 'audio/wav' 
-    })
-
-    const fileName = `${baseName}.${format}`
-    const filePath = `${directory}/${fileName}`
-
-    try {
-      // BlobをArrayBufferに変換してBufferに変換
-      const arrayBuffer = await combinedBlob.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
-      
-      // saveToPath APIを使用（フルパス指定）
-      const success = await window.electronAPI.saveFileToPath(filePath, buffer)
-      
-      if (success) {
-        logger.info('音声ファイル保存完了', { filePath })
-        return filePath
-      } else {
-        throw new Error('音声ファイルの保存に失敗しました')
-      }
-    } catch (error) {
-      logger.error('音声ファイル保存エラー', new Error(String(error)))
-      throw new Error(`音声ファイルの保存に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  /**
-   * 文字起こしテキストファイル保存
-   */
-  private static async saveTranscriptionFile(
-    transcriptionData: FileTranscriptionData[],
-    directory: string,
-    baseName: string,
-    includeTimestamps: boolean
-  ): Promise<string> {
-    const fileName = `${baseName}.trans.txt`
-    const filePath = `${directory}/${fileName}`
-
-    // YAML+テキスト形式で内容生成
-    const metadata = this.generateFileTranscriptionMetadata(transcriptionData, baseName)
-    const content = this.formatTranscriptionContent(transcriptionData, metadata, includeTimestamps)
-
-    try {
-      // saveTextFile APIを使用
-      const success = await window.electronAPI.saveTextFile(filePath, content)
-      
-      if (success) {
-        logger.info('文字起こしファイル保存完了', { filePath })
-        return filePath
-      } else {
-        throw new Error('文字起こしファイルの保存に失敗しました')
-      }
-    } catch (error) {
-      logger.error('文字起こしファイル保存エラー', new Error(String(error)))
-      throw new Error(`文字起こしファイルの保存に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  /**
-   * 文字起こしデータ抽出
-   */
-  private static extractTranscriptionData(recordingData: AdvancedRecordingTabData): FileTranscriptionData[] {
-    return recordingData.chunks
-      .filter(chunk => chunk.transcriptionText && chunk.transcriptionText.trim())
-      .map(chunk => ({
-        chunkNumber: chunk.id,
-        timestamp: chunk.timestamp,
-        text: chunk.transcriptionText!,
-        duration: undefined // 今後実装
-      }))
-      .sort((a, b) => a.chunkNumber - b.chunkNumber) // チャンク順でソート
-  }
-
-  /**
-   * ベースファイル名生成（design-doc準拠）
-   */
-  private static generateBaseName(startTime: Date): string {
-    const timestamp = startTime.toISOString()
-      .replace(/:/g, '')
-      .replace(/\./g, '')
-      .replace(/[-T]/g, '_')
-      .slice(0, 15) // YYYYMMDD_HHMMSS
-
-    return `recording_${timestamp}`
-  }
-
-  /**
-   * デフォルト作業ディレクトリ取得
-   */
-  private static async getDefaultWorkingDirectory(): Promise<string> {
-    try {
-      // 設定から保存フォルダを取得
-      const settings = await window.electronAPI.loadSettings()
-      if (settings && settings.saveFolder) {
-        logger.info('設定フォルダを使用', { folder: settings.saveFolder })
-        return settings.saveFolder
-      }
-      
-      // フォールバック: Electron APIから作業ディレクトリを取得
-      const workingDir = await window.electronAPI.getWorkingDirectory()
-      return workingDir || './recordings'
-    } catch (error) {
-      logger.warn('作業ディレクトリ取得失敗、デフォルトを使用', { error })
-      return './recordings'
-    }
-  }
-
-  /**
-   * 保存オプションのプリセット
-   */
-  static getPresetOptions(): Record<string, SaveFileOptions> {
-    return {
-      audioOnly: {
-        saveAudio: true,
-        saveTranscription: false,
-        format: 'mp3',
-        includeTimestamps: false
-      },
-      transcriptionOnly: {
-        saveAudio: false,
-        saveTranscription: true,
-        format: 'mp3',
-        includeTimestamps: true
-      },
-      both: {
-        saveAudio: true,
-        saveTranscription: true,
-        format: 'mp3',
-        includeTimestamps: true
-      },
-      bothPlainText: {
-        saveAudio: true,
-        saveTranscription: true,
-        format: 'mp3',
-        includeTimestamps: false
-      }
-    }
-  }
-
-  /**
-   * チャンク単位での音声ファイル保存（追記）
+   * 録音チャンクを音声ファイルに追記する
+   *
+   * 既存ファイルを読み込み、新チャンクを結合して書き戻す。
    */
   static async saveChunk(
     chunk: Blob,
@@ -288,218 +61,128 @@ export class AdvancedRecordingFileService {
     const filePath = `${directory}/${fileName}`
 
     try {
-      // 既存ファイルがある場合は結合、ない場合は新規作成
       let finalBlob: Blob
-      
+
       try {
-        // 既存ファイルを読み込み
         const existingBuffer = await window.electronAPI.readFile(filePath)
-        const existingBlob = new Blob([existingBuffer], { 
-          type: format === 'mp3' ? 'audio/mp3' : 'audio/wav' 
+        const existingBlob = new Blob([existingBuffer], {
+          type: format === 'mp3' ? 'audio/mp3' : 'audio/wav'
         })
-        
-        // 既存ファイルと新しいチャンクを結合
-        finalBlob = new Blob([existingBlob, chunk], { 
-          type: format === 'mp3' ? 'audio/mp3' : 'audio/wav' 
+        finalBlob = new Blob([existingBlob, chunk], {
+          type: format === 'mp3' ? 'audio/mp3' : 'audio/wav'
         })
-        
         logger.info(`チャンク#${chunkNumber}を既存ファイルに追記`, { filePath })
-      } catch (error) {
-        // ファイルが存在しない場合は新規作成
+      } catch {
         finalBlob = chunk
         logger.info(`チャンク#${chunkNumber}で新規ファイル作成`, { filePath })
       }
 
-      // BlobをArrayBufferに変換してBufferに変換
       const arrayBuffer = await finalBlob.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
-      
-      // saveToPath APIを使用（フルパス指定）
+
       const success = await window.electronAPI.saveFileToPath(filePath, buffer)
-      
+
       if (success) {
         logger.info(`チャンク#${chunkNumber}保存完了`, { filePath })
         return filePath
-      } else {
-        throw new Error(`チャンク#${chunkNumber}の保存に失敗しました`)
       }
+      throw new Error(`チャンク#${chunkNumber}の保存に失敗しました`)
     } catch (error) {
       logger.error(`チャンク#${chunkNumber}保存エラー`, new Error(String(error)))
-      throw new Error(`チャンク#${chunkNumber}の保存に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(
+        `チャンク#${chunkNumber}の保存に失敗しました: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
   /**
-   * 文字起こし結果をファイルに追記
+   * 文字起こしセグメントを .trans.txt に追記する
+   *
+   * ヘッダーは毎回現在の値で作り直す。segment_count と duration は
+   * 録音の進行とともに増えるため、初回作成型のままでは必ず嘘になる。
+   * ファイル全体を読み書きしているため、ヘッダー更新のコストは無視できる。
+   *
+   * transcribedAt は「そのセッションの文字起こし開始時刻」を渡すこと
+   * （セッション内で値が変わるとヘッダーの時刻が書き換わる）。
    */
-  static async appendTranscription(
-    chunkNumber: number,
-    text: string,
-    timestamp: Date,
-    baseName: string,
-    includeTimestamps: boolean = true,
-    workingDirectory?: string
-  ): Promise<string> {
+  static async appendTranscription(params: AppendTranscriptionParams): Promise<string> {
+    const {
+      chunkNumber,
+      text,
+      baseName,
+      workingDirectory
+    } = params
+
     const directory = workingDirectory || await this.getDefaultWorkingDirectory()
-    const fileName = `${baseName}.trans.txt`
-    const filePath = `${directory}/${fileName}`
+    const filePath = `${directory}/${baseName}.trans.txt`
 
     try {
-      let content = ''
-      
-      // 既存ファイルの内容を読み込み
+      let existing = ''
       try {
         const existingBuffer = await window.electronAPI.readFile(filePath)
-        content = Buffer.from(existingBuffer).toString('utf-8')
-      } catch (error) {
-        // ファイルが存在しない場合はヘッダーを作成
-        if (includeTimestamps) {
-          // 新規ファイル作成時はメタデータヘッダーを生成
-          const tempData: FileTranscriptionData[] = [{ chunkNumber, timestamp, text }]
-          const metadata = this.generateFileTranscriptionMetadata(tempData, baseName)
-          content = this.formatFileTranscriptionMetadataHeader(metadata)
-        }
+        existing = Buffer.from(existingBuffer).toString('utf-8')
+      } catch {
+        existing = ''
       }
 
-      // 新しい文字起こし結果を追記
-      let newLine = ''
-      if (includeTimestamps) {
-        // HH:MM:SS.s 形式に変換
-        const timeString = this.formatTimestamp(timestamp)
-        newLine = `[${timeString}] ${text}\n`
-      } else {
-        newLine = `${text}\n`
+      // 既存ファイルからセグメント本体（ヘッダー以降）だけを取り出す
+      const HEADER_END = '---\n\n'
+      const bodyStart = existing.indexOf(HEADER_END)
+      const body = bodyStart >= 0 ? existing.slice(bodyStart + HEADER_END.length) : existing
+
+      const header: TranscriptHeader = {
+        audioFile: params.audioFileName,
+        model: params.model,
+        transcribedAt: params.transcribedAt,
+        durationSeconds: params.durationSeconds,
+        segmentCount: params.segmentCount,
+        language: params.language,
+        speakers: []
       }
 
-      content += newLine
+      const segment: TranscriptSegment = {
+        chunkNumber,
+        audioOffsetSeconds: params.audioOffsetSeconds,
+        text
+      }
 
+      const content = formatHeader(header) + body + formatSegment(segment)
       const success = await window.electronAPI.saveTextFile(filePath, content)
-      
-      if (success) {
-        logger.info(`チャンク#${chunkNumber}文字起こしを追記`, { filePath, text: text.substring(0, 50) + '...' })
-        return filePath
-      } else {
+
+      if (!success) {
         throw new Error(`チャンク#${chunkNumber}の文字起こし追記に失敗しました`)
       }
-    } catch (error) {
-      logger.error(`チャンク#${chunkNumber}文字起こし追記エラー`, new Error(String(error)))
-      throw new Error(`チャンク#${chunkNumber}の文字起こし追記に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
 
-  /**
-   * ファイル保存ダイアログ表示
-   */
-  static async showSaveDialog(
-    defaultName: string,
-    filters: Array<{ name: string, extensions: string[] }>
-  ): Promise<string | null> {
-    try {
-      const filePath = await window.electronAPI.showSaveDialog({
-        defaultPath: defaultName,
-        filters
+      logger.info(`チャンク#${chunkNumber}文字起こしを追記`, {
+        filePath,
+        audioOffsetSeconds: params.audioOffsetSeconds,
+        text: text.substring(0, 50) + '...'
       })
       return filePath
     } catch (error) {
-      logger.error('ファイル保存ダイアログエラー', new Error(String(error)))
-      // ダイアログが利用できない場合は、現在時刻をベースとしたファイル名を返す
-      const timestamp = new Date().toISOString()
-        .replace(/:/g, '')
-        .replace(/\./g, '')
-        .replace(/[-T]/g, '_')
-        .slice(0, 15) // YYYYMMDD_HHMMSS
-      return `./recordings/${defaultName}_${timestamp}`
+      logger.error(`チャンク#${chunkNumber}文字起こし追記エラー`, new Error(String(error)))
+      throw new Error(
+        `チャンク#${chunkNumber}の文字起こし追記に失敗しました: ${error instanceof Error ? error.message : String(error)}`
+      )
     }
   }
 
   /**
-   * 文字起こしメタデータ生成
+   * 保存先ディレクトリ取得
    */
-  private static generateFileTranscriptionMetadata(
-    transcriptionData: FileTranscriptionData[],
-    baseName: string
-  ): FileTranscriptionMetadata {
-    const now = new Date().toISOString()
-    const totalDuration = transcriptionData.length > 0 
-      ? (transcriptionData[transcriptionData.length - 1].timestamp.getTime() - transcriptionData[0].timestamp.getTime()) / 1000
-      : 0
-    
-    return {
-      audioFile: `${baseName}.mp3`,
-      model: 'kotoba-whisper-medium',
-      transcribedAt: now,
-      duration: totalDuration,
-      segmentCount: transcriptionData.length,
-      language: 'ja',
-      speakers: [],
-      coverage: 95.0 // 仮の値、将来的に実際の計算に変更
+  private static async getDefaultWorkingDirectory(): Promise<string> {
+    try {
+      const settings = await window.electronAPI.loadSettings()
+      if (settings && settings.saveFolder) {
+        logger.info('保存先ディレクトリ', { folder: settings.saveFolder })
+        return settings.saveFolder
+      }
+
+      const workingDir = await window.electronAPI.getWorkingDirectory()
+      return workingDir || './recordings'
+    } catch (error) {
+      logger.warn('保存先ディレクトリ取得に失敗', { error })
+      return './recordings'
     }
-  }
-
-  /**
-   * YAML+テキスト形式で文字起こし内容をフォーマット
-   */
-  private static formatTranscriptionContent(
-    transcriptionData: FileTranscriptionData[],
-    metadata: FileTranscriptionMetadata,
-    includeTimestamps: boolean
-  ): string {
-    let content = ''
-    
-    // YAMLメタデータヘッダー
-    content += '---\n'
-    content += `audio_file: ${metadata.audioFile}\n`
-    content += `model: ${metadata.model}\n`
-    content += `transcribed_at: ${metadata.transcribedAt}\n`
-    content += `duration: ${metadata.duration.toFixed(3)}\n`
-    content += `segment_count: ${metadata.segmentCount}\n`
-    content += `language: ${metadata.language}\n`
-    content += `speakers: []\n`
-    content += `coverage: ${metadata.coverage.toFixed(1)}\n`
-    content += '---\n\n'
-    
-    // 文字起こし内容
-    if (includeTimestamps) {
-      transcriptionData.forEach((data) => {
-        const timeString = this.formatTimestamp(data.timestamp)
-        content += `[${timeString}] ${data.text}\n`
-      })
-    } else {
-      content = transcriptionData
-        .map(data => data.text)
-        .filter(text => text && text.trim())
-        .join('\n')
-    }
-    
-    return content
-  }
-
-  /**
-   * YAMLメタデータヘッダーのみ生成（追記モード用）
-   */
-  private static formatFileTranscriptionMetadataHeader(metadata: FileTranscriptionMetadata): string {
-    let content = ''
-    content += '---\n'
-    content += `audio_file: ${metadata.audioFile}\n`
-    content += `model: ${metadata.model}\n`
-    content += `transcribed_at: ${metadata.transcribedAt}\n`
-    content += `duration: ${metadata.duration.toFixed(3)}\n`
-    content += `segment_count: ${metadata.segmentCount}\n`
-    content += `language: ${metadata.language}\n`
-    content += `speakers: []\n`
-    content += `coverage: ${metadata.coverage.toFixed(1)}\n`
-    content += '---\n\n'
-    return content
-  }
-
-  /**
-   * タイムスタンプをHH:MM:SS.s形式にフォーマット
-   */
-  private static formatTimestamp(timestamp: Date): string {
-    const hours = timestamp.getHours().toString().padStart(2, '0')
-    const minutes = timestamp.getMinutes().toString().padStart(2, '0')
-    const seconds = timestamp.getSeconds().toString().padStart(2, '0')
-    const milliseconds = Math.floor(timestamp.getMilliseconds() / 100)
-    return `${hours}:${minutes}:${seconds}.${milliseconds}`
   }
 }
