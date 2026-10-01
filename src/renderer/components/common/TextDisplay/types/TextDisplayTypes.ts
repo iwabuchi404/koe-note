@@ -2,6 +2,7 @@
  * TextDisplay コンポーネント用型定義
  * VSCode風テキスト表示・編集システム
  */
+import type { TranscriptionMetadata } from '@shared/types'
 
 // 表示モード
 export type DisplayMode = 'view' | 'edit'
@@ -12,19 +13,9 @@ export type TextFileType = 'transcription' | 'plain-text'
 // VSCodeテーマ
 export type VSCodeTheme = 'vscode-dark' | 'vscode-light'
 
-// 文字起こし固有メタデータ
-export interface TranscriptionMetadata {
-  audioFile: string            // 元音声ファイル
-  model: string               // 使用モデル (small/medium/large)
-  transcribedAt: string       // 文字起こし実行日時  
-  duration: number            // 音声長（秒）
-  segmentCount: number        // セグメント数
-  language: string            // 言語コード (ja/en/auto)
-  speakers: string[]          // 話者一覧
-  coverage: number            // カバレッジ率（%）
-  chunkCount?: number         // チャンク数
-  qualityScore?: number       // 品質スコア (0-100)
-}
+// 文字起こし固有メタデータは共有の型（@shared/types）を使う。
+// 以前は TextDisplay 側で再宣言され、coverage が必須ulamだった。
+export type { TranscriptionMetadata }
 
 // ファイル統計
 export interface FileStats {

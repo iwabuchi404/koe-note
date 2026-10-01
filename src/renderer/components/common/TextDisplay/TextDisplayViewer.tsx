@@ -15,7 +15,7 @@ import TextEditor from './components/EditMode/TextEditor'
 import MetadataPanel from './components/ViewMode/MetadataPanel'
 import ModeToggle from './components/common/ModeToggle'
 import CopyButton from './components/common/CopyButton'
-import { TextTypeDetector } from './utils/TextTypeDetector'
+import { detectFileType } from './utils/TextTypeDetector'
 import { MetadataParser } from './utils/MetadataParser'
 import { useTextDisplayMode } from './hooks/useTextDisplayMode'
 import { useTextSelection } from './hooks/useTextSelection'
@@ -80,7 +80,7 @@ const TextDisplayViewer: React.FC<TextDisplayViewerProps> = ({
   const { copySelection, copyFullText, copySegments } = useTextCopy()
 
   const fileAnalysis = useMemo(() => {
-    const detectedType = forceFileType || TextTypeDetector.detectFileType(currentContent, filePath)
+    const detectedType = forceFileType || detectFileType(currentContent)
     if (detectedType === 'transcription') {
       return MetadataParser.parseTranscriptionFile(currentContent, filePath)
     }
@@ -219,3 +219,4 @@ const TextDisplayViewer: React.FC<TextDisplayViewerProps> = ({
 }
 
 export default TextDisplayViewer
+

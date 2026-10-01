@@ -148,10 +148,12 @@ return (
                     <span className="label">音声時間:</span>
                     <span className="value">{TextFormatter.formatDuration(metadata.transcription.duration)}</span>
                   </div>
-                  <div className="metadata-item">
-                    <span className="label">カバレッジ:</span>
-                    <span className="value">{TextFormatter.formatCoverage(metadata.transcription.coverage)}</span>
-                  </div>
+                  {metadata.transcription.coverage !== undefined && (
+                    <div className="metadata-item">
+                      <span className="label">カバレッジ:</span>
+                      <span className="value">{TextFormatter.formatCoverage(metadata.transcription.coverage)}</span>
+                    </div>
+                  )}
                   {metadata.transcription.qualityScore !== undefined && (
                     <div className="metadata-item">
                       <span className="label">品質スコア:</span>

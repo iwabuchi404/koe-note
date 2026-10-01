@@ -15,11 +15,12 @@
 
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import {
-  formatHeader,
-  formatSegment,
+  TRANSCRIPT_HEADER_BOUNDARY,
+  formatTranscriptHeader,
+  formatTranscriptSegment,
   type TranscriptHeader,
-  type TranscriptSegment
-} from './transcription/transcriptFormat'
+  type TranscriptSegmentLine
+} from '@shared/transcriptFile'
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
 
@@ -126,9 +127,9 @@ export class AdvancedRecordingFileService {
       }
 
       // 既存ファイルからセグメント本体（ヘッダー以降）だけを取り出す
-      const HEADER_END = '---\n\n'
-      const bodyStart = existing.indexOf(HEADER_END)
-      const body = bodyStart >= 0 ? existing.slice(bodyStart + HEADER_END.length) : existing
+      const bodyStart = existing.indexOf(TRANSCRIPT_HEADER_BOUNDARY)
+      const body =
+        bodyStart >= 0 ? existing.slice(bodyStart + TRANSCRIPT_HEADER_BOUNDARY.length) : existing
 
       const header: TranscriptHeader = {
         audioFile: params.audioFileName,
@@ -140,13 +141,13 @@ export class AdvancedRecordingFileService {
         speakers: []
       }
 
-      const segment: TranscriptSegment = {
+      const segment: TranscriptSegmentLine = {
         chunkNumber,
         audioOffsetSeconds: params.audioOffsetSeconds,
         text
       }
 
-      const content = formatHeader(header) + body + formatSegment(segment)
+      const content = formatTranscriptHeader(header) + body + formatTranscriptSegment(segment)
       const success = await window.electronAPI.saveTextFile(filePath, content)
 
       if (!success) {
@@ -186,3 +187,4 @@ export class AdvancedRecordingFileService {
     }
   }
 }
+

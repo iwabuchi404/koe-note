@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, desktopCapturer } from 'electron';
 import type { AppSettings, AudioFile, TranscriptionFile, TranscriptionSegmentExtended, ClipboardCopyRecord, AIChatFile } from '@shared/types';
+import { parseTranscriptFile, type ParsedTranscriptFile } from '@shared/transcriptFile';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -1958,7 +1959,7 @@ ipcMain.handle('transcription:load', async (event, transFilePath: string): Promi
     }
     
     const content = fs.readFileSync(transFilePath, 'utf8');
-    const transcription = parseTranscriptionFileContent(content);
+    const transcription = toTranscriptionFile(parseTranscriptFile(content), transFilePath);
     
     writeLog(`文字起こしファイル読み込み完了: ${transFilePath}`);
     return transcription;
@@ -2026,110 +2027,55 @@ function getTranscriptionPath(audioFilePath: string): string {
   }
 }
 
+/**
+ * shared の解析結果を IPC 用の型へ変換する
+ *
+ * 終了時刻は次のセグメントの開始時刻で決める。最終セグメントは
+ * テキスト長から推定する（最低3秒）。
+ */
+function toTranscriptionFile(parsed: ParsedTranscriptFile, filePath: string): TranscriptionFile {
+  const header = parsed.header;
+  const segments: TranscriptionSegmentExtended[] = parsed.segments.map((segment, index) => {
+    const next = parsed.segments[index + 1];
+    return {
+      start: segment.audioOffsetSeconds,
+      end: next
+        ? next.audioOffsetSeconds
+        : segment.audioOffsetSeconds + Math.max(3, segment.text.length * 0.2),
+      text: segment.text,
+      speaker: segment.speaker
+    };
+  });
+
+  return {
+    metadata: header
+      ? {
+          audioFile: header.audioFile,
+          model: header.model,
+          transcribedAt: header.transcribedAt,
+          duration: header.durationSeconds,
+          segmentCount: header.segmentCount,
+          language: header.language,
+          speakers: header.speakers
+        }
+      : {
+          audioFile: path.basename(filePath).replace(/\.trans\.txt$/, ''),
+          model: 'unknown',
+          transcribedAt: '',
+          duration: 0,
+          segmentCount: segments.length,
+          language: 'ja',
+          speakers: []
+        },
+    segments,
+    filePath,
+    isModified: false
+  };
+}
+
 function getAIChatPath(audioFilePath: string): string {
   const parsedPath = path.parse(audioFilePath);
   return path.join(parsedPath.dir, `${parsedPath.name}.ai-chat.txt`);
-}
-
-function generateTranscriptionFileContent(transcription: TranscriptionFile): string {
-  // メタデータセクション（YAML形式）
-  const metadata = `---
-audio_file: ${transcription.metadata.audioFile}
-model: ${transcription.metadata.model}
-transcribed_at: ${transcription.metadata.transcribedAt}
-duration: ${transcription.metadata.duration}
-segment_count: ${transcription.metadata.segmentCount}
-language: ${transcription.metadata.language}
-speakers: [${transcription.metadata.speakers.map((s: string) => `"${s}"`).join(', ')}]
-coverage: ${transcription.metadata.coverage}
----
-
-`;
-  
-  // 文字起こし内容セクション
-  const segments = transcription.segments.map((segment: TranscriptionSegmentExtended) => {
-    const timestamp = formatTimestamp(segment.start);
-    const speaker = segment.speaker ? `${segment.speaker}: ` : '';
-    return `[${timestamp}] ${speaker}${segment.text}`;
-  }).join('\n');
-  
-  return metadata + segments;
-}
-
-function parseTranscriptionFileContent(content: string): TranscriptionFile {
-  const parts = content.split('---\n');
-  if (parts.length < 3) {
-    throw new Error('無効な文字起こしファイル形式');
-  }
-  
-  // YAMLメタデータの解析（簡易版）
-  const yamlContent = parts[1];
-  const metadata: Record<string, any> = {};
-  
-  yamlContent.split('\n').forEach(line => {
-    const match = line.match(/^(\w+):\s*(.+)$/);
-    if (match) {
-      const [, key, value] = match;
-      if (key === 'speakers') {
-        metadata[key] = value.match(/"([^"]*)"/g)?.map(s => s.slice(1, -1)) || [];
-      } else if (['duration', 'segment_count', 'coverage'].includes(key)) {
-        metadata[key] = parseFloat(value);
-      } else {
-        metadata[key] = value;
-      }
-    }
-  });
-  
-  // セグメントの解析
-  const segmentContent = parts[2];
-  const tempSegments = segmentContent.split('\n')
-    .filter(line => line.trim())
-    .map(line => {
-      const match = line.match(/^\[(\d{2}:\d{2}:\d{2}\.\d)\]\s*(?:([^:]+):\s*)?(.+)$/);
-      if (match) {
-        const [, timestamp, speaker, text] = match;
-        return {
-          start: parseTimestamp(timestamp),
-          end: 0, // 後で計算
-          text: text.trim(),
-          speaker: speaker || undefined
-        };
-      }
-      return null;
-    })
-    .filter(Boolean);
-
-  // 終了時刻を次のセグメントの開始時刻または適切な推定値で設定
-  const segments = tempSegments.map((segment, index) => {
-    if (!segment) return null;
-    
-    if (index < tempSegments.length - 1) {
-      // 次のセグメントの開始時刻を終了時刻として設定
-      const nextSegment = tempSegments[index + 1];
-      segment.end = nextSegment ? nextSegment.start : segment.start + 5;
-    } else {
-      // 最後のセグメントの場合、テキストの長さから推定（1文字あたり0.2秒程度）
-      const estimatedDuration = Math.max(3, segment.text.length * 0.2);
-      segment.end = segment.start + estimatedDuration;
-    }
-    return segment;
-  }).filter(Boolean);
-  
-  return {
-    metadata: {
-      audioFile: metadata.audio_file,
-      model: metadata.model,
-      transcribedAt: metadata.transcribed_at,
-      duration: metadata.duration,
-      segmentCount: metadata.segment_count,
-      language: metadata.language,
-      speakers: metadata.speakers,
-      coverage: metadata.coverage
-    },
-    segments: segments as TranscriptionSegmentExtended[],
-    filePath: '',
-    isModified: false
-  };
 }
 
 function generateAIChatFileContent(chatFile: AIChatFile): string {
@@ -2197,19 +2143,6 @@ function parseAIChatFileContent(content: string): AIChatFile {
   };
 }
 
-function formatTimestamp(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toFixed(1).padStart(4, '0')}`;
-}
-
-function parseTimestamp(timestamp: string): number {
-  const [hours, minutes, seconds] = timestamp.split(':');
-  return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseFloat(seconds);
-}
-
 // テキストファイル保存ハンドラー（新録音システム用）
 ipcMain.handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {
   try {
@@ -2270,3 +2203,4 @@ ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
 });
 
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）
+

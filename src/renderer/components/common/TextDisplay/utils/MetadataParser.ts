@@ -1,342 +1,254 @@
 /**
- * メタデータ解析ユーティリティ
- * YAMLメタデータの解析と文字起こしセグメントの解析
+ * TextDisplay が .trans.txt を表示用に解釈する層
+ *
+ * 正規のフォーマット解釈は src/shared/transcriptFile.ts に集約してある。
+ * ここでは表示に必要な「派生情報」（ファイル統計・表示用メタデータ）と、
+ * 過去に書き出された変種フォーマットへの寛容なフォールバックだけを持つ。
+ *
+ * 旧ファイルには以下の変種が存在する:
+ *   - ヘッダーの coverage / chunk_count / quality_score（現在は writer が書かない）
+ *   - "1 | 00:00:05 - 00:00:10 | テキスト" 形式（行番号つき）
+ *   - タイムスタンプなしのプレーンテキスト行
+ * いずれも読み取れるが、書き戻すときは shared の writer が使う
+ * canonical 形式に揃える。
  */
+import {
+  formatAudioOffset,
+  parseTranscriptFile,
+  parseTranscriptSegments
+} from '@shared/transcriptFile'
+import type {
+  TextSelection,
+  FileStats,
+  TextFileType,
+  DisplayMetadata,
+  TextTypeDetectionResult
+} from '../types/TextDisplayTypes'
 
-import { TranscriptionSegment, DisplayMetadata, ParsedTranscriptionContent } from '../types/TextDisplayTypes'
-
-/**
- * メタデータ解析クラス
- */
 export class MetadataParser {
-  
   /**
-   * 文字起こしファイル全体を解析
+   * 文字起こしファイル全体を解析する
    */
-  static parseTranscriptionFile(content: string, filePath: string): ParsedTranscriptionContent {
-    const metadata = this.parseMetadata(content, filePath)
-    const segments = this.parseSegments(content)
-    const rawText = this.extractRawText(content)
-    
-    return {
-      metadata,
-      segments,
-      rawText
-    }
-  }
-  
-  /**
-   * メタデータセクションを解析
-   */
-  static parseMetadata(content: string, filePath: string): DisplayMetadata {
-    const yamlData = this.extractYamlFrontMatter(content)
-    const stats = this.calculateContentStats(content)
-    
-    if (yamlData) {
+  static parseTranscriptionFile(
+    content: string,
+    filePath: string
+  ): { metadata: DisplayMetadata; segments: DisplaySegment[]; rawText: string } {
+    const { header, segments, body } = parseTranscriptFile(content)
+    const stats = calculateContentStats(body)
+
+    if (header) {
       return {
-        sourceFile: this.getFileName(filePath),
-        fileType: 'transcription',
-        createdAt: yamlData.transcribed_at || new Date().toISOString(),
-        modifiedAt: yamlData.modified_at,
-        transcription: {
-          audioFile: yamlData.audio_file || '',
-          model: yamlData.model || 'unknown',
-          transcribedAt: yamlData.transcribed_at || new Date().toISOString(),
-          duration: this.parseFloat(yamlData.duration, 0) || 0,
-          segmentCount: this.parseInt(yamlData.segment_count, 0) || 0,
-          language: yamlData.language || 'ja',
-          speakers: this.parseSpeakersList(yamlData.speakers),
-          coverage: this.parseFloat(yamlData.coverage, 100) || 100,
-          chunkCount: this.parseInt(yamlData.chunk_count),
-          qualityScore: this.parseFloat(yamlData.quality_score)
+        metadata: {
+          sourceFile: getFileName(filePath),
+          fileType: 'transcription',
+          createdAt: header.transcribedAt || new Date().toISOString(),
+          transcription: {
+            audioFile: header.audioFile,
+            model: header.model || 'unknown',
+            transcribedAt: header.transcribedAt,
+            duration: header.durationSeconds,
+            segmentCount: header.segmentCount,
+            language: header.language,
+            speakers: header.speakers
+          },
+          stats
         },
-        stats
+        segments: toDisplaySegments(segments),
+        rawText: body
       }
-    } else {
-      // メタデータが無い場合はプレーンテキストとして扱う
-      return {
-        sourceFile: this.getFileName(filePath),
+    }
+
+    // ヘッダーが無い場合はプレーンテキストとして扱う
+    return {
+      metadata: {
+        sourceFile: getFileName(filePath),
         fileType: 'plain-text',
         createdAt: new Date().toISOString(),
         stats
-      }
+      },
+      segments: parseLegacySegments(body),
+      rawText: body
     }
-  }
-  
-  /**
-   * セグメントを解析
-   */
-  static parseSegments(content: string): TranscriptionSegment[] {
-    const segments: TranscriptionSegment[] = []
-    
-    // YAMLメタデータを除去
-    const textContent = this.removeYamlFrontMatter(content)
-    
-    // 各種セグメント形式を試行
-    const parseMethods = [
-      this.parseStructuredSegments,
-      this.parseTimestampSegments,
-      this.parseSimpleLines
-    ]
-    
-    for (const parseMethod of parseMethods) {
-      const result = parseMethod.call(this, textContent)
-      if (result.length > 0) {
-        return result
-      }
-    }
-    
-    return segments
-  }
-  
-  /**
-   * 構造化セグメント形式を解析
-   * 例: "1 | 00:00:05 - 00:00:10 | テキスト内容"
-   */
-  private static parseStructuredSegments(content: string): TranscriptionSegment[] {
-    const segments: TranscriptionSegment[] = []
-    const lines = content.split('\n')
-    
-    for (const line of lines) {
-      const match = line.match(/^(\d+)\s*\|\s*(\d+:\d+:\d+(?:\.\d+)?)\s*-\s*(\d+:\d+:\d+(?:\.\d+)?)\s*\|\s*(.+)$/)
-      if (match) {
-        const [, idStr, startTime, endTime, text] = match
-        segments.push({
-          id: parseInt(idStr),
-          start: this.timeToSeconds(startTime),
-          end: this.timeToSeconds(endTime),
-          text: text.trim()
-        })
-      }
-    }
-    
-    return segments
-  }
-  
-  /**
-   * タイムスタンプ付きセグメントを解析
-   * 例: "[00:00:05] テキスト内容"
-   */
-  private static parseTimestampSegments(content: string): TranscriptionSegment[] {
-    const segments: TranscriptionSegment[] = []
-    const lines = content.split('\n')
-    let segmentId = 1
-    
-    for (const line of lines) {
-      const match = line.match(/^\[(\d+:\d+:\d+(?:\.\d+)?)\]\s*(.+)$/)
-      if (match) {
-        const [, timestamp, text] = match
-        const start = this.timeToSeconds(timestamp)
-        segments.push({
-          id: segmentId++,
-          start,
-          end: start + 5, // デフォルト5秒間隔
-          text: text.trim()
-        })
-      }
-    }
-    
-    // 次のセグメントの開始時間で終了時間を修正
-    for (let i = 0; i < segments.length - 1; i++) {
-      segments[i].end = segments[i + 1].start
-    }
-    
-    return segments
-  }
-  
-  /**
-   * シンプルな行単位解析
-   */
-  private static parseSimpleLines(content: string): TranscriptionSegment[] {
-    const segments: TranscriptionSegment[] = []
-    const lines = content.split('\n').filter(line => line.trim().length > 0)
-    let segmentId = 1
-    
-    for (const line of lines) {
-      if (line.trim()) {
-        segments.push({
-          id: segmentId,
-          start: (segmentId - 1) * 5, // 5秒間隔と仮定
-          end: segmentId * 5,
-          text: line.trim()
-        })
-        segmentId++
-      }
-    }
-    
-    return segments
-  }
-  
-  /**
-   * 生テキストを抽出（メタデータ除去、タイムスタンプ除去）
-   */
-  static extractRawText(content: string): string {
-    let textContent = this.removeYamlFrontMatter(content)
-    
-    // セグメント形式から純粋なテキストのみを抽出
-    const lines = textContent.split('\n')
-    const textLines: string[] = []
-    
-    for (const line of lines) {
-      // 構造化形式からテキスト部分を抽出
-      const structuredMatch = line.match(/^\d+\s*\|\s*\d+:\d+:\d+(?:\.\d+)?\s*-\s*\d+:\d+:\d+(?:\.\d+)?\s*\|\s*(.+)$/)
-      if (structuredMatch) {
-        textLines.push(structuredMatch[1].trim())
-        continue
-      }
-      
-      // タイムスタンプ形式からテキスト部分を抽出
-      const timestampMatch = line.match(/^\[(\d+:\d+:\d+(?:\.\d+)?)\]\s*(.+)$/)
-      if (timestampMatch) {
-        textLines.push(timestampMatch[2].trim())
-        continue
-      }
-      
-      // 一般的な行
-      if (line.trim()) {
-        textLines.push(line.trim())
-      }
-    }
-    
-    return textLines.join('\n')
   }
 
   /**
-   * タイムスタンプ付き生テキストを抽出（メタデータのみ除去）
+   * ファイル種別を判定する
+   *
+   * ヘッダーの有無で判定する（从前は特徴量のスコアで判定していて
+   * 同じファイルでも結果が変わる，并有蓋）。
+   */
+  static detectTextType(content: string, filePath: string): TextTypeDetectionResult {
+    const { header, body } = parseTranscriptFile(content)
+
+    if (header) {
+      return {
+        fileType: 'transcription',
+        confidence: 1,
+        metadata: {
+          sourceFile: getFileName(filePath),
+          fileType: 'transcription',
+          createdAt: header.transcribedAt || new Date().toISOString(),
+          transcription: {
+            audioFile: header.audioFile,
+            model: header.model || 'unknown',
+            transcribedAt: header.transcribedAt,
+            duration: header.durationSeconds,
+            segmentCount: header.segmentCount,
+            language: header.language,
+            speakers: header.speakers
+          },
+          stats: calculateContentStats(body)
+        }
+      }
+    }
+
+    return {
+      fileType: 'plain-text',
+      confidence: 0.5,
+      metadata: {
+        sourceFile: getFileName(filePath),
+        fileType: 'plain-text',
+        createdAt: new Date().toISOString(),
+        stats: calculateContentStats(body)
+      }
+    }
+  }
+
+  /**
+   * ヘッダーと本文_statistics を解析する
+   *
+   * 旧: MetadataParser.parseMetadata。ヘッダーが無い場合は
+   * プレーンテキストとして扱う。
+   */
+  static parseMetadata(content: string, filePath: string): DisplayMetadata {
+    return this.parseTranscriptionFile(content, filePath).metadata
+  }
+
+  /**
+   * 本文を「タイムスタンプ付き行」として取り出す
+   *
+   * ヘッダーを除いた本文を返す。タイムスタンプが無い行は
+   * 1行ずつ estimates した位置を付与する。
    */
   static extractRawTextWithTimestamps(content: string): string {
-    return this.removeYamlFrontMatter(content)
+    const { header, body } = parseTranscriptFile(content)
+    if (header) return body
+    return parseLegacySegments(body)
+      .map((segment) => `[${formatAudioOffset(segment.start)}] ${segment.text}`)
+      .join('\n')
   }
-  
-  /**
-   * YAMLフロントマターを除去
-   */
-  private static removeYamlFrontMatter(content: string): string {
-    const yamlMatch = content.match(/^---\s*\n[\s\S]*?\n---\s*\n/)
-    if (!yamlMatch) return content
-    
-    return content.substring(yamlMatch[0].length)
-  }
-  
-  /**
-   * YAMLフロントマターを抽出
-   */
-  private static extractYamlFrontMatter(content: string): Record<string, any> | null {
-    const yamlMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n/)
-    if (!yamlMatch) return null
-    
-    const yamlContent = yamlMatch[1]
-    const data: Record<string, any> = {}
-    
-    const lines = yamlContent.split('\n')
-    for (const line of lines) {
-      const match = line.match(/^(\w+):\s*(.+)$/)
-      if (match) {
-        const [, key, value] = match
-        data[key] = value.trim()
-      }
-    }
-    
-    return data
-  }
-  
-  /**
-   * 時間文字列を秒に変換
-   */
-  private static timeToSeconds(timeStr: string): number {
-    const parts = timeStr.split(':')
-    if (parts.length === 3) {
-      const [hours, minutes, seconds] = parts
-      return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseFloat(seconds)
-    }
-    return 0
-  }
-  
-  /**
-   * 秒を時間文字列に変換
-   */
+
+  /** 秒を HH:MM:SS.s 形式にする */
   static secondsToTime(seconds: number): string {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const secs = Math.floor(seconds % 60)
-    const decimal = seconds % 1
-    
-    // 小数点以下がほぼ0の場合は整数表示
-    const hasDecimal = decimal >= 0.1
-    
-    if (hours > 0) {
-      if (hasDecimal) {
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${Math.floor(decimal * 10)}`
-      } else {
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-      }
-    } else {
-      if (hasDecimal) {
-        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${Math.floor(decimal * 10)}`
-      } else {
-        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-      }
-    }
+    return formatAudioOffset(seconds)
   }
-  
+
   /**
-   * 話者リストを解析
+   * 選択範囲からセグメントIDを引く
    */
-  private static parseSpeakersList(speakersData: any): string[] {
-    if (!speakersData) return []
-    
-    if (typeof speakersData === 'string') {
-      // "[Speaker1, Speaker2]" 形式を解析
-      const match = speakersData.match(/\[(.*)\]/)
-      if (match) {
-        return match[1].split(',').map(s => s.trim().replace(/['"]/g, ''))
-      }
-      return [speakersData.replace(/['"]/g, '')]
-    }
-    
-    if (Array.isArray(speakersData)) {
-      return speakersData.map(s => String(s))
-    }
-    
-    return []
-  }
-  
-  /**
-   * 安全な数値解析
-   */
-  private static parseFloat(value: any, defaultValue?: number): number | undefined {
-    if (value === undefined || value === null) return defaultValue
-    const num = parseFloat(String(value))
-    return isNaN(num) ? defaultValue : num
-  }
-  
-  private static parseInt(value: any, defaultValue?: number): number | undefined {
-    if (value === undefined || value === null) return defaultValue
-    const num = parseInt(String(value))
-    return isNaN(num) ? defaultValue : num
-  }
-  
-  /**
-   * コンテンツ統計を計算
-   */
-  private static calculateContentStats(content: string) {
-    const textContent = this.removeYamlFrontMatter(content)
-    const lines = textContent.split('\n').filter(line => line.trim().length > 0)
-    const characters = textContent.length
-    const words = textContent.split(/\s+/).filter(word => word.length > 0).length
-    
-    return {
-      totalCharacters: characters,
-      totalWords: words,
-      totalLines: lines.length,
-      encoding: 'UTF-8'
-    }
-  }
-  
-  /**
-   * ファイル名を取得
-   */
-  private static getFileName(filePath: string): string {
-    return filePath.split(/[/\\]/).pop() || filePath
+  static getSelectedSegmentIds(
+    selection: TextSelection,
+    segments: DisplaySegment[]
+  ): number[] {
+    return segments
+      .filter((segment) => {
+        const lineText = segment.text
+        return selection.selectedText.includes(lineText.slice(0, 10))
+      })
+      .map((segment) => segment.id)
   }
 }
+
+/** 表示用セグメント（行番号を持つ） */
+export interface DisplaySegment {
+  id: number
+  start: number
+  end: number
+  text: string
+  speaker?: string
+  isEdited?: boolean
+}
+
+/**
+ * shared のセグメントを表示用に変換する
+ *
+ * 終了時刻は次のセグメントの開始時刻で決める。最終セグメントは
+ * テキスト長から推定する（3秒〜の緩衝）。
+ */
+function toDisplaySegments(
+  segments: ReturnType<typeof parseTranscriptSegments>
+): DisplaySegment[] {
+  return segments.map((segment, index) => {
+    const next = segments[index + 1]
+    const estimated = Math.max(3, segment.text.length * 0.2)
+    return {
+      id: index + 1,
+      start: segment.audioOffsetSeconds,
+      end: next ? next.audioOffsetSeconds : segment.audioOffsetSeconds + estimated,
+      text: segment.text,
+      speaker: segment.speaker
+    }
+  })
+}
+
+/**
+ * 正規形式でない本文からのフォールバック解析
+ *
+ * 1. "1 | 00:00:05 - 00:00:10 | テキスト"
+ * 2. "[00:00:05] テキスト"（shared の解釈で取れない場合）
+ * 3. タイムスタンプなし行
+ */
+function parseLegacySegments(body: string): DisplaySegment[] {
+  const structured = body
+    .split('\n')
+    .map((line) =>
+      line.match(/^(\d+)\s*\|\s*(\d+:\d+:\d+(?:\.\d+)?)\s*-\s*(\d+:\d+:\d+(?:\.\d+)?)\s*\|\s*(.+)$/)
+    )
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map((m) => ({
+      id: Number(m[1]),
+      start: toSeconds(m[2]),
+      end: toSeconds(m[3]),
+      text: m[4].trim()
+    }))
+
+  if (structured.length > 0) return structured
+
+  const timestamped = parseTranscriptSegments(body)
+  if (timestamped.length > 0) {
+    return toDisplaySegments(timestamped)
+  }
+
+  return body
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => ({
+      id: index + 1,
+      start: index * 5,
+      end: (index + 1) * 5,
+      text: line.trim()
+    }))
+}
+
+function toSeconds(value: string): number {
+  const parts = value.split(':').map(Number)
+  if (parts.length !== 3) return 0
+  return parts[0] * 3600 + parts[1] * 60 + parts[2]
+}
+
+/** 本文の文字数・行数 */
+export function calculateContentStats(content: string): FileStats {
+  const lines = content.split('\n')
+  return {
+    totalCharacters: content.length,
+    totalWords: content.split(/\s+/).filter((w) => w.length > 0).length,
+    totalLines: lines.length,
+    encoding: 'utf-8'
+  }
+}
+
+function getFileName(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() ?? filePath
+}
+
+export type { TextFileType }

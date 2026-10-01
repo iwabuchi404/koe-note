@@ -18,7 +18,7 @@ export { default as CopyButton } from './components/common/CopyButton'
 export { default as SelectionHelper } from './components/common/SelectionHelper'
 
 // ユーティリティクラス
-export { TextTypeDetector } from './utils/TextTypeDetector'
+export { detectFileType } from './utils/TextTypeDetector'
 export { MetadataParser } from './utils/MetadataParser'
 
 // アダプター

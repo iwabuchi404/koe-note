@@ -10,7 +10,7 @@ import type {
   ChunkTranscriptionProgress
 } from '@shared/types'
 import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileService'
-import { durationFromBytes } from '../services/transcription/transcriptFormat'
+import { durationFromBytes } from '@shared/transcriptFile'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
 import { useAppContext } from '../App'
