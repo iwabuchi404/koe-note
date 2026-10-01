@@ -91,7 +91,15 @@ Thumbs.db
 
 nul
 how 5b03a9d --name-only
-whisper-server/
+# Whisper サーバー（Python）
+# ソースは追跡する。成果物・依存・ログ・モデルは whisper-server/.gitignore で除外
+whisper-server/.venv/
+whisper-server/build/
+whisper-server/dist/
+whisper-server/models/
+whisper-server/__pycache__/
+whisper-server/*.exe
+whisper-server/*.log
 
 # Models (downloaded artifacts)
 models/

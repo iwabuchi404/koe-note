@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# ビルド成果物（PyInstaller）。whisper-server.spec は追跡する
+*.exe
+
+# 実行時ログ
+*.log
+
+# モデルのキャッシュ（HuggingFace形式。数百MB〜数GB）
+models/
