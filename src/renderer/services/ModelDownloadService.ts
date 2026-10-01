@@ -4,17 +4,13 @@
  */
 
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
-import type { ModelDownloadProgress } from '@shared/types'
+import type { ModelDownloadProgress, ModelInfo } from '@shared/types'
 import {
   ModelDownloadOptions,
-  ModelDownloadService as IModelDownloadService,
-  AVAILABLE_MODELS,
-  type ModelCatalogEntry,
-  type ModelInfo
+  ModelDownloadService as IModelDownloadService
 } from '../types/ModelTypes'
-import modelsConfig from '../config/models.json'
+import { MODEL_CATALOG, findModelById, formatModelSize } from '@shared/modelCatalog'
 
-type ModelConfigEntry = ModelCatalogEntry
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
 
@@ -44,16 +40,23 @@ export class ModelDownloadService implements IModelDownloadService {
     }
   }
 
-  /**
+/**
    * 利用可能なモデル一覧を取得
+   *
+   * 定義は src/shared/models.json（Python と同じ1枚）が正。
    */
   async getAvailableModels(): Promise<ModelInfo[]> {
-    // 設定ファイル優先、なければハードコード定義をフォールバック
-    const source = Array.isArray(modelsConfig) && modelsConfig.length > 0
-      ? modelsConfig
-      : AVAILABLE_MODELS
-    return source.map((model: ModelConfigEntry) => ({
-      ...model,
+    return MODEL_CATALOG.map((model) => ({
+      id: model.id,
+      name: model.name,
+      description: model.description,
+      size: formatModelSize(model.sizeBytes),
+      sizeBytes: model.sizeBytes,
+      version: '',
+      license: model.license,
+      licenseUrl: model.licenseUrl,
+      downloadUrl: `https://huggingface.co/${model.huggingFaceRepo}/resolve/main`,
+      checksum: '',
       isInstalled: this.installedModels.has(model.id),
       isDownloading: this.downloadProgress.has(model.id),
       downloadProgress: this.downloadProgress.get(model.id)?.progress || 0
@@ -72,7 +75,7 @@ export class ModelDownloadService implements IModelDownloadService {
    * モデルをダウンロード
    */
   async downloadModel(options: ModelDownloadOptions): Promise<void> {
-    const { modelId, forceDownload = false, verifyChecksum = true, onProgress, onComplete, onError } = options
+    const { modelId, forceDownload = false, onProgress, onComplete, onError } = options
 
     try {
       // 既にダウンロード中かチェック（重複開始せず、呼び出し元には現在値だけ通知して黙って返す）
@@ -87,17 +90,23 @@ export class ModelDownloadService implements IModelDownloadService {
         throw new Error(`Model ${modelId} is already installed`)
       }
 
-      const listSource = Array.isArray(modelsConfig) && modelsConfig.length > 0
-        ? modelsConfig
-        : AVAILABLE_MODELS
-      const modelInfo = listSource.find((m: ModelConfigEntry) => m.id === modelId)
+const modelInfo = findModelById(modelId)
       if (!modelInfo) {
         throw new Error(`Model ${modelId} not found`)
       }
 
-      // ModelInfo型に変換
-      const fullModelInfo: ModelInfo = {
-        ...modelInfo,
+// ModelInfo型に変換
+const fullModelInfo: ModelInfo = {
+        id: modelInfo.id,
+        name: modelInfo.name,
+        description: modelInfo.description,
+        size: formatModelSize(modelInfo.sizeBytes),
+        sizeBytes: modelInfo.sizeBytes,
+        version: '',
+        license: modelInfo.license,
+        licenseUrl: modelInfo.licenseUrl,
+        downloadUrl: `https://huggingface.co/${modelInfo.huggingFaceRepo}/resolve/main`,
+        checksum: '',
         isInstalled: this.installedModels.has(modelId),
         isDownloading: false,
         downloadProgress: 0
@@ -293,3 +302,6 @@ export class ModelDownloadService implements IModelDownloadService {
 
 // シングルトンインスタンス
 export const modelDownloadService = new ModelDownloadService()
+
+
+

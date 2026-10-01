@@ -50,55 +50,13 @@ function resolveModelsRoot(): string {
   }
 }
 
-// モデル定義（id <-> repo 対応）
-const MODEL_CONFIGS: Record<string, { id: string; repo: string; files: string[] }> = {
-  tiny: {
-    id: 'tiny',
-    repo: 'Systran/faster-whisper-tiny',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  base: {
-    id: 'base',
-    repo: 'Systran/faster-whisper-base',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  small: {
-    id: 'small',
-    repo: 'Systran/faster-whisper-small',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  medium: {
-    id: 'medium',
-    repo: 'Systran/faster-whisper-medium',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  'large-v2': {
-    id: 'large-v2',
-    repo: 'Systran/faster-whisper-large-v2',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  'large-v3': {
-    id: 'large-v3',
-    repo: 'Systran/faster-whisper-large-v3',
-    files: ['config.json', 'model.bin', 'tokenizer.json', 'vocabulary.txt']
-  },
-  'kotoba-whisper-v2.0-faster': {
-    id: 'kotoba-whisper-v2.0-faster',
-    repo: 'kotoba-tech/kotoba-whisper-v2.0-faster',
-    files: ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
-  }
-};
-
-function repoToFolder(repo: string): string {
-  return `models--${repo.replace('/', '--')}`;
-}
-
-function folderToRepo(folderName: string): string {
-  return folderName.replace(/^models--/, '').replace(/--/g, '/');
-}
+// モデル定義は src/shared/models.json が正。
+// Python サーバーも同じJSONを読むため、UIに表示されるモデルと
+// サーバーが受け付けるモデルは必ず一致する。
+import { findModelById, findModelByRepo, repoToFolder, folderToRepo } from '@shared/modelCatalog';
 
 function repoToId(repo: string): string | null {
-  const entry = Object.values(MODEL_CONFIGS).find(c => c.repo === repo);
+  const entry = findModelByRepo(repo);
   return entry ? entry.id : null;
 }
 
@@ -1371,12 +1329,24 @@ ipcMain.handle('models:getInstalledModels', async (): Promise<string[]> => {
     if (fs.existsSync(modelsPath)) {
       const entries = fs.readdirSync(modelsPath, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isDirectory() && entry.name.startsWith('models--')) {
-          const repo = folderToRepo(entry.name);
-          const id = repoToId(repo);
-          if (id) {
-            installedModelIds.push(id);
-          }
+        if (!entry.isDirectory() || !entry.name.startsWith('models--')) continue;
+
+        const repo = folderToRepo(entry.name);
+        const id = repoToId(repo);
+        if (!id) continue;
+
+        // ディレクトリが存在するだけでは「インストール済み」と言えない。
+        // 実測では snapshots/main に 0バイトの config.json だけが残った壊れた
+        // 状態を、UIが「インストール済み」と表示していた。
+        const verification = await verifyModelInternal(id);
+        if (verification.valid) {
+          installedModelIds.push(id);
+        } else {
+          writeLog(
+            `Model directory exists but incomplete: ${id} ` +
+            `(missing=${verification.missingFiles.join(',') || '-'} ` +
+            `corrupt=${verification.corruptFiles.join(',') || '-'})`
+          );
         }
       }
     }
@@ -1398,6 +1368,62 @@ interface ModelVerificationResult {
   errors: string[];
 }
 
+/**
+ * モデルの実体があるスナップショットディレクトリを解決する
+ *
+ * HuggingFace のキャッシュは本来この構造:
+ *   models--<org>--<name>/refs/main        → 40文字のコミット sha
+ *   models--<org>--<name>/snapshots/<sha>/  → 実体
+ *
+ * しかし本アプリのダウンローダは refs/main にリテラル "main" を書いて
+ * snapshots/main へ直接配置する（fast_hf の解決ロジックでも "main" は
+ * 正しい revision 名として通用する）。
+ *
+ * そのため refs の値だけでは snapshot の場所を決められない。
+ *   1. refs/main の値が指すディレクトリ
+ *   2. snapshots/main
+ *   3. snapshots 配下のディレクトリ
+ * の順に実体が了回来ものを採用する。実測では (3) だけが
+ * 存在し、refs は sha を指んでいた。
+ *
+ * @returns 実体のあるディレクトリのパス。無ければ null
+ */
+function resolveSnapshotDir(modelsRoot: string, repo: string): string | null {
+  const modelDir = path.join(modelsRoot, repoToFolder(repo));
+  const snapshotsRoot = path.join(modelDir, 'snapshots');
+  if (!fs.existsSync(snapshotsRoot)) return null;
+
+  const candidates: string[] = [];
+
+  try {
+    const ref = fs.readFileSync(path.join(modelDir, 'refs', 'main'), 'utf8').trim();
+    if (ref) candidates.push(path.join(snapshotsRoot, ref));
+  } catch {
+    // refs/main が無い（直接 snapshots へ配置したケース）
+  }
+
+  candidates.push(path.join(snapshotsRoot, 'main'));
+
+  try {
+    const dirs = fs
+      .readdirSync(snapshotsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(snapshotsRoot, entry.name));
+    candidates.push(...dirs);
+  } catch {
+    // snapshots を読めない場合は候補なし
+  }
+
+  for (const dir of candidates) {
+    try {
+      if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) return dir;
+    } catch {
+      // 権限等で読めない場合は次へ
+    }
+  }
+  return null;
+}
+
 // 内部検証関数（IPCハンドラとダウンロード完了時の検証で共有）
 async function verifyModelInternal(modelId: string): Promise<ModelVerificationResult> {
   const result: ModelVerificationResult = {
@@ -1413,7 +1439,7 @@ async function verifyModelInternal(modelId: string): Promise<ModelVerificationRe
   try {
     writeLog(`Verifying model: ${modelId}`);
     
-    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
+    const config = findModelById(modelId);
     if (!config) {
       result.errors.push(`Unknown model: ${modelId}`);
       writeLog(`Model verification failed: ${modelId} - unknown model`);
@@ -1421,10 +1447,10 @@ async function verifyModelInternal(modelId: string): Promise<ModelVerificationRe
     }
 
     const modelsPath = resolveModelsRoot();
-    const snapshotsDir = path.join(modelsPath, repoToFolder(config.repo), 'snapshots', 'main');
-    
-    if (!fs.existsSync(snapshotsDir)) {
-      result.errors.push(`Model directory not found: ${snapshotsDir}`);
+    const snapshotsDir = resolveSnapshotDir(modelsPath, config.huggingFaceRepo);
+
+    if (!snapshotsDir) {
+      result.errors.push(`Model directory not found: ${repoToFolder(config.huggingFaceRepo)}`);
       writeLog(`Model verification failed: ${modelId} - directory not found`);
       return result;
     }
@@ -1503,13 +1529,13 @@ ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<v
 ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Promise<void> => {
   try {
     writeLog(`Starting model download: ${modelId}`);
-    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
+    const config = findModelById(modelId);
     if (!config) {
       throw new Error(`Unknown model: ${modelId}`);
     }
 
     const modelsPath = resolveModelsRoot();
-    const modelDir = path.join(modelsPath, repoToFolder(config.repo));
+    const modelDir = path.join(modelsPath, repoToFolder(config.huggingFaceRepo));
     
     // モデルディレクトリを作成
     if (!fs.existsSync(modelDir)) {
@@ -1534,7 +1560,7 @@ ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Pr
     const totalFiles = config.files.length;
 
     for (const fileName of config.files) {
-      const fileUrl = `https://huggingface.co/${config.repo}/resolve/main/${fileName}`;
+    const fileUrl = `https://huggingface.co/${config.huggingFaceRepo}/resolve/main/${fileName}`;
       const filePath = path.join(snapshotsDir, fileName);
       const tempPath = filePath + '.partial';
       
@@ -2203,4 +2229,8 @@ ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
 });
 
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）
+
+
+
+
 

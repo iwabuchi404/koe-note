@@ -1,0 +1,80 @@
+[
+  {
+    "id": "tiny",
+    "serverModelName": "tiny",
+    "huggingFaceRepo": "Systran/faster-whisper-tiny",
+    "name": "Whisper Tiny",
+    "description": "最軽量・最速（39MB）。精度は低いが動作確認用に適する",
+    "sizeBytes": 40960000,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-tiny"
+  },
+  {
+    "id": "base",
+    "serverModelName": "base",
+    "huggingFaceRepo": "Systran/faster-whisper-base",
+    "name": "Whisper Base",
+    "description": "軽量（74MB）。tiny より高い精度",
+    "sizeBytes": 77594624,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-base"
+  },
+  {
+    "id": "small",
+    "serverModelName": "small",
+    "huggingFaceRepo": "Systran/faster-whisper-small",
+    "name": "Whisper Small",
+    "description": "軽量・高速（244MB）。日本語の逐次文字起こしの推奨設定",
+    "sizeBytes": 244000000,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-small",
+    "recommended": true
+  },
+  {
+    "id": "medium",
+    "serverModelName": "medium",
+    "huggingFaceRepo": "Systran/faster-whisper-medium",
+    "name": "Whisper Medium",
+    "description": "高精度（769MB）。実時間の逐次処理には間に合わないことが多い",
+    "sizeBytes": 769000000,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-medium"
+  },
+  {
+    "id": "large-v2",
+    "serverModelName": "large-v2",
+    "huggingFaceRepo": "Systran/faster-whisper-large-v2",
+    "name": "Whisper Large v2",
+    "description": "最高精度（3.1GB）。精度重視の時のみ",
+    "sizeBytes": 3100000000,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-large-v2"
+  },
+  {
+    "id": "large-v3",
+    "serverModelName": "large-v3",
+    "huggingFaceRepo": "Systran/faster-whisper-large-v3",
+    "name": "Whisper Large v3",
+    "description": "最新・最高精度（約3.1GB）。VRAM 8GB以上推奨",
+    "sizeBytes": 3100000000,
+    "files": ["config.json", "model.bin", "tokenizer.json", "vocabulary.txt"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/Systran/faster-whisper-large-v3"
+  },
+  {
+    "id": "kotoba-whisper-v2.0-faster",
+    "serverModelName": "kotoba-tech/kotoba-whisper-v2.0-faster",
+    "huggingFaceRepo": "kotoba-tech/kotoba-whisper-v2.0-faster",
+    "name": "Kotoba Whisper v2.0",
+    "description": "日本語最適化（769MB）。固有名詞・staller表現に強い",
+    "sizeBytes": 769000000,
+    "files": ["config.json", "model.bin", "preprocessor_config.json", "tokenizer.json", "vocabulary.json"],
+    "license": "MIT",
+    "licenseUrl": "https://huggingface.co/kotoba-tech/kotoba-whisper-v2.0-faster"
+  }
+]
