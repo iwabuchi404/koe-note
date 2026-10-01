@@ -4,6 +4,7 @@
  */
 
 import { LoggerFactory, LogCategories } from '../../../utils/LoggerFactory'
+import { captureDesktopAudioStream, toUserFacingDesktopAudioError } from './desktopAudioSource';
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_AUDIO_MIXING)
 
@@ -160,24 +161,10 @@ export class AudioMixingService {
       logger.debug('🖥️ デスクトップ音声設定開始', { sourceId, gainValue });
       
       // getDisplayMediaでデスクトップ音声取得
-      // @ts-ignore
-      this.desktopStream = await navigator.mediaDevices.getDisplayMedia({
-        audio: true,
-        video: {
-          width: { ideal: 1 },
-          height: { ideal: 1 }
-        }
-      });
-      
-      logger.debug('🖥️ デスクトップストリーム取得完了');
-      
-      // 映像トラックを削除（音声のみ使用）
-      const videoTracks = this.desktopStream.getVideoTracks();
-      videoTracks.forEach(track => {
-        track.stop();
-        this.desktopStream!.removeTrack(track);
-      });
-      
+      this.desktopStream = await captureDesktopAudioStream();
+
+      logger.debug('デスクトップストリーム取得完了');
+
       // Web Audio APIノード作成
       this.desktopSource = this.audioContext!.createMediaStreamSource(this.desktopStream);
       this.desktopGain = this.audioContext!.createGain();
@@ -198,8 +185,8 @@ export class AudioMixingService {
       logger.debug('✅ デスクトップ音声設定完了');
       
     } catch (error) {
-      logger.error('❌ デスクトップ音声設定エラー:', error);
-      throw new Error(`デスクトップ音声の設定に失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error('デスクトップ音声設定エラー:', error);
+      throw toUserFacingDesktopAudioError(error);
     }
   }
   

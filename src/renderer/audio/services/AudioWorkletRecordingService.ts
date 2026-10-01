@@ -11,6 +11,7 @@ declare const lamejs: any;
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import { TranscriptionWebSocketService, TranscriptionResult, TranscriptionProgress } from './TranscriptionWebSocketService';
 import { AudioMixingService, MixingConfig } from './core/AudioMixingService';
+import { captureDesktopAudioStream, toUserFacingDesktopAudioError } from './core/desktopAudioSource';
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
 
@@ -162,48 +163,16 @@ export class AudioWorkletRecordingService {
 
       case 'desktop':
         try {
-          logger.debug('🖥️ デスクトップ音声取得を開始（画面共有ダイアログが表示されます）');
-          
-          // @ts-ignore - getDisplayMediaの音声取得
-          const desktopStream = await navigator.mediaDevices.getDisplayMedia({
-            audio: {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-              sampleRate: 44100
-            },
-            video: { width: { ideal: 1 }, height: { ideal: 1 } }
-          });
-          
-          logger.debug('🖥️ デスクトップストリーム取得成功');
-          
-          // 映像トラックを削除
-          const videoTracks = desktopStream.getVideoTracks();
-          videoTracks.forEach(track => {
-            track.stop();
-            desktopStream.removeTrack(track);
-          });
-          
-          // 音声トラックが存在するかチェック
+          logger.debug('デスクトップ音声取得を開始（画面共有ダイアログが表示されます）');
+
+          const desktopStream = await captureDesktopAudioStream();
           const audioTracks = desktopStream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            throw new Error('デスクトップ音声が取得できませんでした。画面共有時に「システム音声を共有」にチェックを入れてください。');
-          }
-          
-          logger.debug('🎵 デスクトップ音声トラック確認完了:', audioTracks.length);
+
+          logger.debug('デスクトップストリーム取得成功', { audioTracks: audioTracks.length });
           return desktopStream;
-          
+
         } catch (error) {
-          if (error instanceof Error) {
-            if (error.name === 'AbortError' || error.message.includes('aborted')) {
-              throw new Error('デスクトップ音声の取得がキャンセルされました。画面共有ダイアログで「共有」をクリックし、「システム音声を共有」にチェックを入れてください。');
-            } else if (error.name === 'NotAllowedError') {
-              throw new Error('デスクトップ音声の取得が拒否されました。ブラウザ設定で画面共有を許可してください。');
-            } else if (error.name === 'NotFoundError') {
-              throw new Error('デスクトップ音声デバイスが見つかりません。システム音声が有効か確認してください。');
-            }
-          }
-          throw error;
+          throw toUserFacingDesktopAudioError(error);
         }
 
       case 'mix':

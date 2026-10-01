@@ -633,30 +633,42 @@ function createWindow(): void {
     }
   });
 
-  // getDisplayMediaのダイアログを処理するためのハンドラー（Windows WASAPIロープバック対応）
+  // getDisplayMediaのハンドラー（Windowsのシステム音声はWASAPIループバックでのみ取得できる）
+  //
+  // Electron 28 の Streams.audio は 'loopback' | 'loopbackWithMute' のみを受け付ける。
+  // loopback を指定しても OS 側でシステム音声が出力されていない場合は
+  // Chromium がマイクへフォールバックしたMediaStreamを返すため、
+  // 正しさの担保は renderer 側（desktopAudioSource.ts）に置いている。
+  // ここでは各ソースの音声対応状況を出力して、原因の判別できるようにする。
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-    writeLog(`ディスプレイメディア要求を受信`);
-    
-    // desktopCapturerでソースを取得
-    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-      writeLog(`利用可能なスクリーンソース数: ${sources.length}`);
-      
-      if (sources.length > 0) {
-        // Windows WASAPIロープバック使用
-        callback({ 
-          video: sources[0],
-          audio: 'loopback'  // Windows システム音声キャプチャ
-        });
-        writeLog(`✅ ディスプレイメディア応答: ビデオ=${sources[0].name}, オーディオ=loopback`);
-      } else {
-        writeLog(`❌ スクリーンソースが見つかりません`);
+    writeLog('ディスプレイメディア要求を受信');
+
+    desktopCapturer
+      .getSources({ types: ['screen'] })
+      .then((sources) => {
+        writeLog(`利用可能スクリーン数: ${sources.length}`);
+
+        // 診断用: Electronの型には audio フィールドは無いが、
+        // 実行時に存在する場合はシステム音声の対応状況を示してくれる
+        for (const source of sources) {
+          const audioFlag = (source as unknown as { audio?: string }).audio;
+          writeLog(`  source: ${source.name} (id=${source.id}, audio=${audioFlag ?? 'n/a'})`);
+        }
+
+        if (sources.length === 0) {
+          writeLog('ERROR スクリーンソースが見つかりません');
+          callback({});
+          return;
+        }
+
+        const target = sources[0];
+        writeLog(`ディスプレイメディア応答: ${target.name} / audio=loopback`);
+        callback({ video: target, audio: 'loopback' });
+      })
+      .catch((error) => {
+        writeLog(`ERROR desktopCapturer: ${String(error)}`);
         callback({});
-      }
-    }).catch(error => {
-      writeLog(`❌ desktopCapturer エラー:`);
-      writeLog(String(error));
-      callback({});
-    });
+      });
   });
 
   // レンダラープロセスのコンソールログを監視
@@ -694,45 +706,27 @@ app.whenReady().then(async () => {
   });
 });
 
-// デスクトップキャプチャ・システム音声録音の権限設定
-app.commandLine.appendSwitch('enable-usermedia-screen-capturing');
-app.commandLine.appendSwitch('allow-http-screen-capture');
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-app.commandLine.appendSwitch('allow-loopback-in-peer-connection');
-app.commandLine.appendSwitch('enable-media-stream');
-// 実際のシステム音声を取得するため fake-ui は削除
-app.commandLine.appendSwitch('enable-webrtc-srtp-aes-gcm');
-app.commandLine.appendSwitch('enable-webrtc-stun-origin');
-app.commandLine.appendSwitch('disable-web-security');
-app.commandLine.appendSwitch('allow-running-insecure-content');
-// システムの権限設定
+// デスクトップキャプチャ・システム音声録音の設定
+//
+// 注意点: app.commandLine.appendSwitch は同名スイッチを1つしか持てない。
+// 複数回呼ぶと後の値が前の値を上書きする（値は連結されない）。
+// そのため enable-features / disable-features は
+// 値を集めてから1回だけ append する。
+const enabledFeatures: string[] = ['WebRTCPipeWireCapturer'];
+const disabledFeatures: string[] = ['AudioServiceOutOfProcess'];
+
 if (process.platform === 'darwin') {
-  app.commandLine.appendSwitch('enable-features', 'ScreenCaptureKitMac');
-} else if (process.platform === 'win32') {
-  // Windows用のシステム音声キャプチャ設定
-  app.commandLine.appendSwitch('disable-features', 'OutOfBlinkCors');
-  app.commandLine.appendSwitch('disable-background-timer-throttling');
-  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-  app.commandLine.appendSwitch('disable-renderer-backgrounding');
-  app.commandLine.appendSwitch('enable-features', 'VizDisplayCompositor,UseSkiaRenderer');
-  
-  // Windows システム音声キャプチャの根本的修正
-  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,DesktopCaptureAudio');
-  app.commandLine.appendSwitch('use-angle', 'gl');
-  app.commandLine.appendSwitch('enable-zero-copy');
-  
-  // デスクトップ音声キャプチャを強制
-  app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess');
-  app.commandLine.appendSwitch('force-system-audio-capture');
-  app.commandLine.appendSwitch('enable-logging', 'stderr');
-  app.commandLine.appendSwitch('vmodule', 'webrtc*=1');
-  
-  // フェイクデバイスを完全に無効化し、実デバイスを強制
-  app.commandLine.appendSwitch('disable-default-apps');
-  app.commandLine.appendSwitch('use-real-device-for-media-stream');
-  app.commandLine.appendSwitch('enable-system-audio-capture-for-desktop-share');
-  app.commandLine.appendSwitch('force-audio-service-sandbox', 'false');
+  enabledFeatures.push('ScreenCaptureKitMac');
 }
+
+// バックグラウンドスロットリングを止め、録音中のタブの処理が止まるのを防ぐ
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
+app.commandLine.appendSwitch('enable-features', enabledFeatures.join(','));
+app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 
 // すべてのウィンドウが閉じられたときの処理
 app.on('window-all-closed', () => {
