@@ -246,7 +246,12 @@ class KotobaWhisperManager {
   }
 
   // ヘルスチェックでサーバー起動完了を待機
-  private async waitForServerReady(maxAttempts: number = 30, intervalMs: number = 1000): Promise<boolean> {
+  //
+  // 実測値: Kotoba-Whisper small のモデル読込には約50秒かかり、
+  // プロセスはその間_party待ち 而不是 死亡する。30秒で打ち切ると
+  // 「起動失敗」と表示した直後にサーバーが上がる。
+  private async waitForServerReady(maxAttempts: number = 180, intervalMs: number = 1000): Promise<boolean> {
+    const startedAt = Date.now();
     for (let i = 0; i < maxAttempts; i++) {
       if (!this.pythonProcess) {
         writeLog('waitForServerReady: プロセスが既に終了');
@@ -254,12 +259,17 @@ class KotobaWhisperManager {
       }
       const ready = await this.checkExternalServer();
       if (ready) {
-        writeLog(`waitForServerReady: サーバー準備完了 (${i + 1}回目)`);
+        writeLog(`waitForServerReady: サーバー準備完了 (${((Date.now() - startedAt) / 1000).toFixed(1)}秒, ${i + 1}回目)`);
         return true;
+      }
+      // 10秒ごとに進捗を通知し、UIが「起動中」のまま임을把握できるようにする
+      if ((i + 1) % 10 === 0) {
+        writeLog(`waitForServerReady: 待機中 ${(i + 1) * (intervalMs / 1000)}秒（モデル読込中）`);
+        this.notifyServerStatus('starting');
       }
       await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
-    writeLog(`waitForServerReady: タイムアウト (${maxAttempts}回試行)`);
+    writeLog(`waitForServerReady: タイムアウト (${maxAttempts}回試行, ${maxAttempts * intervalMs / 1000}秒)`);
     return false;
   }
 
