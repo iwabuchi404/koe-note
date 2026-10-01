@@ -5,7 +5,10 @@
 
 import React, { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react'
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats } from '../audio/services/AudioWorkletRecordingService'
-import { TranscriptionResult, TranscriptionProgress } from '../audio/services/TranscriptionWebSocketService'
+import type {
+  ChunkTranscriptionResult,
+  ChunkTranscriptionProgress
+} from '@shared/types'
 import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileService'
 import { durationFromBytes } from '../services/transcription/transcriptFormat'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
@@ -187,7 +190,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [addError, setRecordingFile])
 
   // 文字起こし結果コールバック
-  const handleTranscriptionResult = useCallback(async (result: TranscriptionResult) => {
+  const handleTranscriptionResult = useCallback(async (result: ChunkTranscriptionResult) => {
     logger.info(`グローバル録音 文字起こし結果 #${result.chunkNumber}:`, result.text)
 
     setRecordingData(prev => ({
@@ -243,7 +246,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [addError, setRecordingFile])
 
   // 文字起こし進捗コールバック
-  const handleTranscriptionProgress = useCallback((progress: TranscriptionProgress) => {
+  const handleTranscriptionProgress = useCallback((progress: ChunkTranscriptionProgress) => {
     logger.info(`グローバル録音 文字起こし進捗 #${progress.chunkNumber}:`, progress.status)
 
     const status = progress.status === 'completed' ? 'completed' : 

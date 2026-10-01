@@ -1,87 +1,47 @@
 /**
- * モデル管理関連の型定義
+ * モデル管理（renderer 側）の型とローカル定義
+ *
+ * モデル情報・進捗の型は src/shared/types.ts を正とする。
+ * ここでは renderer 固有の_download 制御_ だけを持つ。
  */
+import type { ModelInfo, ModelDownloadProgress } from '@shared/types'
 
-export interface ModelInfo {
-  id: string
-  name: string
-  description: string
-  size: string
-  sizeBytes: number
-  version: string
-  license: string
-  licenseUrl?: string
-  downloadUrl: string
-  checksum: string
-  isInstalled: boolean
-  isDownloading: boolean
-  downloadProgress: number
-  installPath?: string
-  lastUpdated?: Date
-}
+export type { ModelInfo }
 
-export interface DownloadProgress {
-  modelId: string
-  progress: number
-  downloadedBytes: number
-  totalBytes: number
-  speed: number
-  eta: number
-  status: 'downloading' | 'paused' | 'completed' | 'error' | 'cancelled'
-}
+/** 画面に出すためのモデル定義（インストール状態は実行時に決まる） */
+export type ModelCatalogEntry = Omit<ModelInfo, 'isInstalled' | 'isDownloading' | 'downloadProgress'>
 
 export interface ModelDownloadOptions {
   modelId: string
   forceDownload?: boolean
   verifyChecksum?: boolean
-  onProgress?: (progress: DownloadProgress) => void
+  onProgress?: (progress: ModelDownloadProgress) => void
   onComplete?: (modelId: string) => void
   onError?: (error: string) => void
 }
 
-export interface ModelManagerState {
-  availableModels: ModelInfo[]
-  installedModels: ModelInfo[]
-  downloadingModels: Set<string>
-  error: string | null
-  isInitialized: boolean
-}
-
+/**
+ * モデルダウンロードサービスの公開API（実装が持つメソッドのみ）
+ *
+ * 以前は実装に存在しない pause/resume/checkForUpdates などを含む
+ * interfaceを定義していたため、型としては嘘になっていた。
+ */
 export interface ModelDownloadService {
-  // モデル一覧取得
   getAvailableModels(): Promise<ModelInfo[]>
-  
-  // インストール済みモデル取得
   getInstalledModels(): Promise<ModelInfo[]>
-  
-  // モデルダウンロード
   downloadModel(options: ModelDownloadOptions): Promise<void>
-  
-  // ダウンロードキャンセル
   cancelDownload(modelId: string): Promise<void>
-  
-  // ダウンロード一時停止/再開
-  pauseDownload(modelId: string): Promise<void>
-  resumeDownload(modelId: string): Promise<void>
-  
-  // モデル削除
   removeModel(modelId: string): Promise<void>
-  
-  // モデル更新チェック
-  checkForUpdates(): Promise<ModelInfo[]>
-  
-  // ダウンロード進捗取得
-  getDownloadProgress(modelId: string): DownloadProgress | null
-  
-  // ダウンロード中チェック
+  getModelDownloadProgress(modelId: string): ModelDownloadProgress | null
   hasActiveDownloads(): boolean
-  
-  // ダウンロード中モデル一覧取得
   getActiveDownloads(): string[]
 }
 
-// 利用可能なモデル定義
-export const AVAILABLE_MODELS: Omit<ModelInfo, 'isInstalled' | 'isDownloading' | 'downloadProgress'>[] = [
+// TODO(C3): この定義は models.json を正とする。4箇所に散らばった
+// モデルカタログ（main.ts の MODEL_CONFIGS / models.json / この配列 /
+// Python の config.py）を統合し、この配列は削除する。
+/** 旧: ハードコードされたモデル一覧。Phase C3 で models.json に統合する */
+export const AVAILABLE_MODELS: ModelCatalogEntry[] = [
   {
     id: 'small',
     name: 'Whisper Small',

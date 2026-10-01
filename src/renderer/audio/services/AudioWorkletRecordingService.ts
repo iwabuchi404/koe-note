@@ -9,7 +9,11 @@
 declare const lamejs: any;
 
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
-import { TranscriptionWebSocketService, TranscriptionResult, TranscriptionProgress } from './TranscriptionWebSocketService';
+import {
+  TranscriptionWebSocketService,
+  type ChunkTranscriptionResult,
+  type ChunkTranscriptionProgress
+} from './TranscriptionWebSocketService';
 import { AudioMixingService, MixingConfig } from './core/AudioMixingService';
 import { captureDesktopAudioStream, toUserFacingDesktopAudioError } from './core/desktopAudioSource';
 
@@ -65,8 +69,8 @@ export class AudioWorkletRecordingService {
   private onChunkReady: (event: ChunkReadyEvent) => void;
   private onError: (error: Error) => void;
   private onStatsUpdate: (stats: RecordingStats) => void;
-  private onTranscriptionResult?: (result: TranscriptionResult) => void;
-  private onTranscriptionProgress?: (progress: TranscriptionProgress) => void;
+  private onChunkTranscriptionResult?: (result: ChunkTranscriptionResult) => void;
+  private onChunkTranscriptionProgress?: (progress: ChunkTranscriptionProgress) => void;
   
   // 文字起こし機能
   private transcriptionService: TranscriptionWebSocketService | null = null;
@@ -87,14 +91,14 @@ export class AudioWorkletRecordingService {
     onChunkReadyCallback: (event: ChunkReadyEvent) => void,
     onErrorCallback?: (error: Error) => void,
     onStatsUpdateCallback?: (stats: RecordingStats) => void,
-    onTranscriptionResultCallback?: (result: TranscriptionResult) => void,
-    onTranscriptionProgressCallback?: (progress: TranscriptionProgress) => void
+    onTranscriptionResultCallback?: (result: ChunkTranscriptionResult) => void,
+    onTranscriptionProgressCallback?: (progress: ChunkTranscriptionProgress) => void
   ) {
     this.onChunkReady = onChunkReadyCallback;
     this.onError = onErrorCallback || ((error) => logger.error('🎵 録音エラー:', error));
     this.onStatsUpdate = onStatsUpdateCallback || (() => {});
-    this.onTranscriptionResult = onTranscriptionResultCallback;
-    this.onTranscriptionProgress = onTranscriptionProgressCallback;
+    this.onChunkTranscriptionResult = onTranscriptionResultCallback;
+    this.onChunkTranscriptionProgress = onTranscriptionProgressCallback;
   }
 
   /**
@@ -401,13 +405,13 @@ export class AudioWorkletRecordingService {
         onConnectionChange: (connected) => {
           logger.debug('🎵 文字起こしサーバー接続状態:', connected);
         },
-        onTranscriptionResult: (result) => {
+        onChunkTranscriptionResult: (result) => {
           logger.debug('🎵 文字起こし結果受信:', result.text);
-          this.onTranscriptionResult?.(result);
+          this.onChunkTranscriptionResult?.(result);
         },
-        onTranscriptionProgress: (progress) => {
+        onChunkTranscriptionProgress: (progress) => {
           logger.debug('🎵 文字起こし進捗:', progress.status);
-          this.onTranscriptionProgress?.(progress);
+          this.onChunkTranscriptionProgress?.(progress);
         },
         onError: (error) => {
           logger.error('🎵 文字起こしエラー:', error);

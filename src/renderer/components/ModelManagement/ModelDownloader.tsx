@@ -4,7 +4,7 @@
 
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
-import { ModelInfo, DownloadProgress } from '../../types/ModelTypes'
+import type { ModelInfo, ModelDownloadProgress } from '@shared/types'
 import { modelDownloadService } from '../../services/ModelDownloadService'
 import './ModelDownloader.css'
 
@@ -21,7 +21,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
 }) => {
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set())
-  const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadProgress>>(new Map())
+  const [downloadProgress, setModelDownloadProgress] = useState<Map<string, ModelDownloadProgress>>(new Map())
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [consentMap, setConsentMap] = useState<Record<string, boolean>>({})
@@ -61,7 +61,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
       await modelDownloadService.downloadModel({
         modelId,
         onProgress: (progress) => {
-          setDownloadProgress(prev => new Map(prev).set(modelId, progress))
+          setModelDownloadProgress(prev => new Map(prev).set(modelId, progress))
         },
         onComplete: (completedModelId) => {
           setDownloadingModels(prev => {
@@ -69,7 +69,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
             newSet.delete(completedModelId)
             return newSet
           })
-          setDownloadProgress(prev => {
+          setModelDownloadProgress(prev => {
             const newMap = new Map(prev)
             newMap.delete(completedModelId)
             return newMap
@@ -105,7 +105,7 @@ export const ModelDownloader: React.FC<ModelDownloaderProps> = ({
         newSet.delete(modelId)
         return newSet
       })
-      setDownloadProgress(prev => {
+      setModelDownloadProgress(prev => {
         const newMap = new Map(prev)
         newMap.delete(modelId)
         return newMap

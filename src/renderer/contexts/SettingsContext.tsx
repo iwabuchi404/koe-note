@@ -30,7 +30,13 @@ export interface DetailedSettings {
   // 現在使用されていない設定項目は削除済み
 }
 
-export interface AppSettings {
+/**
+ * renderer 側が localStorage に持つユーザー設定
+ *
+ * main プロセスが settings.json で管理する AppSettings（@shared/types）
+ * とは別の概念。名前で混同しないよう UserPreferences としている。
+ */
+export interface UserPreferences {
   recording: RecordingSettings
   transcription: TranscriptionSettings
   file: FileSettings
@@ -39,7 +45,7 @@ export interface AppSettings {
 
 // コンテキストの型定義
 interface SettingsContextType {
-  settings: AppSettings
+  settings: UserPreferences
   updateRecordingSettings: (settings: Partial<RecordingSettings>) => void
   updateTranscriptionSettings: (settings: Partial<TranscriptionSettings>) => void
   updateFileSettings: (settings: Partial<FileSettings>) => void
@@ -50,7 +56,7 @@ interface SettingsContextType {
 }
 
 // デフォルト設定
-const DEFAULT_SETTINGS: AppSettings = {
+const DEFAULT_SETTINGS: UserPreferences = {
   recording: {
     microphone: {
       deviceId: 'default',
@@ -91,7 +97,7 @@ interface SettingsProviderProps {
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) => {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<UserPreferences>(DEFAULT_SETTINGS)
 
   // 設定の読み込み
   const loadSettings = async () => {
@@ -102,7 +108,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const fileSettings = localStorage.getItem('koeNote_fileSettings')
       const detailedSettings = localStorage.getItem('koeNote_detailedSettings')
 
-      const loadedSettings: AppSettings = {
+      const loadedSettings: UserPreferences = {
         recording: recordingSettings ? JSON.parse(recordingSettings) : DEFAULT_SETTINGS.recording,
         transcription: transcriptionSettings ? JSON.parse(transcriptionSettings) : DEFAULT_SETTINGS.transcription,
         file: fileSettings ? JSON.parse(fileSettings) : DEFAULT_SETTINGS.file,

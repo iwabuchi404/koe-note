@@ -2,24 +2,24 @@
  * 既存のTranscriptionResultを新しいTextDisplayシステムに適応させるアダプター
  */
 
-import { TranscriptionResult as LegacyTranscriptionResult, TranscriptionSegment as LegacyTranscriptionSegment } from '../../../../../preload/preload'
+import type { TranscriptionResult as ServerTranscriptionResult, TranscriptionSegment as ServerTranscriptionSegment } from '@shared/types'
 import { TranscriptionSegment, ParsedTranscriptionContent, DisplayMetadata } from '../types/TextDisplayTypes'
 
 /**
- * 既存のTranscriptionResultを新しい形式に変換
+ * サーバーの文字起こし結果をTextDisplay表示形式に変換
  */
 export class TranscriptionAdapter {
-  
+
   /**
-   * レガシーTranscriptionResultを新しい形式に変換
+   * サーバー応答（TranscriptionResult）を表示形式に変換
    */
   static convertLegacyResult(
-    legacyResult: LegacyTranscriptionResult,
+    legacyResult: ServerTranscriptionResult,
     audioFileName?: string
   ): ParsedTranscriptionContent {
-    
+
     // セグメントの変換
-    const segments: TranscriptionSegment[] = legacyResult.segments.map((segment: LegacyTranscriptionSegment, index: number) => ({
+    const segments: TranscriptionSegment[] = legacyResult.segments.map((segment, index) => ({
       id: index + 1,
       start: segment.start,
       end: segment.end,
@@ -65,9 +65,9 @@ export class TranscriptionAdapter {
    */
   static convertToLegacyResult(
     parsedContent: ParsedTranscriptionContent
-  ): LegacyTranscriptionResult {
+  ): ServerTranscriptionResult {
     
-    const legacySegments: LegacyTranscriptionSegment[] = parsedContent.segments.map((segment: TranscriptionSegment) => ({
+    const serverSegments: ServerTranscriptionSegment[] = parsedContent.segments.map((segment: TranscriptionSegment) => ({
       start: segment.start,
       end: segment.end,
       text: segment.text,
@@ -77,9 +77,9 @@ export class TranscriptionAdapter {
     return {
       language: parsedContent.metadata.transcription?.language || 'ja',
       duration: parsedContent.metadata.transcription?.duration || 0,
-      segments: legacySegments,
+      segments: serverSegments,
       created_at: Math.floor(new Date(parsedContent.metadata.createdAt).getTime() / 1000),
-      segment_count: legacySegments.length
+      segment_count: serverSegments.length
     }
   }
   
@@ -87,11 +87,11 @@ export class TranscriptionAdapter {
    * 編集されたセグメントを反映してTranscriptionResultを更新
    */
   static updateLegacyResultWithEdits(
-    originalResult: LegacyTranscriptionResult,
+    originalResult: ServerTranscriptionResult,
     editedSegmentTexts: Map<number, string>
-  ): LegacyTranscriptionResult {
+  ): ServerTranscriptionResult {
     
-    const updatedSegments: LegacyTranscriptionSegment[] = originalResult.segments.map((segment: LegacyTranscriptionSegment, index: number) => {
+    const updatedSegments: ServerTranscriptionSegment[] = originalResult.segments.map((segment: ServerTranscriptionSegment, index: number) => {
       const editedText = editedSegmentTexts.get(index)
       
       if (editedText !== undefined && editedText !== segment.text) {
@@ -115,7 +115,7 @@ export class TranscriptionAdapter {
    * TranscriptionResultからファイル形式のテキストを生成
    */
   static generateFileContent(
-    result: LegacyTranscriptionResult,
+    result: ServerTranscriptionResult,
     audioFileName?: string,
     model?: string
   ): string {
@@ -138,7 +138,7 @@ export class TranscriptionAdapter {
     ].join('\n')
     
     // セグメント内容
-    const segmentContent = result.segments.map((segment: LegacyTranscriptionSegment, index: number) => {
+    const segmentContent = result.segments.map((segment: ServerTranscriptionSegment, index: number) => {
       const id = (index + 1).toString().padStart(3, '0')
       const startTime = this.formatTime(segment.start)
       const endTime = this.formatTime(segment.end)

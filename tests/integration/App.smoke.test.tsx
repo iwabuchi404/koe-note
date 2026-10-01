@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, within, waitFor } from '@testing-library/react'
 import App from '@renderer/App'
 import { installElectronAPI } from '../mocks/electronAPI'
-import type { AudioFile } from '../../src/preload/preload'
+import type { AudioFile } from '@shared/types'
 
 const buildAudioFile = (overrides: Partial<AudioFile> = {}): AudioFile => ({
   id: 'file-1',

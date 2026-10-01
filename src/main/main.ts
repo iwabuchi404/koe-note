@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, desktopCapturer } from 'electron';
-import type { AppSettings, AudioFile, TranscriptionFile, TranscriptionSegmentExtended, ClipboardCopyRecord, AIChatFile, ChunkSettings, ChunkProgress } from '../preload/preload';
+import type { AppSettings, AudioFile, TranscriptionFile, TranscriptionSegmentExtended, ClipboardCopyRecord, AIChatFile } from '@shared/types';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -104,7 +104,6 @@ function repoToId(repo: string): string | null {
 // ダウンロード中の管理（キャンセル用）
 const activeDownloads = new Map<string, { abort: () => void }>();
 const cancelledDownloads = new Set<string>();
-
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -853,16 +852,7 @@ ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subf
     }
     
     writeLog(`ファイル保存完了: ${filename} (${subfolder || 'メイン'}) - ${buffer.length} bytes`);
-    
-    // ファイル保存完了をレンダラープロセスに通知
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('file:saved', {
-        filePath,
-        filename,
-        folder: targetFolder
-      });
-    }
-    
+
     return filePath;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -879,60 +869,6 @@ ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subf
     } else {
       throw new Error(`ファイル保存エラー: ${errorMsg}`);
     }
-  }
-});
-
-// ディスク容量取得
-ipcMain.handle('file:getDiskSpace', async (event, dirPath: string): Promise<{ free: number; total: number }> => {
-  try {
-    // Windows環境でのディスク容量取得
-    if (process.platform === 'win32') {
-      return new Promise((resolve, reject) => {
-        exec(`dir /-c "${dirPath}"`, (error, stdout) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          
-          // dir コマンドの出力から空き容量を抽出
-          const lines = stdout.split('\n');
-          const lastLine = lines[lines.length - 2] || '';
-          const match = lastLine.match(/(\d+)\s+bytes\s+free/i);
-          
-          if (match) {
-            const free = parseInt(match[1]);
-            resolve({ free, total: free * 2 }); // 概算total
-          } else {
-            resolve({ free: 1024 * 1024 * 1024, total: 10 * 1024 * 1024 * 1024 }); // デフォルト値
-          }
-        });
-      });
-    } else {
-      // Unix系での容量取得
-      return new Promise((resolve, reject) => {
-        exec(`df "${dirPath}"`, (error, stdout) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-          
-          const lines = stdout.split('\n');
-          const dataLine = lines[1];
-          const values = dataLine.split(/\s+/);
-          
-          if (values.length >= 4) {
-            const total = parseInt(values[1]) * 1024;
-            const available = parseInt(values[3]) * 1024;
-            resolve({ free: available, total });
-          } else {
-            resolve({ free: 1024 * 1024 * 1024, total: 10 * 1024 * 1024 * 1024 });
-          }
-        });
-      });
-    }
-  } catch (error) {
-    writeLog(`ディスク容量取得エラー: ${error}`);
-    return { free: 1024 * 1024 * 1024, total: 10 * 1024 * 1024 * 1024 };
   }
 });
 
@@ -987,40 +923,12 @@ async function checkDiskSpace(dirPath: string): Promise<number> {
   }
 }
 
-// ファイルサイズ取得
-ipcMain.handle('file:getSize', async (event, filePath: string): Promise<number> => {
-  try {
-    const stats = fs.statSync(filePath);
-    return stats.size;
-  } catch (error) {
-    console.error('ファイルサイズ取得エラー:', error);
-    return 0;
-  }
-});
-
 // ファイル読み込み
 ipcMain.handle('file:read', async (event, filePath: string): Promise<Buffer> => {
   try {
     return fs.readFileSync(filePath);
   } catch (error) {
     writeLog(`ファイル読み込みエラー: ${filePath} - ${error}`);
-    throw error;
-  }
-});
-
-// メタデータファイル保存
-ipcMain.handle('file:saveMetadata', async (event, filename: string, metadata: Record<string, unknown>): Promise<void> => {
-  try {
-    // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
-    const saveFolder = path.join(app.getPath('desktop'), 'VoiceRecordings');
-    const metadataPath = path.join(saveFolder, filename + '.meta.json');
-    const metadataContent = JSON.stringify(metadata, null, 2);
-    
-    fs.writeFileSync(metadataPath, metadataContent);
-    writeLog(`Metadata saved: ${metadataPath}`);
-  } catch (error) {
-    writeLog(`Metadata save error: ${error}`);
-    console.error('Metadata save error:', error);
     throw error;
   }
 });
@@ -1262,48 +1170,6 @@ ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
   return getDefaultSettings();
 });
 
-ipcMain.handle('settings:save', async (_event, settings: AppSettings): Promise<void> => {
-  try {
-    fs.writeFileSync(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8');
-    writeLog('設定保存完了');
-  } catch (error) {
-    writeLog(`設定保存エラー: ${error}`);
-  }
-});
-
-// 入力デバイス一覧取得（レンダラープロセスで実装）
-ipcMain.handle('audio:getInputDevices', async (): Promise<any[]> => {
-  // レンダラープロセスでnavigator.mediaDevicesを使用するため、
-  // ここでは空配列を返す
-  return [];
-});
-
-// デスクトップキャプチャソース取得
-ipcMain.handle('desktop:getSources', async (): Promise<any[]> => {
-  try {
-    writeLog('デスクトップキャプチャソースを取得中...');
-    
-    const sources = await desktopCapturer.getSources({
-      types: ['window', 'screen'],
-      thumbnailSize: { width: 150, height: 100 }
-    });
-    
-    const result = sources.map(source => ({
-      id: source.id,
-      name: source.name,
-      thumbnail: source.thumbnail.toDataURL()
-    }));
-    
-    writeLog(`デスクトップキャプチャソース ${result.length}個を取得しました`);
-    
-    return result;
-  } catch (error) {
-    writeLog(`デスクトップキャプチャソース取得エラー: ${error}`);
-    console.error('デスクトップキャプチャソース取得エラー:', error);
-    return [];
-  }
-});
-
 // 音声ファイル読み込み（再生用）
 ipcMain.handle('file:loadAudio', async (event, filePath: string): Promise<string | null> => {
   try {
@@ -1425,29 +1291,6 @@ ipcMain.handle('window:close', async (): Promise<void> => {
 
 ipcMain.handle('window:isMaximized', async (): Promise<boolean> => {
   return mainWindow ? mainWindow.isMaximized() : false;
-});
-
-// ログ表示
-ipcMain.handle('debug:getLogs', async (): Promise<string> => {
-  try {
-    if (fs.existsSync(logFilePath)) {
-      return fs.readFileSync(logFilePath, 'utf-8');
-    }
-    return 'ログファイルが見つかりません';
-  } catch (error) {
-    return `ログ読み込みエラー: ${error}`;
-  }
-});
-
-ipcMain.handle('debug:clearLogs', async (): Promise<void> => {
-  try {
-    if (fs.existsSync(logFilePath)) {
-      fs.unlinkSync(logFilePath);
-    }
-    writeLog('ログファイルをクリアしました');
-  } catch (error) {
-    writeLog(`ログクリアエラー: ${error}`);
-  }
 });
 
 // ログ出力（rendererプロセスから）
@@ -1638,69 +1481,6 @@ async function verifyModelInternal(modelId: string): Promise<ModelVerificationRe
     return result;
   }
 }
-
-// IPCハンドラ: モデルの詳細検証
-ipcMain.handle('models:verifyModel', async (event, modelId: string): Promise<ModelVerificationResult> => {
-  return verifyModelInternal(modelId);
-});
-
-// 破損モデルのクリーンアップ
-ipcMain.handle('models:cleanupCorruptedModel', async (event, modelId: string): Promise<boolean> => {
-  try {
-    writeLog(`Cleaning up corrupted model: ${modelId}`);
-    
-    const config = MODEL_CONFIGS[modelId as keyof typeof MODEL_CONFIGS];
-    if (!config) {
-      writeLog(`Cleanup failed: Unknown model ${modelId}`);
-      return false;
-    }
-
-    const modelsPath = resolveModelsRoot();
-    const modelDir = path.join(modelsPath, repoToFolder(config.repo));
-    
-    if (fs.existsSync(modelDir)) {
-      fs.rmSync(modelDir, { recursive: true, force: true });
-      writeLog(`Cleaned up model directory: ${modelDir}`);
-    }
-    
-    return true;
-  } catch (error) {
-    writeLog(`Cleanup error: ${modelId} - ${error}`);
-    return false;
-  }
-});
-
-// 任意URLの単一ファイルダウンロード（将来の拡張用）
-ipcMain.handle('models:downloadModel', async (event, options: {
-  modelId: string;
-  downloadUrl: string;
-  targetPath: string;
-  checksum: string;
-}): Promise<void> => {
-  const { modelId, downloadUrl, targetPath } = options;
-  try {
-    writeLog(`Starting file download for model: ${modelId} from ${downloadUrl}`);
-    const targetDir = path.dirname(targetPath);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-    await downloadFile(downloadUrl, targetPath, (downloadedBytes, totalBytes) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        event.sender.send('models:downloadProgress', {
-          modelId,
-          bytesDownloaded: downloadedBytes,
-          totalBytes,
-          percent: totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0,
-          message: 'Downloading file...'
-        });
-      }
-    });
-    writeLog(`File download completed for: ${modelId}`);
-  } catch (error) {
-    writeLog(`Model file download failed: ${modelId}, error: ${error}`);
-    throw error;
-  }
-});
 
 ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<void> => {
   try {
@@ -1984,11 +1764,6 @@ ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any
             }
           } else if (response.type === 'transcription_progress') {
             writeLog(`音声認識進捗: ${response.status}`);
-            
-            // 進捗をレンダラープロセスに通知
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('speech:progress', response);
-            }
           } else if (response.type === 'connection') {
             writeLog(`サーバー接続確認: ${response.message}`);
           } else if (response.type === 'error') {
@@ -2174,24 +1949,6 @@ ipcMain.handle('speech:changeModel', async (event, modelName: string): Promise<b
   }
 });
 
-// 文字起こしファイル操作
-ipcMain.handle('transcription:save', async (event, audioFilePath: string, transcription: TranscriptionFile): Promise<string> => {
-  try {
-    writeLog(`文字起こしファイル保存: ${audioFilePath}`);
-    
-    const transFilePath = getTranscriptionPath(audioFilePath);
-    const content = generateTranscriptionFileContent(transcription);
-    
-    fs.writeFileSync(transFilePath, content, 'utf8');
-    writeLog(`文字起こしファイル保存完了: ${transFilePath}`);
-    
-    return transFilePath;
-  } catch (error) {
-    writeLog(`文字起こしファイル保存エラー: ${error}`);
-    throw error;
-  }
-});
-
 ipcMain.handle('transcription:load', async (event, transFilePath: string): Promise<any> => {
   try {
     writeLog(`文字起こしファイル読み込み: ${transFilePath}`);
@@ -2223,72 +1980,6 @@ ipcMain.handle('transcription:exists', async (event, audioFilePath: string): Pro
 
 ipcMain.handle('transcription:getPath', async (event, audioFilePath: string): Promise<string> => {
   return getTranscriptionPath(audioFilePath);
-});
-
-ipcMain.handle('transcription:delete', async (event, transFilePath: string): Promise<boolean> => {
-  try {
-    if (fs.existsSync(transFilePath)) {
-      fs.unlinkSync(transFilePath);
-      writeLog(`文字起こしファイル削除: ${transFilePath}`);
-      return true;
-    }
-    return false;
-  } catch (error) {
-    writeLog(`文字起こしファイル削除エラー: ${error}`);
-    return false;
-  }
-});
-
-// AI対話記録操作
-ipcMain.handle('aichat:saveClipboard', async (event, audioFilePath: string, copyRecord: ClipboardCopyRecord): Promise<void> => {
-  try {
-    writeLog(`クリップボード履歴保存: ${audioFilePath}`);
-    
-    const chatFilePath = getAIChatPath(audioFilePath);
-    let chatFile: AIChatFile;
-    
-    // 既存ファイルがあれば読み込み、なければ新規作成
-    if (fs.existsSync(chatFilePath)) {
-      const content = fs.readFileSync(chatFilePath, 'utf8');
-      chatFile = parseAIChatFileContent(content);
-    } else {
-      chatFile = {
-        sourceFile: path.basename(getTranscriptionPath(audioFilePath)),
-        createdAt: new Date().toISOString(),
-        clipboardHistory: []
-      };
-    }
-    
-    // 新しいコピー記録を追加
-    chatFile.clipboardHistory.push(copyRecord);
-    
-    // ファイルに保存
-    const content = generateAIChatFileContent(chatFile);
-    fs.writeFileSync(chatFilePath, content, 'utf8');
-    
-    writeLog(`クリップボード履歴保存完了: ${chatFilePath}`);
-  } catch (error) {
-    writeLog(`クリップボード履歴保存エラー: ${error}`);
-    throw error;
-  }
-});
-
-ipcMain.handle('aichat:load', async (event, chatFilePath: string): Promise<any> => {
-  try {
-    if (!fs.existsSync(chatFilePath)) {
-      throw new Error('AI対話ファイルが見つかりません');
-    }
-    
-    const content = fs.readFileSync(chatFilePath, 'utf8');
-    return parseAIChatFileContent(content);
-  } catch (error) {
-    writeLog(`AI対話ファイル読み込みエラー: ${error}`);
-    throw error;
-  }
-});
-
-ipcMain.handle('aichat:getPath', async (event, audioFilePath: string): Promise<string> => {
-  return getAIChatPath(audioFilePath);
 });
 
 // ヘルパー関数
@@ -2518,132 +2209,6 @@ function parseTimestamp(timestamp: string): number {
   const [hours, minutes, seconds] = timestamp.split(':');
   return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseFloat(seconds);
 }
-
-// === チャンク分割文字起こし機能 ===
-
-// チャンク分割文字起こし開始
-ipcMain.handle('chunk:startTranscription', async (event, audioFilePath: string, settings: ChunkSettings): Promise<string> => {
-  try {
-    writeLog(`チャンク分割文字起こし開始: ${audioFilePath}`);
-    
-    // ファイル存在確認
-    if (!fs.existsSync(audioFilePath)) {
-      throw new Error('音声ファイルが見つかりません');
-    }
-
-    // 一意のセッションIDを生成
-    const sessionId = `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // チャンク分割文字起こしの詳細はレンダラープロセスのマネージャーで処理
-    // ここでは基本的な準備作業のみ実行
-    
-    writeLog(`チャンク分割文字起こしセッション開始: ${sessionId}`);
-    return sessionId;
-  } catch (error) {
-    writeLog(`チャンク分割文字起こし開始エラー: ${error}`);
-    throw error;
-  }
-});
-
-// チャンク分割文字起こし停止
-ipcMain.handle('chunk:stopTranscription', async (event, sessionId: string): Promise<void> => {
-  try {
-    writeLog(`チャンク分割文字起こし停止: ${sessionId}`);
-    
-    // 実際の停止処理はレンダラープロセスのマネージャーで処理
-    // ここでは基本的なクリーンアップのみ実行
-    
-    writeLog(`チャンク分割文字起こしセッション停止: ${sessionId}`);
-  } catch (error) {
-    writeLog(`チャンク分割文字起こし停止エラー: ${error}`);
-    throw error;
-  }
-});
-
-// チャンク分割文字起こし進捗取得
-ipcMain.handle('chunk:getProgress', async (event, sessionId: string): Promise<any> => {
-  try {
-    // 実際の進捗はレンダラープロセスのマネージャーで管理
-    // ここでは基本的なプレースホルダーを返す
-    return {
-      isTranscribing: false,
-      totalChunks: 0,
-      processedChunks: 0,
-      failedChunks: 0,
-      currentProcessingChunk: 0,
-      averageProcessingTime: 0,
-      estimatedTimeRemaining: 0
-    };
-  } catch (error) {
-    writeLog(`チャンク分割文字起こし進捗取得エラー: ${error}`);
-    throw error;
-  }
-});
-
-// チャンク分割文字起こし設定更新
-ipcMain.handle('chunk:updateSettings', async (event, settings: ChunkSettings): Promise<void> => {
-  try {
-    writeLog(`チャンク分割文字起こし設定更新: ${JSON.stringify(settings)}`);
-    
-    // 設定の保存（実際はファイルに保存する）
-    // 現在は簡易的にログのみ出力
-    
-  } catch (error) {
-    writeLog(`チャンク分割文字起こし設定更新エラー: ${error}`);
-    throw error;
-  }
-});
-
-// チャンク分割文字起こし結果の統合保存
-ipcMain.handle('chunk:saveConsolidatedResult', async (event, audioFilePath: string, consolidatedResult: TranscriptionFile): Promise<string> => {
-  try {
-    writeLog(`チャンク分割文字起こし結果統合保存: ${audioFilePath}`);
-    
-    // 通常の文字起こしファイルと同じ形式で保存
-    const transFilePath = getTranscriptionPath(audioFilePath);
-    const content = generateTranscriptionFileContent(consolidatedResult);
-    
-    fs.writeFileSync(transFilePath, content, 'utf8');
-    writeLog(`チャンク分割文字起こし結果保存完了: ${transFilePath}`);
-    
-    return transFilePath;
-  } catch (error) {
-    writeLog(`チャンク分割文字起こし結果保存エラー: ${error}`);
-    throw error;
-  }
-});
-
-// 録音中ファイルの部分的な読み込み
-ipcMain.handle('audio:loadPartialFile', async (event, audioFilePath: string): Promise<string | null> => {
-  try {
-    writeLog(`録音中ファイルの部分的な読み込み: ${audioFilePath}`);
-    
-    // ファイルが存在するかチェック
-    if (!fs.existsSync(audioFilePath)) {
-      writeLog(`ファイルが存在しません: ${audioFilePath}`);
-      
-      return null;
-    }
-    
-    // ファイルサイズをチェック
-    const stats = fs.statSync(audioFilePath);
-    if (stats.size === 0) {
-      writeLog(`ファイルサイズが0です: ${audioFilePath}`);
-      return null;
-    }
-    
-    // 録音中のWebMファイルでも部分的に読み込み可能かテスト
-    const fileBuffer = fs.readFileSync(audioFilePath);
-    const dataUrl = `data:audio/webm;base64,${fileBuffer.toString('base64')}`;
-    
-    writeLog(`録音中ファイルの部分的な読み込み完了: ${audioFilePath} (${stats.size} bytes)`);
-    return dataUrl;
-    
-  } catch (error) {
-    writeLog(`録音中ファイルの部分的な読み込みエラー: ${error}`);
-    return null;
-  }
-});
 
 // テキストファイル保存ハンドラー（新録音システム用）
 ipcMain.handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {

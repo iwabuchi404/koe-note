@@ -4,16 +4,22 @@
  */
 
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
-import { ModelInfo, DownloadProgress, ModelDownloadOptions, ModelDownloadService as IModelDownloadService } from '../types/ModelTypes'
-import { AVAILABLE_MODELS } from '../types/ModelTypes'
+import type { ModelDownloadProgress } from '@shared/types'
+import {
+  ModelDownloadOptions,
+  ModelDownloadService as IModelDownloadService,
+  AVAILABLE_MODELS,
+  type ModelCatalogEntry,
+  type ModelInfo
+} from '../types/ModelTypes'
 import modelsConfig from '../config/models.json'
 
-type ModelConfigEntry = Omit<ModelInfo, 'isInstalled' | 'isDownloading' | 'downloadProgress'>
+type ModelConfigEntry = ModelCatalogEntry
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
 
 export class ModelDownloadService implements IModelDownloadService {
-  private downloadProgress = new Map<string, DownloadProgress>()
+  private downloadProgress = new Map<string, ModelDownloadProgress>()
   private downloadControllers = new Map<string, AbortController>()
   private installedModels = new Set<string>()
 
@@ -101,7 +107,7 @@ export class ModelDownloadService implements IModelDownloadService {
       const controller = new AbortController()
       this.downloadControllers.set(modelId, controller)
 
-      const progress: DownloadProgress = {
+      const progress: ModelDownloadProgress = {
         modelId,
         progress: 0,
         downloadedBytes: 0,
@@ -147,9 +153,9 @@ export class ModelDownloadService implements IModelDownloadService {
    */
   private async performDownload(
     modelInfo: ModelInfo,
-    progress: DownloadProgress,
+    progress: ModelDownloadProgress,
     signal: AbortSignal,
-    onProgress?: (progress: DownloadProgress) => void
+    onProgress?: (progress: ModelDownloadProgress) => void
   ): Promise<void> {
     try {
       // 進捗リスナーを設定
@@ -256,7 +262,7 @@ export class ModelDownloadService implements IModelDownloadService {
   /**
    * ダウンロード進捗を取得
    */
-  getDownloadProgress(modelId: string): DownloadProgress | null {
+  getModelDownloadProgress(modelId: string): ModelDownloadProgress | null {
     return this.downloadProgress.get(modelId) || null
   }
 

@@ -9,7 +9,8 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { useAppContext, AudioFile } from '../../App'
+import { useAppContext } from '../../App'
+import type { AudioFile } from '@shared/types'
 import { useTabContext } from '../../contexts/TabContext'
 import { TabType } from '../../types/TabTypes'
 import SettingsModal from '../SettingsModal/SettingsModal'

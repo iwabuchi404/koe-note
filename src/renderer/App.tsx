@@ -1,4 +1,5 @@
 import React, { useState, createContext, useContext, useEffect } from 'react'
+import type { AudioFile } from '@shared/types'
 import './styles/global.css'
 import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
@@ -8,21 +9,15 @@ import { RecordingProvider } from './contexts/RecordingContext'
 import { LoggerFactory, LogCategories } from './utils/LoggerFactory'
 import { initializeLogger, enableLoggerDebugMode } from './utils/LoggerInitializer'
 
-export interface AudioFile {
+// 選択されたファイルの型定義
+interface SelectedFile {
   id: string
   filename: string
   filepath: string
-  format: 'webm' | 'wav' | 'mp3' | 'rt.txt' | 'txt' | 'md'
-  duration?: number // オプショナルに変更（preloadと一致）
+  format: 'wav' | 'mp3'
+  duration?: number // オプショナルに変更
   size: number
   createdAt: Date
-  transcription?: string
-  inputDevice?: string
-  hasTranscriptionFile?: boolean // 文字起こしファイルの存在フラグ
-  transcriptionPath?: string // 文字起こしファイルのパス
-  isRecording?: boolean // 録音中フラグ
-  isRealtimeTranscription?: boolean // リアルタイム文字起こしファイルフラグ
-  isTextFile?: boolean // テキストファイルフラグ
 }
 
 // 選択されたファイルの型定義

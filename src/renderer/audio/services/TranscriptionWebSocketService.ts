@@ -6,30 +6,16 @@
  */
 
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
+import type {
+  ChunkTranscriptionResult,
+  ChunkTranscriptionProgress,
+  TranscriptionChunk
+} from '@shared/types'
 
-export interface TranscriptionChunk {
-  chunkNumber: number;
-  audioData: Blob;
-  timestamp: number;
-}
-
-export interface TranscriptionResult {
-  chunkNumber: number;
-  text: string;
-  segments: Array<{
-    start: number;
-    end: number;
-    text: string;
-    confidence?: number;
-  }>;
-  timestamp: number;
-}
-
-export interface TranscriptionProgress {
-  chunkNumber: number;
-  status: 'processing' | 'completed' | 'failed';
-  message?: string;
-}
+// チャンク・結果・進捗の型は @shared/types を正とする。
+// サーバー応答の TranscriptionResult との名前衝突を避けるため
+// ChunkTranscription* という名前にしている。
+export type { ChunkTranscriptionResult, ChunkTranscriptionProgress, TranscriptionChunk }
 
 export class TranscriptionWebSocketService {
   private ws: WebSocket | null = null;
@@ -44,23 +30,23 @@ export class TranscriptionWebSocketService {
   
   // イベントコールバック
   private onConnectionChange: (connected: boolean) => void;
-  private onTranscriptionResult: (result: TranscriptionResult) => void;
-  private onTranscriptionProgress: (progress: TranscriptionProgress) => void;
+  private onChunkTranscriptionResult: (result: ChunkTranscriptionResult) => void;
+  private onChunkTranscriptionProgress: (progress: ChunkTranscriptionProgress) => void;
   private onError: (error: string) => void;
 
   constructor(
     serverUrl: string = 'ws://localhost:8770',
     callbacks: {
       onConnectionChange: (connected: boolean) => void;
-      onTranscriptionResult: (result: TranscriptionResult) => void;
-      onTranscriptionProgress: (progress: TranscriptionProgress) => void;
+      onChunkTranscriptionResult: (result: ChunkTranscriptionResult) => void;
+      onChunkTranscriptionProgress: (progress: ChunkTranscriptionProgress) => void;
       onError: (error: string) => void;
     }
   ) {
     this.serverUrl = serverUrl;
     this.onConnectionChange = callbacks.onConnectionChange;
-    this.onTranscriptionResult = callbacks.onTranscriptionResult;
-    this.onTranscriptionProgress = callbacks.onTranscriptionProgress;
+    this.onChunkTranscriptionResult = callbacks.onChunkTranscriptionResult;
+    this.onChunkTranscriptionProgress = callbacks.onChunkTranscriptionProgress;
     this.onError = callbacks.onError;
   }
 
@@ -164,7 +150,7 @@ export class TranscriptionWebSocketService {
           }
         }
         
-        this.onTranscriptionProgress({
+        this.onChunkTranscriptionProgress({
           chunkNumber: progressChunkNumber,
           status: data.status,
           message: data.message
@@ -216,17 +202,17 @@ export class TranscriptionWebSocketService {
             }
           }
           
-          const result: TranscriptionResult = {
+          const result: ChunkTranscriptionResult = {
             chunkNumber,
             text: resultText,
             segments: data.result.segments || [],
             timestamp: Date.now()
           };
           this.logger.debug('🔗 変換後の結果:', result);
-          this.onTranscriptionResult(result);
+          this.onChunkTranscriptionResult(result);
         } else {
           this.logger.debug('🔗 文字起こし失敗:', data);
-          this.onTranscriptionProgress({
+          this.onChunkTranscriptionProgress({
             chunkNumber: data.chunkNumber || 0,
             status: 'failed',
             message: data.message || 'チャンク文字起こしに失敗しました'

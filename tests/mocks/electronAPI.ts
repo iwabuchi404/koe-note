@@ -2,27 +2,55 @@
  * ElectronAPI のテスト用モック
  *
  * 方針:
- * - `ElectronAPI` 型を実装することで、preload にメソッドが追加されると
- *   ここが型エラーになり、テストが落ちる（型によるドリフト検知）
- * - 個別テストでは `createElectronAPI({ ...overrides })` で上書きする
+ * - `ElectronAPI` 型（src/shared/types.ts）を実装することで、API に
+ *   メソッドが追加されるとここが型エラーになり、テストが落ちる
+ *   （型によるドリフト検知）
+ * - 個別テストでは `installElectronAPI({ ...overrides })` で上書きする
+ *
+ * 返却値のデフォルトは「空・成功」寄りに揃えている。異常系の検証は
+ * 各テストが overrides で明示的に差し込む。
  */
-import type { ElectronAPI } from '../../src/preload/preload'
+import type { ElectronAPI, AppSettings, TranscriptionFile } from '@shared/types'
 
 type Overrides = Partial<ElectronAPI>
 
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS: AppSettings = {
   saveFolder: '/mock/save-folder',
-  audioQuality: 'medium' as const,
+  audioQuality: 'medium',
   defaultVolume: 50,
   defaultInputDevice: 'default',
-  mp3Bitrate: 128 as const,
+  mp3Bitrate: 128,
   autoTranscribe: true
+}
+
+const DEFAULT_TRANSCRIPTION_FILE: TranscriptionFile = {
+  metadata: {
+    audioFile: 'recording.mp3',
+    model: 'small',
+    transcribedAt: '2025-01-01T00:00:00.000Z',
+    duration: 0,
+    segmentCount: 0,
+    language: 'ja',
+    speakers: []
+  },
+  segments: [],
+  filePath: '/mock/recording.trans.txt',
+  isModified: false
+}
+
+/** 36バイトの有効なWAV（音声要素が読み込めることのみ担保する） */
+const SILENT_WAV_DATA_URL =
+  'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj'
+
+export interface ElectronAPIMock extends ElectronAPI {
+  /** 登録済みリスナーへイベントを配信する（テスト用） */
+  emit: (channel: string, ...args: unknown[]) => void
 }
 
 /**
  * 完全な ElectronAPI モックを生成する
  */
-export function createElectronAPI(overrides: Overrides = {}): ElectronAPI {
+export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
   const listeners = new Map<string, Set<(...args: unknown[]) => void>>()
 
   const emit = (channel: string, ...args: unknown[]): void => {
@@ -36,52 +64,24 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPI {
   }
 
   const api: ElectronAPI = {
-    // ダイアログ
+    // ---- ダイアログ ----
     selectFolder: vi.fn().mockResolvedValue('/mock/folder'),
-    selectFile: vi.fn().mockResolvedValue({ path: '/mock/file.wav', name: 'file.wav' }),
-    showSaveDialog: vi.fn().mockResolvedValue('/mock/save/file.wav'),
+    selectFile: vi.fn().mockResolvedValue({ path: '/mock/file.mp3', name: 'file.mp3' }),
 
-    // ファイル操作
+    // ---- ファイル操作 ----
     saveFile: vi.fn().mockResolvedValue('/mock/path/file.mp3'),
     saveFileToPath: vi.fn().mockResolvedValue(true),
     saveTextFile: vi.fn().mockResolvedValue(true),
     getFileList: vi.fn().mockResolvedValue([]),
     deleteFile: vi.fn().mockResolvedValue(true),
-    // 36バイトの有効なWAVをdata URLで返す（音声要素が読み込めることのみ担保）
-    loadAudioFile: vi.fn().mockResolvedValue(
-      'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj'
-    ),
-    saveMetadata: vi.fn().mockResolvedValue(undefined),
-    getFileSize: vi.fn().mockResolvedValue(0),
-    getDiskSpace: vi.fn().mockResolvedValue({ free: 1024 * 1024 * 1024, total: 2 * 1024 * 1024 * 1024 }),
-    readFile: vi.fn().mockResolvedValue(Buffer.alloc(0)),
+    loadAudioFile: vi.fn().mockResolvedValue(SILENT_WAV_DATA_URL),
+    readFile: vi.fn().mockResolvedValue(new Uint8Array(0)),
     getWorkingDirectory: vi.fn().mockResolvedValue('/mock/save-folder'),
 
-    // 設定
+    // ---- 設定 ----
     loadSettings: vi.fn().mockResolvedValue(DEFAULT_SETTINGS),
-    saveSettings: vi.fn().mockResolvedValue(undefined),
 
-    // 音声デバイス
-    getInputDevices: vi.fn().mockResolvedValue([]),
-
-    // デスクトップキャプチャ
-    getDesktopSources: vi.fn().mockResolvedValue([]),
-
-    // ウィンドウ操作
-    windowMinimize: vi.fn().mockResolvedValue(undefined),
-    windowMaximize: vi.fn().mockResolvedValue(undefined),
-    windowClose: vi.fn().mockResolvedValue(undefined),
-    windowIsMaximized: vi.fn().mockResolvedValue(false),
-
-    // イベントリスナー
-    onFileSaved: vi.fn((callback) => subscribe('file:saved', callback)),
-    removeAllListeners: vi.fn((channel: string) => listeners.delete(channel)),
-
-    // デバッグ
-    debugGetLogs: vi.fn().mockResolvedValue(''),
-    debugClearLogs: vi.fn().mockResolvedValue(undefined),
-
-    // 音声認識（Kotoba-Whisper）
+    // ---- 文字起こしサーバー ----
     speechGetServerStatus: vi.fn().mockResolvedValue({ isRunning: false }),
     speechStartServer: vi.fn().mockResolvedValue(true),
     speechStopServer: vi.fn().mockResolvedValue(undefined),
@@ -93,90 +93,41 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPI {
       segment_count: 0
     }),
     speechChangeModel: vi.fn().mockResolvedValue(true),
-    onSpeechProgress: vi.fn((callback) => subscribe('speech:progress', callback)),
     onSpeechServerStatus: vi.fn((callback) => subscribe('speech:serverStatus', callback)),
 
-    // 文字起こしファイル操作
-    saveTranscriptionFile: vi.fn().mockResolvedValue('/mock/file.trans.txt'),
-    loadTranscriptionFile: vi.fn().mockResolvedValue({
-      metadata: {
-        audioFile: 'file.mp3',
-        model: 'small',
-        transcribedAt: '2025-01-01T00:00:00.000Z',
-        duration: 0,
-        segmentCount: 0,
-        language: 'ja',
-        speakers: [],
-        coverage: 0
-      },
-      segments: [],
-      filePath: '/mock/file.trans.txt',
-      isModified: false
-    }),
-    deleteTranscriptionFile: vi.fn().mockResolvedValue(true),
-
-    // AI対話記録操作
-    saveClipboardCopy: vi.fn().mockResolvedValue(undefined),
-    loadAIChatFile: vi.fn().mockResolvedValue({
-      sourceFile: '/mock/file.trans.txt',
-      createdAt: '2025-01-01T00:00:00.000Z',
-      clipboardHistory: []
-    }),
-
-    // ファイル関連操作
+    // ---- 文字起こしファイル ----
+    loadTranscriptionFile: vi.fn().mockResolvedValue(DEFAULT_TRANSCRIPTION_FILE),
     checkTranscriptionExists: vi.fn().mockResolvedValue(false),
-    getTranscriptionPath: vi.fn().mockResolvedValue('/mock/file.trans.txt'),
-    getAIChatPath: vi.fn().mockResolvedValue('/mock/file.ai-chat.txt'),
+    getTranscriptionPath: vi.fn().mockResolvedValue('/mock/recording.trans.txt'),
 
-    // チャンク分割文字起こし
-    chunkStartTranscription: vi.fn().mockResolvedValue('mock-session-id'),
-    chunkStopTranscription: vi.fn().mockResolvedValue(undefined),
-    chunkGetProgress: vi.fn().mockResolvedValue({
-      isTranscribing: false,
-      totalChunks: 0,
-      processedChunks: 0,
-      failedChunks: 0,
-      currentProcessingChunk: 0,
-      averageProcessingTime: 0,
-      estimatedTimeRemaining: 0
-    }),
-    chunkUpdateSettings: vi.fn().mockResolvedValue(undefined),
-    chunkSaveConsolidatedResult: vi.fn().mockResolvedValue('/mock/file.trans.txt'),
-
-    // 録音中ファイルの処理
-    loadPartialAudioFile: vi.fn().mockResolvedValue(null),
-
-    // モデル管理
+    // ---- モデル管理 ----
     getModelsPath: vi.fn().mockResolvedValue('/mock/models'),
     getInstalledModels: vi.fn().mockResolvedValue([]),
-    downloadModel: vi.fn().mockResolvedValue(undefined),
     downloadWhisperModel: vi.fn().mockResolvedValue(undefined),
-    removeModel: vi.fn().mockResolvedValue(undefined),
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
-    verifyModel: vi.fn().mockResolvedValue({
-      valid: true,
-      modelId: 'small',
-      missingFiles: [],
-      corruptFiles: [],
-      totalFiles: 4,
-      checkedFiles: 4,
-      errors: []
-    }),
-    cleanupCorruptedModel: vi.fn().mockResolvedValue(false),
+    removeModel: vi.fn().mockResolvedValue(undefined),
 
-    // 汎用イベント
-    on: vi.fn(subscribe),
-    removeListener: vi.fn(),
+    // ---- ウィンドウ操作 ----
+    windowMinimize: vi.fn().mockResolvedValue(undefined),
+    windowMaximize: vi.fn().mockResolvedValue(undefined),
+    windowClose: vi.fn().mockResolvedValue(undefined),
+    windowIsMaximized: vi.fn().mockResolvedValue(false),
+
+    // ---- 汎用イベント ----
+    on: vi.fn(subscribe) as unknown as ElectronAPI['on'],
+    removeListener: vi.fn() as unknown as ElectronAPI['removeListener'],
+
+    // ---- ログ ----
     logWrite: vi.fn().mockResolvedValue(undefined)
   }
 
-  return { ...api, ...overrides }
+  return Object.assign({ ...api, ...overrides }, { emit })
 }
 
 /**
  * window.electronAPI をモックで置き換える
  */
-export function installElectronAPI(overrides: Overrides = {}): ElectronAPI {
+export function installElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
   const api = createElectronAPI(overrides)
   Object.defineProperty(window, 'electronAPI', { value: api, writable: true, configurable: true })
   return api
