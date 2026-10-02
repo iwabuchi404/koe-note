@@ -10,6 +10,7 @@ import { WhisperServerService } from './services/whisperServer';
 import { listFiles } from './services/fileLibrary';
 import { resolveWithinRoot, transcriptionPathFor, aiChatPathFor } from './core/paths';
 import { AppError, toAppError } from './core/errors';
+import { handle, setIpcContext } from './ipc/handle';
 import * as http from 'http';
 
 // ログファイルのパス
@@ -29,6 +30,9 @@ function writeLog(message: string) {
 }
 
 writeLog('アプリケーション開始');
+
+// IPC ハンドラがログを書き込めるようにする
+setIpcContext({ log: writeLog });
 
 // アプリケーション設定
 const isDev = process.env.NODE_ENV === 'development';
@@ -283,7 +287,7 @@ app.on('before-quit', async (event) => {
 
 // IPC通信ハンドラー
 // フォルダ選択ダイアログ
-ipcMain.handle('dialog:selectFolder', async (): Promise<string | null> => {
+handle('dialog:selectFolder', async (): Promise<string | null> => {
   if (!mainWindow) {
     return null;
   }
@@ -301,7 +305,7 @@ ipcMain.handle('dialog:selectFolder', async (): Promise<string | null> => {
 });
 
 // ファイル選択ダイアログ
-ipcMain.handle('dialog:selectFile', async (event, filters?: Array<{ name: string; extensions: string[] }>): Promise<{ path: string; name: string } | null> => {
+handle('dialog:selectFile', async (event, filters?: Array<{ name: string; extensions: string[] }>): Promise<{ path: string; name: string } | null> => {
   if (!mainWindow) {
     return null;
   }
@@ -326,7 +330,7 @@ ipcMain.handle('dialog:selectFile', async (event, filters?: Array<{ name: string
 });
 
 // ファイル保存
-ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subfolder?: string): Promise<string> => {
+handle('file:save', async (event, buffer: Buffer, filename: string, subfolder?: string): Promise<string> => {
   try {
     // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
     // 保存先は許可ルート（作業フォルダ）基準。subfolder はその配下のみ許可
@@ -445,7 +449,7 @@ async function checkDiskSpace(dirPath: string): Promise<number> {
 }
 
 // ファイル読み込み
-ipcMain.handle('file:read', async (event, filePath: string): Promise<Uint8Array> => {
+handle('file:read', async (event, filePath: string): Promise<Uint8Array> => {
   try {
     const target = resolveWithinRoot(workspaceRoot(), filePath);
     return new Uint8Array(fs.readFileSync(target));
@@ -457,7 +461,7 @@ ipcMain.handle('file:read', async (event, filePath: string): Promise<Uint8Array>
 
 // ファイル一覧取得
 // ディレクトリ走査・分類・ペアリングは services/fileLibrary.ts（テスト可能）
-ipcMain.handle('file:getList', async (event, folderPath: string): Promise<AudioFile[]> => {
+handle('file:getList', async (event, folderPath: string): Promise<AudioFile[]> => {
   try {
     const resolved = resolveWithinRoot(workspaceRoot(), folderPath);
     return listFiles(resolved, writeLog);
@@ -467,7 +471,7 @@ ipcMain.handle('file:getList', async (event, folderPath: string): Promise<AudioF
 });
 
 // ファイル削除
-ipcMain.handle('file:delete', async (event, filePath: string): Promise<boolean> => {
+handle('file:delete', async (event, filePath: string): Promise<boolean> => {
   try {
     const target = resolveWithinRoot(workspaceRoot(), filePath);
     if (!fs.existsSync(target)) {
@@ -517,7 +521,7 @@ function getDefaultSettings() {
 }
 
 // 設定の保存・読み込み
-ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
+handle('settings:load', async (): Promise<AppSettings> => {
   try {
     if (fs.existsSync(settingsFilePath)) {
       const data = fs.readFileSync(settingsFilePath, 'utf-8');
@@ -531,7 +535,7 @@ ipcMain.handle('settings:load', async (): Promise<AppSettings> => {
 });
 
 // 音声ファイル読み込み（再生用）
-ipcMain.handle('file:loadAudio', async (event, filePath: string): Promise<string | null> => {
+handle('file:loadAudio', async (event, filePath: string): Promise<string> => {
   try {
     writeLog(`Audio File Loading Started: ${filePath}`);
     
@@ -620,20 +624,18 @@ ipcMain.handle('file:loadAudio', async (event, filePath: string): Promise<string
     
     return dataUrl;
   } catch (error) {
-    writeLog(`Audio File Loading Error: ${error}`);
-    console.error('Audio File Loading Error:', error);
-    return null;
+    throw toAppError(error, '音声ファイルの読み込みに失敗しました');
   }
 });
 
 // ウィンドウ操作
-ipcMain.handle('window:minimize', async (): Promise<void> => {
+handle('window:minimize', async (): Promise<void> => {
   if (mainWindow) {
     mainWindow.minimize();
   }
 });
 
-ipcMain.handle('window:maximize', async (): Promise<void> => {
+handle('window:maximize', async (): Promise<void> => {
   if (mainWindow) {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
@@ -643,25 +645,25 @@ ipcMain.handle('window:maximize', async (): Promise<void> => {
   }
 });
 
-ipcMain.handle('window:close', async (): Promise<void> => {
+handle('window:close', async (): Promise<void> => {
   if (mainWindow) {
     mainWindow.close();
   }
 });
 
-ipcMain.handle('window:isMaximized', async (): Promise<boolean> => {
+handle('window:isMaximized', async (): Promise<boolean> => {
   return mainWindow ? mainWindow.isMaximized() : false;
 });
 
 // ログ出力（rendererプロセスから）
-ipcMain.handle('log:write', async (event, message: string): Promise<void> => {
+handle('log:write', async (event, message: string): Promise<void> => {
   writeLog(message);
 });
 
 // === Kotoba-Whisper音声認識機能 ===
 
 // Pythonサーバー状態確認
-ipcMain.handle('speech:getServerStatus', async (): Promise<{ isRunning: boolean; pid?: number }> => {
+handle('speech:getServerStatus', async (): Promise<{ isRunning: boolean; pid?: number }> => {
   writeLog('サーバー状態確認要求');
   const internalStatus = whisperServer.getStatus();
   writeLog(`内部プロセス状態: isRunning=${internalStatus.isRunning}, pid=${internalStatus.pid}`);
@@ -683,33 +685,29 @@ ipcMain.handle('speech:getServerStatus', async (): Promise<{ isRunning: boolean;
 });
 
 // Pythonサーバー手動起動
-ipcMain.handle('speech:startServer', async (): Promise<boolean> => {
-  try {
-    writeLog('手動サーバー起動要求');
-    
-    // まず外部サーバーをチェック
-    const externalRunning = await whisperServer.isServerReachable();
-    if (externalRunning) {
-      writeLog('外部サーバーが既に動作中のため、内部起動をスキップ');
-      return true;
-    }
-    
-    // 外部サーバーがない場合のみ内部起動を試行
-    writeLog('外部サーバーが見つからないため、内部起動を試行');
-    return await whisperServer.start();
-  } catch (error) {
-    writeLog(`Pythonサーバー手動起動エラー: ${error}`);
-    return false;
+handle('speech:startServer', async (): Promise<void> => {
+  // ポートが既に使用されている場合は外部サーバーとして扱う
+  if (await whisperServer.isServerReachable()) {
+    writeLog('既にサーバーが起動中のため、外部サーバーを使用します');
+    return;
+  }
+
+  const started = await whisperServer.start();
+  if (!started) {
+    throw new AppError(
+      'SERVER_UNAVAILABLE',
+      'Whisper サーバーを起動できませんでした。Python が利用可能か、モデルがダウンロード済みか確認してください。'
+    );
   }
 });
 
 // Pythonサーバー停止
-ipcMain.handle('speech:stopServer', async (): Promise<void> => {
+handle('speech:stopServer', async (): Promise<void> => {
   await whisperServer.stop();
 });
 
 // モデル管理関連のIPCハンドラー
-ipcMain.handle('models:getModelsPath', async (): Promise<string> => {
+handle('models:getModelsPath', async (): Promise<string> => {
   try {
     const root = resolveModelsRoot();
     // 事前にフォルダ作成
@@ -723,7 +721,7 @@ ipcMain.handle('models:getModelsPath', async (): Promise<string> => {
   }
 });
 
-ipcMain.handle('models:getInstalledModels', async (): Promise<string[]> => {
+handle('models:getInstalledModels', async (): Promise<string[]> => {
   try {
     const modelsPath = resolveModelsRoot();
     const installedModelIds: string[] = [];
@@ -910,7 +908,7 @@ async function verifyModelInternal(modelId: string): Promise<ModelVerificationRe
   }
 }
 
-ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<void> => {
+handle('models:removeModel', async (event, modelPath: string): Promise<void> => {
   try {
     writeLog(`Removing model: ${modelPath}`);
     
@@ -927,7 +925,7 @@ ipcMain.handle('models:removeModel', async (event, modelPath: string): Promise<v
 });
 
 // Node.jsベースのモデルダウンロード
-ipcMain.handle('models:downloadWhisperModel', async (event, modelId: string): Promise<void> => {
+handle('models:downloadWhisperModel', async (event, modelId: string): Promise<void> => {
   try {
     writeLog(`Starting model download: ${modelId}`);
     const config = findModelById(modelId);
@@ -1119,7 +1117,7 @@ async function downloadFile(
 }
 
 // ダウンロードキャンセル
-ipcMain.handle('models:cancelDownload', async (event, modelId: string): Promise<void> => {
+handle('models:cancelDownload', async (event, modelId: string): Promise<void> => {
   const handle = activeDownloads.get(modelId);
   if (handle) {
     handle.abort();
@@ -1129,7 +1127,7 @@ ipcMain.handle('models:cancelDownload', async (event, modelId: string): Promise<
 });
 
 // 音声ファイル文字起こし
-ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any> => {
+handle('speech:transcribe', async (event, filePath: string): Promise<any> => {
   try {
     writeLog(`音声認識開始: ${filePath}`);
     
@@ -1256,7 +1254,7 @@ ipcMain.handle('speech:transcribe', async (event, filePath: string): Promise<any
 });
 
 // モデル変更
-ipcMain.handle('speech:changeModel', async (event, modelName: string): Promise<boolean> => {
+handle('speech:changeModel', async (event, modelName: string): Promise<boolean> => {
   try {
     writeLog(`モデル変更リクエスト: ${modelName}`);
     
@@ -1377,7 +1375,7 @@ ipcMain.handle('speech:changeModel', async (event, modelName: string): Promise<b
   }
 });
 
-ipcMain.handle('transcription:load', async (event, transFilePath: string): Promise<any> => {
+handle('transcription:load', async (event, transFilePath: string): Promise<any> => {
   try {
     writeLog(`文字起こしファイル読み込み: ${transFilePath}`);
     
@@ -1397,7 +1395,7 @@ ipcMain.handle('transcription:load', async (event, transFilePath: string): Promi
   }
 });
 
-ipcMain.handle('transcription:exists', async (event, audioFilePath: string): Promise<boolean> => {
+handle('transcription:exists', async (event, audioFilePath: string): Promise<boolean> => {
   try {
     const audioPath = resolveWithinRoot(workspaceRoot(), audioFilePath);
     const transFilePath = transcriptionPathFor(audioPath, (p) => fs.existsSync(p));
@@ -1409,7 +1407,7 @@ ipcMain.handle('transcription:exists', async (event, audioFilePath: string): Pro
   }
 });
 
-ipcMain.handle('transcription:getPath', async (event, audioFilePath: string): Promise<string> => {
+handle('transcription:getPath', async (event, audioFilePath: string): Promise<string> => {
   const audioPath = resolveWithinRoot(workspaceRoot(), audioFilePath);
   return transcriptionPathFor(audioPath, (p) => fs.existsSync(p));
 });
@@ -1570,7 +1568,7 @@ function parseAIChatFileContent(content: string): AIChatFile {
 }
 
 // テキストファイル保存ハンドラー（新録音システム用）
-ipcMain.handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {
+handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {
   try {
     const target = resolveWithinRoot(workspaceRoot(), filePath);
 
@@ -1591,7 +1589,7 @@ ipcMain.handle('file:saveText', async (event, filePath: string, content: string)
 });
 
 // バイナリファイル保存ハンドラー（新録音システム用）
-ipcMain.handle('file:saveToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
+handle('file:saveToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
   try {
     const target = resolveWithinRoot(workspaceRoot(), filePath);
 
@@ -1611,7 +1609,7 @@ ipcMain.handle('file:saveToPath', async (event, filePath: string, buffer: Buffer
 });
 
 // 作業ディレクトリ取得ハンドラー
-ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
+handle('file:getWorkingDirectory', async (): Promise<string> => {
   try {
     // デスクトップのVoiceRecordingsフォルダをデフォルトとして返す
     const workingDirectory = path.join(app.getPath('desktop'), 'VoiceRecordings');
@@ -1624,6 +1622,8 @@ ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
 });
 
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）
+
+
 
 
 

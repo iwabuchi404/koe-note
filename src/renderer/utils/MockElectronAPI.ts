@@ -1,7 +1,10 @@
 /**
- * E2Eテスト用のモックElectronAPI
- * ブラウザ環境でElectronAPIが利用できない場合に使用
+ * 開発時のフォールバック用 ElectronAPI モック
+ * preload が読み込めなかった場合（window.electronAPI が無い）に使う。
+ * ElectronAPI 型を実装しているので、本物の API にメソッドが増減すると
+ * ここが型エラーになる（以前は型注釈が無く、main 側と乖離したまま残っていた）。
  */
+import type { ElectronAPI } from '@shared/types';
 
 // モックファイルデータ
 const mockFiles = [
@@ -37,7 +40,7 @@ const mockSettings = {
   autoTranscribe: true
 }
 
-export const createMockElectronAPI = () => ({
+export const createMockElectronAPI = (): ElectronAPI => ({
   // ダイアログ
   selectFolder: async () => '/mock/selected/folder',
   
@@ -63,19 +66,8 @@ export const createMockElectronAPI = () => ({
     return 'data:audio/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYU4BnQI0VSalmQCgq17FAAw9CQE2AQAZ3aGFtbXlXQUAGd2hhbW15RIlACECPQAAAAAAAFlSua0AxrkAu14EBY8WBAZyBACK1nEADdW5khkAFVl9WUDglhohAA1ZQOiWETkvOhEHNtsqAAlxDQ0xUREZEBEQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEREQEQ=='
   },
   
-  saveMetadata: async (filename: string, metadata: any) => {
-    console.log('Mock saveMetadata:', filename, metadata)
-  },
   
-  getFileSize: async (filePath: string) => {
-    console.log('Mock getFileSize:', filePath)
-    return 1024000
-  },
   
-  getDiskSpace: async (dirPath: string) => {
-    console.log('Mock getDiskSpace:', dirPath)
-    return { free: 10000000000, total: 50000000000 }
-  },
   
   readFile: async (filePath: string) => {
     console.log('Mock readFile:', filePath)
@@ -88,23 +80,10 @@ export const createMockElectronAPI = () => ({
     return mockSettings
   },
   
-  saveSettings: async (settings: any) => {
-    console.log('Mock saveSettings:', settings)
-  },
   
   // 音声デバイス
-  getInputDevices: async () => {
-    console.log('Mock getInputDevices')
-    return [
-      { deviceId: 'default', label: 'Default Microphone', kind: 'audioinput' as const, groupId: 'group1' }
-    ]
-  },
   
   // デスクトップキャプチャ
-  getDesktopSources: async () => {
-    console.log('Mock getDesktopSources')
-    return []
-  },
   
   // ウィンドウ操作
   windowMinimize: async () => {
@@ -125,24 +104,10 @@ export const createMockElectronAPI = () => ({
   },
   
   // イベントリスナー
-  onFileSaved: (callback: (data: any) => void) => {
-    console.log('Mock onFileSaved listener registered')
-    // モックでは何もしない
-  },
   
-  removeAllListeners: (channel: string) => {
-    console.log('Mock removeAllListeners:', channel)
-  },
   
   // デバッグ
-  debugGetLogs: async () => {
-    console.log('Mock debugGetLogs')
-    return 'Mock debug logs'
-  },
   
-  debugClearLogs: async () => {
-    console.log('Mock debugClearLogs')
-  },
   
   // 音声認識（Kotoba-Whisper）
   speechGetServerStatus: async () => {
@@ -152,7 +117,7 @@ export const createMockElectronAPI = () => ({
   
   speechStartServer: async () => {
     console.log('Mock speechStartServer')
-    return true
+    // 起動できなかった場合は main と同じく例外を投げる契約
   },
   
   speechStopServer: async () => {
@@ -180,15 +145,8 @@ export const createMockElectronAPI = () => ({
   },
   
   // 音声認識イベントリスナー
-  onSpeechProgress: (callback: (progress: any) => void) => {
-    console.log('Mock onSpeechProgress listener registered')
-  },
   
   // 文字起こしファイル操作
-  saveTranscriptionFile: async (audioFilePath: string, transcription: any) => {
-    console.log('Mock saveTranscriptionFile:', audioFilePath)
-    return '/mock/path/transcription.txt'
-  },
   
   loadTranscriptionFile: async (transFilePath: string) => {
     console.log('Mock loadTranscriptionFile:', transFilePath)
@@ -212,24 +170,9 @@ export const createMockElectronAPI = () => ({
     }
   },
   
-  deleteTranscriptionFile: async (transFilePath: string) => {
-    console.log('Mock deleteTranscriptionFile:', transFilePath)
-    return true
-  },
   
   // AI対話記録操作
-  saveClipboardCopy: async (audioFilePath: string, copyRecord: any) => {
-    console.log('Mock saveClipboardCopy:', audioFilePath)
-  },
   
-  loadAIChatFile: async (chatFilePath: string) => {
-    console.log('Mock loadAIChatFile:', chatFilePath)
-    return {
-      sourceFile: 'sample.txt',
-      createdAt: new Date().toISOString(),
-      clipboardHistory: []
-    }
-  },
   
   // ファイル関連操作
   checkTranscriptionExists: async (audioFilePath: string) => {
@@ -241,49 +184,54 @@ export const createMockElectronAPI = () => ({
     console.log('Mock getTranscriptionPath:', audioFilePath)
     return audioFilePath.replace('.webm', '_transcription.txt')
   },
-  
-  getAIChatPath: async (audioFilePath: string) => {
-    console.log('Mock getAIChatPath:', audioFilePath)
-    return audioFilePath.replace('.webm', '_chat.json')
+
+  // モデル管理
+  getModelsPath: async () => '/mock/models',
+  getInstalledModels: async () => [],
+  downloadWhisperModel: async () => {
+    console.log('Mock downloadWhisperModel')
   },
+  cancelModelDownload: async () => {
+    console.log('Mock cancelModelDownload')
+  },
+  removeModel: async () => {
+    console.log('Mock removeModel')
+  },
+
+  // サーバー状態通知
+  onSpeechServerStatus: () => {
+    console.log('Mock onSpeechServerStatus')
+  },
+
+  // 追加のファイル操作
+  selectFile: async () => null,
+  saveFileToPath: async (filePath: string, data: Blob | ArrayBuffer) => {
+    console.log('Mock saveFileToPath:', filePath, data)
+    return true
+  },
+  saveTextFile: async (filePath: string, content: string) => {
+    console.log('Mock saveTextFile:', filePath, content)
+    return true
+  },
+  getWorkingDirectory: async () => '/mock/path',
+
+  // 汎用イベント（モックでは何もしない）
+  on: () => undefined,
+  removeListener: () => undefined,
+
+  // ログ（モックでは標準出力へ）
+  logWrite: async (message: string) => {
+    console.log('[mock log]', message)
+  }
+  
   
   // チャンク分割文字起こし
-  chunkStartTranscription: async (audioFilePath: string, settings: any) => {
-    console.log('Mock chunkStartTranscription:', audioFilePath, settings)
-    return 'mock-session-id'
-  },
   
-  chunkStopTranscription: async (sessionId: string) => {
-    console.log('Mock chunkStopTranscription:', sessionId)
-  },
   
-  chunkGetProgress: async (sessionId: string) => {
-    console.log('Mock chunkGetProgress:', sessionId)
-    return {
-      isTranscribing: false,
-      totalChunks: 10,
-      processedChunks: 10,
-      failedChunks: 0,
-      currentProcessingChunk: 10,
-      averageProcessingTime: 2000,
-      estimatedTimeRemaining: 0
-    }
-  },
   
-  chunkUpdateSettings: async (settings: any) => {
-    console.log('Mock chunkUpdateSettings:', settings)
-  },
   
-  chunkSaveConsolidatedResult: async (audioFilePath: string, consolidatedResult: any) => {
-    console.log('Mock chunkSaveConsolidatedResult:', audioFilePath)
-    return '/mock/path/consolidated.txt'
-  },
   
   // 録音中ファイルの処理
-  loadPartialAudioFile: async (audioFilePath: string) => {
-    console.log('Mock loadPartialAudioFile:', audioFilePath)
-    return 'data:audio/webm;base64,mock-partial-audio-data'
-  }
 })
 
 // グローバルにモックAPIを設定

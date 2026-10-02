@@ -133,12 +133,10 @@ const PlayerCard: React.FC<PlayerCardProps> = ({ tabId, data }) => {
         try {
           // 音声認識サーバーの状態確認
           const serverStatus = await window.electronAPI.speechGetServerStatus()
-          if (!serverStatus.isRunning) {
-            logger.info('音声認識サーバーを起動中...')
-            const started = await window.electronAPI.speechStartServer()
-            if (!started) {
-              throw new Error('音声認識サーバーの起動に失敗しました')
-            }
+if (!serverStatus.isRunning) {
+            logger.info('サーバーが未起動、起動しています...')
+            // 起動できなかった場合は main が SERVER_UNAVAILABLE を投げる
+            await window.electronAPI.speechStartServer()
           }
 
           // 実際の文字起こし実行

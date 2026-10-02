@@ -314,7 +314,8 @@ export interface ElectronAPI {
   saveTextFile: (filePath: string, content: string) => Promise<boolean>
   getFileList: (folderPath: string) => Promise<AudioFile[]>
   deleteFile: (filePath: string) => Promise<boolean>
-  loadAudioFile: (filePath: string) => Promise<string | null>
+  /** 音声ファイルを data URL として読む。存在しない場合は NOT_FOUND */
+  loadAudioFile: (filePath: string) => Promise<string>
   /**
    * ファイル全体を読み込む
    *
@@ -329,7 +330,8 @@ export interface ElectronAPI {
 
   // ---- 文字起こしサーバー ----
   speechGetServerStatus: () => Promise<{ isRunning: boolean; pid?: number }>
-  speechStartServer: () => Promise<boolean>
+  /** サーバーを起動する。起動できなかった場合は SERVER_UNAVAILABLE */
+  speechStartServer: () => Promise<void>
   speechStopServer: () => Promise<void>
   speechTranscribe: (filePath: string) => Promise<TranscriptionResult>
   speechChangeModel: (modelName: string) => Promise<boolean>
@@ -375,5 +377,6 @@ export interface ElectronAPI {
   /** main のアプリログへ1行追記する */
   logWrite: (message: string) => Promise<void>
 }
+
 
 
