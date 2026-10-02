@@ -6,6 +6,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, exec, execSync, ChildProcess, SpawnOptions } from 'child_process';
 import * as https from 'https';
+import { WhisperServerService } from './services/whisperServer';
+import { listFiles } from './services/fileLibrary';
+import { resolveWithinRoot, transcriptionPathFor, aiChatPathFor } from './core/paths';
+import { AppError, toAppError } from './core/errors';
 import * as http from 'http';
 
 // ログファイルのパス
@@ -95,467 +99,25 @@ async function checkPythonAvailability(): Promise<boolean> {
   });
 }
 
-class KotobaWhisperManager {
-  private pythonProcess: ChildProcess | null = null;
-  private isRunning: boolean = false;
-  private isExternalServer: boolean = false;
-  private isShuttingDown: boolean = false;
-  private isStopping: boolean = false;
-  private isQuitting: boolean = false;
-  private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 3;
-
-  constructor() {
-    writeLog('KotobaWhisperManager初期化');
-
-    // プロセス終了時の同期クリーンアップ（クラッシュ・異常終了対応）
-    process.on('exit', () => {
-      this.syncCleanup();
-    });
-  }
-
-  // アプリ終了フラグを設定（再起動を完全に禁止）
-  setQuitting(value: boolean): void {
-    this.isQuitting = value;
-  }
-
-  // isStoppingをリセット（before-quitからstopServerを再実行できるようにする）
-  resetStopping(): void {
-    this.isStopping = false;
-  }
-
-  // rendererプロセスにサーバー状態変化を通知
-  private notifyServerStatus(status: 'starting' | 'running' | 'stopped' | 'failed' | 'external'): void {
+// Kotoba-Whisper サーバー管理（Electron 非依存の実装は services/whisperServer.ts）
+// ここでは合成ルートとして Electron 固有の依存を差し込む
+const whisperServer = new WhisperServerService({
+  log: writeLog,
+  onStatus: (status, pid) => {
     writeLog(`Server status notification: ${status}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('speech:serverStatus', { status, pid: this.pythonProcess?.pid });
+      mainWindow.webContents.send('speech:serverStatus', { status, pid });
     }
+  },
+  resolveModelsRoot,
+  isPortInUse,
+  checkPython: checkPythonAvailability,
+  paths: {
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    bundleDir: __dirname
   }
-
-  // 同期クリーンアップ（process.on('exit')用・確実に子プロセスを殺す）
-  private syncCleanup(): void {
-    if (this.pythonProcess && this.pythonProcess.pid) {
-      writeLog(`syncCleanup: killing pid ${this.pythonProcess.pid}`);
-      try {
-        if (process.platform === 'win32') {
-          execSync(`taskkill /pid ${this.pythonProcess.pid} /f /t`, { stdio: 'ignore' });
-        } else {
-          this.pythonProcess.kill('SIGKILL');
-        }
-      } catch (e) {
-        // プロセスが既に終了している場合は無視
-      }
-    }
-  }
-
-  // WebSocket経由でgraceful shutdownを送信
-  private async sendGracefulShutdown(): Promise<boolean> {
-    if (!this.pythonProcess && !this.isExternalServer) {
-      return false;
-    }
-    try {
-      writeLog('Graceful shutdown要求を送信...');
-      const WebSocket = require('ws');
-      const ws = new WebSocket('ws://127.0.0.1:8770');
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          writeLog('Graceful shutdown: タイムアウト (5秒)');
-          try { ws.close(); } catch {}
-          resolve(false);
-        }, 5000);
-
-        ws.on('open', () => {
-          writeLog('Graceful shutdown: 接続成功、shutdownメッセージ送信');
-          try {
-            ws.send(JSON.stringify({ type: 'shutdown' }));
-          } catch {
-            clearTimeout(timeout);
-            resolve(false);
-          }
-        });
-
-        ws.on('message', (data: Buffer) => {
-          try {
-            const response = JSON.parse(data.toString());
-            if (response.type === 'shutdown_ack') {
-              writeLog('Graceful shutdown: ACK受信');
-              clearTimeout(timeout);
-              try { ws.close(); } catch {}
-              resolve(true);
-            }
-          } catch {}
-        });
-
-        ws.on('error', (error: Error) => {
-          writeLog(`Graceful shutdown: エラー - ${error.message}`);
-          clearTimeout(timeout);
-          resolve(false);
-        });
-
-        ws.on('close', () => {
-          clearTimeout(timeout);
-        });
-      });
-    } catch (error) {
-      writeLog(`Graceful shutdownエラー: ${error}`);
-      return false;
-    }
-  }
-
-  // ヘルスチェックでサーバー起動完了を待機
-  //
-  // 実測値: Kotoba-Whisper small のモデル読込には約50秒かかり、
-  // プロセスはその間_party待ち 而不是 死亡する。30秒で打ち切ると
-  // 「起動失敗」と表示した直後にサーバーが上がる。
-  private async waitForServerReady(maxAttempts: number = 180, intervalMs: number = 1000): Promise<boolean> {
-    const startedAt = Date.now();
-    for (let i = 0; i < maxAttempts; i++) {
-      if (!this.pythonProcess) {
-        writeLog('waitForServerReady: プロセスが既に終了');
-        return false;
-      }
-      const ready = await this.checkExternalServer();
-      if (ready) {
-        writeLog(`waitForServerReady: サーバー準備完了 (${((Date.now() - startedAt) / 1000).toFixed(1)}秒, ${i + 1}回目)`);
-        return true;
-      }
-      // 10秒ごとに進捗を通知し、UIが「起動中」のまま임을把握できるようにする
-      if ((i + 1) % 10 === 0) {
-        writeLog(`waitForServerReady: 待機中 ${(i + 1) * (intervalMs / 1000)}秒（モデル読込中）`);
-        this.notifyServerStatus('starting');
-      }
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
-    }
-    writeLog(`waitForServerReady: タイムアウト (${maxAttempts}回試行, ${maxAttempts * intervalMs / 1000}秒)`);
-    return false;
-  }
-
-  // Pythonサーバー起動（PyInstaller実行ファイル版）
-  async startServer(): Promise<boolean> {
-    if (this.isRunning) {
-      writeLog('Pythonサーバーは既に起動中です');
-      return true;
-    }
-
-    // 手動停止後の再起動フラグをリセット
-    this.isShuttingDown = false;
-
-    try {
-      // 既に外部で起動していないか事前チェック（ポート競合回避）
-      const inUse = await isPortInUse(8770);
-      if (inUse) {
-        writeLog('Port 8770 is already in use. Skipping internal server start.');
-        this.isRunning = false;
-        this.isExternalServer = true;
-        this.notifyServerStatus('external');
-        return true; // 外部サーバー使用とみなす
-      }
-      writeLog('Kotoba-Whisper Pythonサーバー起動中（PyInstaller版）...');
-      this.notifyServerStatus('starting');
-      
-      // Electronアプリのベースディレクトリを特定
-      const appPath = app.getAppPath();
-      writeLog(`App path: ${appPath}`);
-      
-      // 開発環境かパッケージ化環境かを判定
-      const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules');
-      writeLog(`Environment: ${isDevelopment ? 'Development' : 'Production'}`);
-      
-      // Python環境の可用性をチェック
-      const pythonAvailable = await checkPythonAvailability();
-      writeLog(`Python available: ${pythonAvailable}`);
-      
-      // 実行方法に応じてcommand/args/cwdを設定
-      let command: string;
-      let args: string[];
-      let cwd: string;
-      
-      if (pythonAvailable && isDevelopment) {
-        // 開発環境のみPythonスクリプトを実行
-        command = 'python';
-        args = ['main.py'];
-        cwd = path.join(appPath, 'whisper-server');
-        writeLog(`Using Python interpreter: ${command} ${args.join(' ')} (cwd: ${cwd})`);
-      } else {
-        // 実行ファイルを検索（開発/本番の候補を順にチェック）
-        const exePathCandidates = [
-          // 開発系
-          path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
-          path.join(appPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-          path.resolve(__dirname, '..', 'whisper-server', 'dist', 'whisper-server.exe'),
-          // 本番系（resources配下）
-          path.join(process.resourcesPath, 'whisper-server.exe'),
-          path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-          path.join(process.resourcesPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
-        ];
-        
-        let validPath: string | null = null;
-        for (const candidatePath of exePathCandidates) {
-          writeLog(`Checking exe path candidate: ${candidatePath}`);
-          if (fs.existsSync(candidatePath)) {
-            validPath = candidatePath;
-            writeLog(`Found valid whisper-server exe: ${validPath}`);
-            break;
-          }
-        }
-        
-        if (!validPath) {
-          const errorMessage = `Whisper server exe not found in any of these locations:\n${exePathCandidates.join('\n')}`;
-          writeLog(errorMessage);
-          throw new Error(errorMessage);
-        }
-        
-        command = validPath;
-        args = [];
-        cwd = path.dirname(validPath);
-        writeLog(`Using standalone executable: ${command} (cwd: ${cwd})`);
-      }
-      
-      const spawnOptions: SpawnOptions = {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: cwd,
-        env: {
-          ...process.env,
-          // モデルファイルのパスを設定
-          WHISPER_MODELS_PATH: resolveModelsRoot()
-        }
-      };
-      
-      // Windows固有の設定
-      if (process.platform === 'win32') {
-        spawnOptions.windowsHide = true;
-      }
-      
-      writeLog(`Spawn options: ${JSON.stringify(spawnOptions, null, 2)}`);
-      
-      // プロセスを実行
-      this.pythonProcess = spawn(command, args, spawnOptions);
-      this.isExternalServer = false;
-
-      // 標準出力の監視
-      if (this.pythonProcess.stdout) {
-        this.pythonProcess.stdout.on('data', (data) => {
-          const output = data.toString().trim();
-          if (output) {
-            writeLog(`[Python Server] ${output}`);
-          }
-        });
-      }
-
-      // エラー出力の監視
-      if (this.pythonProcess.stderr) {
-        this.pythonProcess.stderr.on('data', (data) => {
-          const errorOutput = data.toString().trim();
-          if (errorOutput) {
-            writeLog(`[Python Server Error] ${errorOutput}`);
-          }
-        });
-      }
-
-      // プロセス終了時の処理
-      this.pythonProcess.on('exit', (code, signal) => {
-        writeLog(`Python server exited with code ${code}, signal ${signal}`);
-        this.isRunning = false;
-        this.pythonProcess = null;
-        
-        // アプリ終了中、手動停止中、または正常終了の場合は再起動しない
-        if (this.isQuitting || this.isShuttingDown || code === 0) {
-          writeLog('再起動をスキップ（アプリ終了中/手動停止/正常終了）');
-          if (!this.isShuttingDown && !this.isQuitting) {
-            this.notifyServerStatus('stopped');
-          }
-          return;
-        }
-
-        // 予期しない終了の場合は再起動を試行
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.reconnectAttempts++;
-          writeLog(`Pythonサーバー再起動試行 ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-          this.notifyServerStatus('failed');
-          setTimeout(() => this.startServer(), 5000);
-        } else {
-          writeLog('再起動試行回数上限に到達');
-          this.notifyServerStatus('failed');
-        }
-      });
-
-      // エラーハンドリング
-      this.pythonProcess.on('error', (error) => {
-        writeLog(`Python server spawn error: ${error.message}`);
-        writeLog(`Environment PATH: ${process.env.PATH}`);
-        this.isRunning = false;
-      });
-
-      this.reconnectAttempts = 0;
-      
-      // ヘルスチェックで起動完了を判定（最大30秒）
-      const ready = await this.waitForServerReady(30, 1000);
-      if (ready) {
-        this.isRunning = true;
-        writeLog('Kotoba-Whisper Pythonサーバー起動完了');
-        this.notifyServerStatus('running');
-        return true;
-      } else {
-        writeLog('Kotoba-Whisper Pythonサーバー起動タイムアウト');
-        this.isRunning = false;
-        this.notifyServerStatus('failed');
-        return false;
-      }
-
-    } catch (error) {
-      writeLog(`Pythonサーバー起動エラー: ${error}`);
-      this.isRunning = false;
-      this.notifyServerStatus('failed');
-      return false;
-    }
-  }
-
-  // Pythonサーバー停止（async・graceful shutdown → taskkillフォールバック）
-  async stopServer(): Promise<void> {
-    if (this.isStopping) {
-      writeLog('stopServer既に実行中のためスキップ');
-      return;
-    }
-    this.isStopping = true;
-    this.isShuttingDown = true;
-
-    // 外部サーバーの場合はgraceful shutdownのみ試行
-    if (this.isExternalServer && !this.pythonProcess) {
-      writeLog('外部サーバーのgraceful shutdownを試行...');
-      await this.sendGracefulShutdown();
-      this.isExternalServer = false;
-      this.isRunning = false;
-      this.isShuttingDown = false;
-      this.isStopping = false;
-      this.notifyServerStatus('stopped');
-      return;
-    }
-
-    if (!this.pythonProcess) {
-      writeLog('停止対象のプロセスがありません');
-      this.isRunning = false;
-      this.isShuttingDown = false;
-      this.isStopping = false;
-      return;
-    }
-
-    const pid = this.pythonProcess.pid;
-    writeLog(`Kotoba-Whisper Pythonサーバー停止中 (pid: ${pid})...`);
-
-    // 1. WebSocket経由のgraceful shutdownを試行
-    const graceful = await this.sendGracefulShutdown();
-
-    if (graceful) {
-      // 2. プロセス終了を待機（最大10秒）
-      const exited = await this.waitForExit(10000);
-      if (exited) {
-        writeLog('Kotoba-Whisper Pythonサーバー停止完了（graceful）');
-        this.isRunning = false;
-        this.isShuttingDown = false;
-        this.isStopping = false;
-        this.notifyServerStatus('stopped');
-        return;
-      }
-      writeLog('Graceful shutdown後にプロセスが終了しないため、強制終了します');
-    }
-
-    // 3. フォールバック: 強制終了
-    if (this.pythonProcess) {
-      try {
-        if (process.platform === 'win32') {
-          spawn('taskkill', ['/pid', pid!.toString(), '/f', '/t'], {
-            stdio: 'ignore'
-          });
-        } else {
-          this.pythonProcess.kill('SIGTERM');
-        }
-      } catch (e) {
-        writeLog(`強制終了エラー: ${e}`);
-      }
-
-      // 終了を待機（最大5秒）
-      await this.waitForExit(5000);
-    }
-
-    this.pythonProcess = null;
-    this.isRunning = false;
-    this.isExternalServer = false;
-    this.isShuttingDown = false;
-    this.isStopping = false;
-    this.notifyServerStatus('stopped');
-    writeLog('Kotoba-Whisper Pythonサーバー停止完了');
-  }
-
-  // プロセス終了を待機
-  private waitForExit(timeoutMs: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (!this.pythonProcess) {
-        resolve(true);
-        return;
-      }
-
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve(false);
-        }
-      }, timeoutMs);
-
-      this.pythonProcess!.on('exit', () => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          resolve(true);
-        }
-      });
-    });
-  }
-
-  // サーバー状態確認
-  getStatus(): { isRunning: boolean; pid?: number } {
-    return {
-      isRunning: this.isRunning,
-      pid: this.pythonProcess?.pid
-    };
-  }
-
-  // 外部サーバー状態チェック（WebSocket接続テスト）
-  async checkExternalServer(): Promise<boolean> {
-    try {
-      const WebSocket = require('ws');
-      const ws = new WebSocket('ws://127.0.0.1:8770');
-
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          try { ws.close(); } catch {}
-          resolve(false);
-        }, 3000);
-
-        ws.on('open', () => {
-          clearTimeout(timeout);
-          try { ws.close(); } catch {}
-          resolve(true);
-        });
-
-        ws.on('error', () => {
-          clearTimeout(timeout);
-          resolve(false);
-        });
-
-        ws.on('close', () => {
-          clearTimeout(timeout);
-        });
-      });
-    } catch {
-      return false;
-    }
-  }
-}
-
-// Kotoba-Whisper管理インスタンス
-const whisperManager = new KotobaWhisperManager();
+});
 
 // メインウィンドウの作成
 function createWindow(): void {
@@ -662,7 +224,7 @@ app.whenReady().then(async () => {
 
   // Pythonサーバーの自動起動を試行（非ブロッキング・失敗してもアプリは継続）
   writeLog('Pythonサーバー自動起動を試行...');
-  whisperManager.startServer()
+  whisperServer.start()
     .then(success => writeLog(success ? 'Pythonサーバー自動起動成功' : 'Pythonサーバー自動起動失敗 - 手動起動を使用してください'))
     .catch(error => writeLog(`Pythonサーバー自動起動エラー: ${error} - 手動起動を使用してください`));
 
@@ -712,10 +274,10 @@ app.on('before-quit', async (event) => {
   writeLog('アプリケーション終了処理開始');
   event.preventDefault();
   // サーバーの再起動を完全に禁止
-  whisperManager.setQuitting(true);
+  whisperServer.setQuitting(true);
   // isStoppingをリセットしてstopServer()が実際に実行されるようにする
-  whisperManager.resetStopping();
-  await whisperManager.stopServer().catch(e => writeLog(`before-quit stopServer error: ${e}`));
+  whisperServer.resetStopping();
+  await whisperServer.stop().catch(e => writeLog(`before-quit stopServer error: ${e}`));
   app.exit();
 });
 
@@ -767,10 +329,10 @@ ipcMain.handle('dialog:selectFile', async (event, filters?: Array<{ name: string
 ipcMain.handle('file:save', async (event, buffer: Buffer, filename: string, subfolder?: string): Promise<string> => {
   try {
     // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
-    const baseFolder = path.join(app.getPath('desktop'), 'VoiceRecordings');
-    
+    // 保存先は許可ルート（作業フォルダ）基準。subfolder はその配下のみ許可
+    const baseFolder = workspaceRoot();
     // サブフォルダが指定されている場合は追加
-    const targetFolder = subfolder ? path.join(baseFolder, subfolder) : baseFolder;
+    const targetFolder = subfolder ? resolveWithinRoot(baseFolder, subfolder) : baseFolder;
     
     // フォルダが存在しない場合は作成
     if (!fs.existsSync(targetFolder)) {
@@ -883,226 +445,65 @@ async function checkDiskSpace(dirPath: string): Promise<number> {
 }
 
 // ファイル読み込み
-ipcMain.handle('file:read', async (event, filePath: string): Promise<Buffer> => {
+ipcMain.handle('file:read', async (event, filePath: string): Promise<Uint8Array> => {
   try {
-    return fs.readFileSync(filePath);
+    const target = resolveWithinRoot(workspaceRoot(), filePath);
+    return new Uint8Array(fs.readFileSync(target));
   } catch (error) {
     writeLog(`ファイル読み込みエラー: ${filePath} - ${error}`);
-    throw error;
+    throw toAppError(error, 'ファイルの読み込みに失敗しました');
   }
 });
 
 // ファイル一覧取得
-ipcMain.handle('file:getList', async (event, folderPath: string): Promise<any[]> => {
+// ディレクトリ走査・分類・ペアリングは services/fileLibrary.ts（テスト可能）
+ipcMain.handle('file:getList', async (event, folderPath: string): Promise<AudioFile[]> => {
   try {
-    if (!fs.existsSync(folderPath)) {
-      return [];
-    }
-
-    const files = fs.readdirSync(folderPath);
-    
-    // ファイルをカテゴリ別に分類
-    const audioFiles: AudioFile[] = [];
-    const textFiles: AudioFile[] = [];
-    const transcriptionFiles: (AudioFile & { baseFileName: string })[] = [];
-    
-    files.forEach(file => {
-      const filePath = path.join(folderPath, file);
-      const stats = fs.statSync(filePath);
-      const fileExtension = path.extname(file).slice(1);
-      
-      if (file.endsWith('.webm') || file.endsWith('.wav') || file.endsWith('.mp3')) {
-        // 音声ファイル
-        const format = fileExtension as 'webm' | 'wav' | 'mp3';
-        
-        // メタデータファイルから正確なduration情報を取得
-        let actualDuration = 0;
-        const metadataPath = path.join(folderPath, file + '.meta.json');
-        
-        if (fs.existsSync(metadataPath)) {
-          try {
-            const metadataContent = fs.readFileSync(metadataPath, 'utf8');
-            const metadata = JSON.parse(metadataContent);
-            actualDuration = metadata.duration || 0;
-            writeLog(`Loaded duration from metadata: ${actualDuration}s for ${file}`);
-          } catch (error) {
-            writeLog(`Failed to read metadata for ${file}: ${error}`);
-            actualDuration = 0;
-          }
-        } else {
-          actualDuration = 0;
-          writeLog(`No metadata file found for ${file}`);
-        }
-        
-        audioFiles.push({
-          id: file,
-          filename: file,
-          filepath: filePath,
-          format: format,
-          size: stats.size,
-          createdAt: stats.birthtime,
-          duration: actualDuration,
-          isRealtimeTranscription: false,
-          isAudioFile: true
-        });
-      } else if (file.endsWith('.rt.txt')) {
-        // リアルタイム文字起こしファイル
-        textFiles.push({
-          id: file,
-          filename: file,
-          filepath: filePath,
-          format: 'rt.txt',
-          size: stats.size,
-          createdAt: stats.birthtime,
-          duration: 0,
-          isRealtimeTranscription: true,
-        });
-      } else if (file.endsWith('_transcription.txt') || file.endsWith('.trans.txt')) {
-        // 文字起こしファイル（旧形式と新形式の両方に対応）
-        let baseFileName: string;
-        if (file.endsWith('_transcription.txt')) {
-          // 旧形式: advanced_recording_2025-08-05T00-58-23_transcription.txt
-          baseFileName = file.replace('_transcription.txt', '');
-        } else {
-          // 新形式: recording_2025_08_06_1801.trans.txt
-          baseFileName = file.replace('.trans.txt', '');
-        }
-        
-        transcriptionFiles.push({
-          id: file,
-          filename: file,
-          filepath: filePath,
-          format: 'txt',
-          size: stats.size,
-          createdAt: stats.birthtime,
-          duration: 0,
-          isTranscriptionFile: true,
-          baseFileName: baseFileName
-        });
-      } else if (file.endsWith('.txt') || file.endsWith('.md')) {
-        // .trans.txtや_transcription.txtは上で処理済みなので、一般的なテキストファイルのみを処理
-        if (!file.endsWith('.trans.txt') && !file.endsWith('_transcription.txt')) {
-          textFiles.push({
-            id: file,
-            filename: file,
-            filepath: filePath,
-            format: file.endsWith('.md') ? 'md' : 'txt',
-            size: stats.size,
-            createdAt: stats.birthtime,
-            duration: 0,
-            isRealtimeTranscription: false,
-            isTextFile: true,
-          });
-        }
-      }
-    });
-
-    // 音声ファイルと文字起こしファイルのペアリング処理
-    const pairedFiles: AudioFile[] = [];
-    const processedAudioFiles = new Set<string>();
-    const processedTranscriptionFiles = new Set<string>();
-    
-    // 音声ファイルごとに対応する文字起こしファイルを検索
-    audioFiles.forEach(audioFile => {
-      if (processedAudioFiles.has(audioFile.filename)) return;
-      
-      const baseFileName = path.parse(audioFile.filename).name; // 拡張子を除いたファイル名
-      
-      // デバッグログを削除してシンプルに
-      
-      // 対応する文字起こしファイルを検索
-      const matchingTranscription = transcriptionFiles.find(transcFile => 
-        transcFile.baseFileName === baseFileName && !processedTranscriptionFiles.has(transcFile.filename)
-      );
-      
-      if (matchingTranscription) {
-        // ペアファイルとして統合
-        pairedFiles.push({
-          ...audioFile,
-          id: audioFile.filename, // 音声ファイル名を主キーとする
-          hasTranscriptionFile: true,
-          transcriptionPath: matchingTranscription.filepath,
-          transcriptionSize: matchingTranscription.size,
-          isPairedFile: true // ペアファイルフラグ
-        });
-        
-        processedAudioFiles.add(audioFile.filename);
-        processedTranscriptionFiles.add(matchingTranscription.filename);
-        
-        writeLog(`ペアファイル作成: ${audioFile.filename} <-> ${matchingTranscription.filename}`);
-      } else {
-        // 単独の音声ファイル
-        pairedFiles.push({
-          ...audioFile,
-          hasTranscriptionFile: false,
-          isPairedFile: false
-        });
-        processedAudioFiles.add(audioFile.filename);
-      }
-    });
-    
-    // 未処理の文字起こしファイルを単独で追加
-    transcriptionFiles.forEach(transcFile => {
-      if (!processedTranscriptionFiles.has(transcFile.filename)) {
-        pairedFiles.push({
-          id: transcFile.filename,
-          filename: transcFile.filename,
-          filepath: transcFile.filepath,
-          format: 'txt',
-          size: transcFile.size,
-          createdAt: transcFile.createdAt,
-          duration: 0,
-          isTextFile: true,
-          isTranscriptionFile: true,
-          isPairedFile: false
-        });
-      }
-    });
-    
-    // 一般的なテキストファイルを追加
-    textFiles.forEach(textFile => {
-      pairedFiles.push(textFile);
-    });
-
-    // 作成日時順でソート（新しい順）
-    const sortedFiles = pairedFiles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    
-    writeLog(`ファイル一覧取得完了: 合計${sortedFiles.length}件 (ペア:${sortedFiles.filter(f => f.isPairedFile).length}件)`);
-    
-    // デバッグ：ペアファイルの詳細をログ出力
-    const pairedFilesList = sortedFiles.filter(f => f.isPairedFile);
-    if (pairedFilesList.length > 0) {
-      writeLog(`🎯 ペアファイル詳細:`);
-      pairedFilesList.forEach(file => {
-        writeLog(`  - ${file.filename} | transcriptionPath: ${file.transcriptionPath} | size: ${file.transcriptionSize}`);
-      });
-    }
-    
-    return sortedFiles;
-    
+    const resolved = resolveWithinRoot(workspaceRoot(), folderPath);
+    return listFiles(resolved, writeLog);
   } catch (error) {
-    console.error('ファイル一覧取得エラー:', error);
-    return [];
+    throw toAppError(error, 'ファイル一覧の取得に失敗しました');
   }
 });
 
 // ファイル削除
 ipcMain.handle('file:delete', async (event, filePath: string): Promise<boolean> => {
   try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
+    const target = resolveWithinRoot(workspaceRoot(), filePath);
+    if (!fs.existsSync(target)) {
+      throw new AppError('NOT_FOUND', `ファイルが見つかりません: ${filePath}`);
     }
-    return false;
+    fs.unlinkSync(target);
+    writeLog(`ファイル削除: ${target}`);
+    return true;
   } catch (error) {
-    console.error('ファイル削除エラー:', error);
-    return false;
+    throw toAppError(error, 'ファイルの削除に失敗しました');
   }
 });
 
 // 設定ファイルのパス
 const settingsFilePath = path.join(app.getPath('userData'), 'settings.json');
 
+
+/**
+ * 許可ルート（作業フォルダ）
+ *
+ * すべての file / transcription ハンドラはこの配下でのみ動作する。
+ * 設定の saveFolder を正とし、設定が読めていない場合は既定値を使う。
+ */
+function workspaceRoot(): string {
+  try {
+    if (fs.existsSync(settingsFilePath)) {
+      const saved = JSON.parse(fs.readFileSync(settingsFilePath, 'utf-8'));
+      if (saved?.saveFolder) {
+        return path.resolve(saved.saveFolder);
+      }
+    }
+  } catch {
+    // 設定が読めない場合は既定値を使う
+  }
+  return path.resolve(getDefaultSettings().saveFolder);
+}
 // デフォルト設定
 function getDefaultSettings() {
   return {
@@ -1134,12 +535,12 @@ ipcMain.handle('file:loadAudio', async (event, filePath: string): Promise<string
   try {
     writeLog(`Audio File Loading Started: ${filePath}`);
     
-    // ファイルの存在確認
-    if (!fs.existsSync(filePath)) {
-      writeLog(`File not found: ${filePath}`);
-      throw new Error('File not found');
+    // パスガード（許可ルートの外は拒否）
+    const target = resolveWithinRoot(workspaceRoot(), filePath);
+    if (!fs.existsSync(target)) {
+      throw new AppError('NOT_FOUND', `File not found: ${filePath}`);
     }
-    
+
     // 録音中のファイルかチェック（録音中は読み込みを拒否）
     const fileName = path.basename(filePath);
     if (fileName.startsWith('recording_') && fileName.includes(new Date().toISOString().split('T')[0].replace(/-/g, ''))) {
@@ -1262,13 +663,13 @@ ipcMain.handle('log:write', async (event, message: string): Promise<void> => {
 // Pythonサーバー状態確認
 ipcMain.handle('speech:getServerStatus', async (): Promise<{ isRunning: boolean; pid?: number }> => {
   writeLog('サーバー状態確認要求');
-  const internalStatus = whisperManager.getStatus();
+  const internalStatus = whisperServer.getStatus();
   writeLog(`内部プロセス状態: isRunning=${internalStatus.isRunning}, pid=${internalStatus.pid}`);
   
   // 内部プロセスが動作していない場合、外部サーバーをチェック
   if (!internalStatus.isRunning) {
     writeLog('内部プロセスが動作していないため、外部サーバーをチェック');
-    const externalRunning = await whisperManager.checkExternalServer();
+    const externalRunning = await whisperServer.isServerReachable();
     const result = {
       isRunning: externalRunning,
       pid: externalRunning ? -1 : undefined // -1は外部サーバーを示す
@@ -1287,7 +688,7 @@ ipcMain.handle('speech:startServer', async (): Promise<boolean> => {
     writeLog('手動サーバー起動要求');
     
     // まず外部サーバーをチェック
-    const externalRunning = await whisperManager.checkExternalServer();
+    const externalRunning = await whisperServer.isServerReachable();
     if (externalRunning) {
       writeLog('外部サーバーが既に動作中のため、内部起動をスキップ');
       return true;
@@ -1295,7 +696,7 @@ ipcMain.handle('speech:startServer', async (): Promise<boolean> => {
     
     // 外部サーバーがない場合のみ内部起動を試行
     writeLog('外部サーバーが見つからないため、内部起動を試行');
-    return await whisperManager.startServer();
+    return await whisperServer.start();
   } catch (error) {
     writeLog(`Pythonサーバー手動起動エラー: ${error}`);
     return false;
@@ -1304,7 +705,7 @@ ipcMain.handle('speech:startServer', async (): Promise<boolean> => {
 
 // Pythonサーバー停止
 ipcMain.handle('speech:stopServer', async (): Promise<void> => {
-  await whisperManager.stopServer();
+  await whisperServer.stop();
 });
 
 // モデル管理関連のIPCハンドラー
@@ -1980,12 +1381,13 @@ ipcMain.handle('transcription:load', async (event, transFilePath: string): Promi
   try {
     writeLog(`文字起こしファイル読み込み: ${transFilePath}`);
     
-    if (!fs.existsSync(transFilePath)) {
-      throw new Error('文字起こしファイルが見つかりません');
+    const target = resolveWithinRoot(workspaceRoot(), transFilePath);
+    if (!fs.existsSync(target)) {
+      throw new AppError('NOT_FOUND', '文字起こしファイルが見つかりません');
     }
-    
-    const content = fs.readFileSync(transFilePath, 'utf8');
-    const transcription = toTranscriptionFile(parseTranscriptFile(content), transFilePath);
+
+    const content = fs.readFileSync(target, 'utf8');
+    const transcription = toTranscriptionFile(parseTranscriptFile(content), target);
     
     writeLog(`文字起こしファイル読み込み完了: ${transFilePath}`);
     return transcription;
@@ -1997,19 +1399,22 @@ ipcMain.handle('transcription:load', async (event, transFilePath: string): Promi
 
 ipcMain.handle('transcription:exists', async (event, audioFilePath: string): Promise<boolean> => {
   try {
-    const transFilePath = getTranscriptionPath(audioFilePath);
+    const audioPath = resolveWithinRoot(workspaceRoot(), audioFilePath);
+    const transFilePath = transcriptionPathFor(audioPath, (p) => fs.existsSync(p));
     return fs.existsSync(transFilePath);
   } catch (error) {
-    writeLog(`文字起こしファイル存在確認エラー: ${error}`);
+    // 存在確認は「無い / 範囲外」を false として返す（例外にしない）
+    writeLog(`文字起こしファイル存在確認: ${error}`);
     return false;
   }
 });
 
 ipcMain.handle('transcription:getPath', async (event, audioFilePath: string): Promise<string> => {
-  return getTranscriptionPath(audioFilePath);
+  const audioPath = resolveWithinRoot(workspaceRoot(), audioFilePath);
+  return transcriptionPathFor(audioPath, (p) => fs.existsSync(p));
 });
 
-// ヘルパー関数
+// ポート確認
 async function isPortInUse(port: number, host: string = '127.0.0.1'): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -2099,11 +1504,6 @@ function toTranscriptionFile(parsed: ParsedTranscriptFile, filePath: string): Tr
   };
 }
 
-function getAIChatPath(audioFilePath: string): string {
-  const parsedPath = path.parse(audioFilePath);
-  return path.join(parsedPath.dir, `${parsedPath.name}.ai-chat.txt`);
-}
-
 function generateAIChatFileContent(chatFile: AIChatFile): string {
   const metadata = `---
 source_file: ${chatFile.sourceFile}
@@ -2172,46 +1572,41 @@ function parseAIChatFileContent(content: string): AIChatFile {
 // テキストファイル保存ハンドラー（新録音システム用）
 ipcMain.handle('file:saveText', async (event, filePath: string, content: string): Promise<boolean> => {
   try {
-    writeLog(`テキストファイル保存: ${filePath}`);
-    
-    // ディレクトリを作成（存在しない場合）
-    const directory = path.dirname(filePath);
+    const target = resolveWithinRoot(workspaceRoot(), filePath);
+
+    // 親ディレクトリの作成
+    const directory = path.dirname(target);
     if (!fs.existsSync(directory)) {
       fs.mkdirSync(directory, { recursive: true });
-      writeLog(`ディレクトリ作成: ${directory}`);
     }
-    
-    // ファイル保存
-    fs.writeFileSync(filePath, content, 'utf8');
-    writeLog(`テキストファイル保存完了: ${filePath}`);
-    
+
+    fs.writeFileSync(target, content, 'utf8');
+    writeLog(`テキストファイル保存完了: ${target}`);
+
     return true;
   } catch (error) {
     writeLog(`テキストファイル保存エラー: ${error}`);
-    return false;
+    throw toAppError(error, 'テキストファイルの保存に失敗しました');
   }
 });
 
 // バイナリファイル保存ハンドラー（新録音システム用）
 ipcMain.handle('file:saveToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
   try {
-    writeLog(`バイナリファイル保存: ${filePath}`);
-    
-    // ディレクトリを作成（存在しない場合）
-    const directory = path.dirname(filePath);
+    const target = resolveWithinRoot(workspaceRoot(), filePath);
+
+    const directory = path.dirname(target);
     if (!fs.existsSync(directory)) {
       fs.mkdirSync(directory, { recursive: true });
-      writeLog(`ディレクトリ作成: ${directory}`);
     }
-    
-    // ファイル保存
-    fs.writeFileSync(filePath, buffer);
-    writeLog(`バイナリファイル保存完了: ${filePath} (${buffer.length} bytes)`);
-    
+
+    fs.writeFileSync(target, buffer);
+    writeLog(`バイナリファイル保存完了: ${target} (${buffer.length} bytes)`);
+
     return true;
   } catch (error) {
     writeLog(`バイナリファイル保存エラー: ${error}`);
-    return false;
+    throw toAppError(error, 'バイナリファイルの保存に失敗しました');
   }
 });
 
@@ -2229,6 +1624,9 @@ ipcMain.handle('file:getWorkingDirectory', async (): Promise<string> => {
 });
 
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）
+
+
+
 
 
 
