@@ -5,18 +5,31 @@
 # 「UIに表示されるモデル」と「サーバーが受け付けるモデル」の
 # 不一致を防ぐ。src/shared が正なので、ここではコピー元を指定するだけ。
 from pathlib import Path
+import sys
 
-_repo_root = Path(SPEC).resolve().parent.parent
+# SPECPATH は spec ファイルのあるディレクトリ
+_server_dir = Path(SPECPATH).resolve()
+_repo_root = _server_dir.parent
 _catalog = _repo_root / 'src' / 'shared' / 'models.json'
+
+print(f'[spec] server dir : {_server_dir}')
+print(f'[spec] repo root  : {_repo_root}')
+print(f'[spec] catalog    : {_catalog} (exists={_catalog.is_file()})')
 
 if not _catalog.is_file():
     raise SystemExit(f'model catalog not found: {_catalog}')
+
+_src = _server_dir / 'src'
+print(f'[spec] src path   : {_src} (exists={_src.is_dir()})')
 
 block_cipher = None
 
 a = Analysis(
     ['main.py'],
-    pathex=[],
+    # main.py は `from whisper_server.server import ...` で src/ 配下の
+    # パッケージをimportする。pathex に src を入れないとビルドは通るが
+    # 実行時に ModuleNotFoundError になる。
+    pathex=[str(_src)],
     binaries=[],
     datas=[(str(_catalog), '.')],
     hiddenimports=[
@@ -24,6 +37,11 @@ a = Analysis(
         'websockets',
         'numpy',
         'asyncio_mqtt',
+        'whisper_server',
+        'whisper_server.server',
+        'whisper_server.transcriber',
+        'whisper_server.config',
+        'whisper_server.model_catalog',
     ],
     hookspath=[],
     hooksconfig={},

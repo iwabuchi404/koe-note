@@ -231,44 +231,60 @@ class WebSocketHandler:
             import base64
             audio_data_b64 = data.get("audio_data")
             language = data.get("language", "ja")
-            
+
+            # クライアントが送った識別子。応答には必ず同じ値を返す。
+            # 返さないとクライアントは「最古の未完了チャンク」で推測して
+            # 紐付け，造成 2つ以上 in-flight のときに別チャンクの結果を
+            # 別チャンクに上書きしてしまう（silent mis-attribution）。
+            chunk_number = data.get("chunkNumber")
+            chunk_timestamp = data.get("timestamp")
+
             if not audio_data_b64:
                 await websocket.send(json.dumps({
                     "type": "error",
-                    "message": "audio_data is required"
+                    "message": "audio_data is required",
+                    "chunkNumber": chunk_number
                 }))
                 return
-            
+
             audio_data = base64.b64decode(audio_data_b64)
-            
+
             # 進捗通知
             await websocket.send(json.dumps({
                 "type": "chunk_progress",
                 "status": "processing",
-                "data_size": len(audio_data)
+                "data_size": len(audio_data),
+                "chunkNumber": chunk_number,
+                "timestamp": chunk_timestamp
             }))
-            
+
             # チャンク音声認識実行
             result = await self.transcriber.transcribe_chunk(audio_data, language)
-            
+
             if result:
                 await websocket.send(json.dumps({
                     "type": "chunk_result",
                     "status": "completed",
+                    "chunkNumber": chunk_number,
+                    "timestamp": chunk_timestamp,
                     "result": result.to_dict()
                 }))
             else:
                 await websocket.send(json.dumps({
                     "type": "chunk_result",
                     "status": "failed",
+                    "chunkNumber": chunk_number,
+                    "timestamp": chunk_timestamp,
                     "message": "Chunk transcription failed"
                 }))
-        
+
         except Exception as e:
             logger.error(f"Chunk transcription error: {e}")
             await websocket.send(json.dumps({
                 "type": "chunk_result",
                 "status": "failed",
+                "chunkNumber": data.get("chunkNumber"),
+                "timestamp": data.get("timestamp"),
                 "message": str(e)
             }))
     

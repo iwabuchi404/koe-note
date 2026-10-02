@@ -129,13 +129,64 @@ export interface ChunkTranscriptionProgress {
   message?: string
 }
 
-/** 逐次文字起こしで送る1チャンク */
+/**
+ * 逐次文字起こしで送る1チャンク
+ *
+ * chunkNumber / timestamp はサーバーが応答にそのまま返す。
+ * これが結果の紐付けの唯一の手がかり（推測はしない）。
+ */
 export interface TranscriptionChunk {
   chunkNumber: number
   audioData: Blob
   /** 送信時刻（epoch ms） */
   timestamp: number
 }
+
+// =============================================================================
+// Whisper サーバーとの WebSocket プロトコル
+// =============================================================================
+
+/** Whisper サーバーの応答（faster-whisper の結果を内包） */
+export interface WhisperTranscriptionResult {
+  language: string
+  duration: number
+  segments: Array<{
+    start: number
+    end: number
+    text: string
+  }>
+  created_at: number
+  segment_count: number
+  /** サーバーは text フィールドを持たない。segments から本文を復元する */
+  text?: string
+}
+
+/** renderer が受け取るサーバーからのメッセージ */
+export type ServerMessage =
+  | { type: 'connection'; status: string; message: string }
+  | {
+      type: 'chunk_progress'
+      status: string
+      data_size: number
+      chunkNumber?: number
+      timestamp?: number
+    }
+  | {
+      type: 'chunk_result'
+      status: 'completed' | 'failed'
+      chunkNumber?: number
+      timestamp?: number
+      result?: WhisperTranscriptionResult
+      message?: string
+    }
+  | { type: 'error'; message: string; chunkNumber?: number }
+  | {
+      type: 'health_check'
+      status: string
+      model_loaded: boolean
+      current_model: string
+      active_clients: number
+    }
 
 /** ファイル文字起こし（speech:transcribe）の進捗通知 */
 export interface SpeechProgress {
@@ -324,3 +375,5 @@ export interface ElectronAPI {
   /** main のアプリログへ1行追記する */
   logWrite: (message: string) => Promise<void>
 }
+
+
