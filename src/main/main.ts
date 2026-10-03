@@ -103,6 +103,25 @@ async function checkPythonAvailability(): Promise<boolean> {
   });
 }
 
+// 開発時に使う python を解決する（venv を優先）
+//
+// システムの python には faster-whisper / websockets が入っていないため、
+// 単に checkPython() で「python があるか」だけ見ると
+// 起動に失敗する（実測で確認）。
+async function resolveDevPython(): Promise<string | null> {
+  const appPath = app.getAppPath();
+  const candidates = [
+    path.join(appPath, 'whisper-server', '.venv', 'Scripts', 'python.exe'),
+    path.join(appPath, 'whisper-server', '.venv', 'bin', 'python')
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      writeLog(`Using venv python: ${candidate}`);
+      return candidate;
+    }
+  }
+  return (await checkPythonAvailability()) ? 'python' : null;
+}
 // Kotoba-Whisper サーバー管理（Electron 非依存の実装は services/whisperServer.ts）
 // ここでは合成ルートとして Electron 固有の依存を差し込む
 const whisperServer = new WhisperServerService({
@@ -115,7 +134,7 @@ const whisperServer = new WhisperServerService({
   },
   resolveModelsRoot,
   isPortInUse,
-  checkPython: checkPythonAvailability,
+  resolvePython: resolveDevPython,
   paths: {
     appPath: app.getAppPath(),
     resourcesPath: process.resourcesPath,
@@ -1622,6 +1641,8 @@ handle('file:getWorkingDirectory', async (): Promise<string> => {
 });
 
 // ファイルサイズの取得（重複削除済み - 上部の file:getSize ハンドラーを使用）
+
+
 
 
 

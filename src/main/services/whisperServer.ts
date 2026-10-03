@@ -35,10 +35,16 @@ export interface WhisperServerDeps {
   onStatus: (status: ServerStatus, pid?: number) => void
   /** モデルのルートディレクトリ */
   resolveModelsRoot: () => string
-  /** ポートが使用中か */
+/** ポートが使用中か */
   isPortInUse: (port: number) => Promise<boolean>
-  /** 開発環境で python 実行系があるか */
-  checkPython: () => Promise<boolean>
+  /**
+   * 開発時に使う python 実行ファイルを解決する（null なら python 不使用）
+   *
+   * main.ts が venv を優先して解決する。システムの python には
+   * faster-whisper / websockets が入っていないため、
+   * 単に「python があるか」で判定すると起動に失敗する。
+   */
+  resolvePython: () => Promise<string | null>
   paths: WhisperServerPaths
   /** テスト用に待ち時間を縮める */
   timings?: {
@@ -68,7 +74,7 @@ export class WhisperServerService {
   private readonly onStatus: (status: ServerStatus, pid?: number) => void
   private readonly resolveModelsRoot: () => string
   private readonly isPortInUse: (port: number) => Promise<boolean>
-  private readonly checkPython: () => Promise<boolean>
+  private readonly resolvePython: () => Promise<string | null>
   private readonly paths: WhisperServerPaths
   private readonly timings: Required<NonNullable<WhisperServerDeps['timings']>>
 
@@ -77,7 +83,7 @@ export class WhisperServerService {
     this.onStatus = deps.onStatus
     this.resolveModelsRoot = deps.resolveModelsRoot
     this.isPortInUse = deps.isPortInUse
-    this.checkPython = deps.checkPython
+    this.resolvePython = deps.resolvePython
     this.paths = deps.paths
     this.timings = {
       readyMaxAttempts: deps.timings?.readyMaxAttempts ?? 180,
@@ -285,8 +291,12 @@ export class WhisperServerService {
     const { appPath, resourcesPath, bundleDir } = this.paths
     const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules')
 
-    if (isDevelopment && (await this.checkPython())) {
-      return { command: 'python', args: ['main.py'], cwd: path.join(appPath, 'whisper-server') }
+    if (isDevelopment) {
+      const python = await this.resolvePython()
+      if (python) {
+        return { command: python, args: ['main.py'], cwd: path.join(appPath, 'whisper-server') }
+      }
+      this.log('開発用のpythonが見つからないため、ビルド済み実行ファイルを使います')
     }
 
     const candidates = [
@@ -473,4 +483,7 @@ export class WhisperServerService {
     }
   }
 }
+
+
+
 

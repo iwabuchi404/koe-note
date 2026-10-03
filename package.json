@@ -26,7 +26,8 @@
     "test:ci": "npm run test:unit && npm run test:e2e",
     "test:coverage": "vitest run --coverage",
     "verify": "npm run typecheck && npm test",
-    "verify:models": "vitest run tests/unit/modelCatalog.test.ts"
+    "verify:models": "vitest run tests/unit/modelCatalog.test.ts",
+    "e2e:kamox": "node scripts/kamox-e2e.mjs"
   },
   "keywords": [
     "electron",
@@ -128,4 +129,5 @@
     }
   }
 }
+
 
