@@ -29,6 +29,10 @@ function ok(name, detail = '') {
   console.log(`  PASS  ${name}${detail ? ` — ${detail}` : ''}`)
 }
 
+function warn(name, detail) {
+  console.log(`  WARN  ${name} — ${detail}`)
+}
+
 function ng(name, detail) {
   failed++
   failures.push(`${name}: ${detail}`)
@@ -146,7 +150,7 @@ async function checkRecording(recordingsDir) {
   if (!ui.ok) {
     ng('文字起こし結果の表示', ui.detail)
   } else {
-    ok('文字起こし結果の表示', `${ui.segments}件`)
+    ok('文字起こしの追記', `${ui.segments}件 / ${ui.elapsed}秒${ui.failed ? ` / 失敗${ui.failed}件` : ''}`)
   }
 
   step('生成ファイルを検証')
@@ -244,24 +248,35 @@ function verifyTranscriptOffsets(file) {
 }
 
 async function waitForTranscription(maxSeconds) {
+  // DOM ではなくアプリのログを見る。ログのほうが安定していて、
+  // 「どのチャンクまで書き込まれたか」が読めるため証跡として強い。
   const deadline = Date.now() + maxSeconds * 1000
-  let attempts = 0
+  const started = Date.now()
+  let lastCount = 0
+
   while (Date.now() < deadline) {
-    attempts++
-    // /check-ui はスクリーンショットを伴うため応答が遅い（timeout 20秒）
-    const res = await api('/check-ui', 'POST', {}, 20_000)
-    const text = res.data?.dom?.bodyText ?? ''
-    const count = (text.match(/\u5b8c\u4e86/g) ?? []).length
-    const durations = text.match(/録音時間:\s*([\d.]+)/)
-    if (count > 0) {
-      return { ok: true, segments: count, duration: durations?.[1] }
+    const lines = await logs()
+    const appended = lines.filter((l) => l.includes('文字起こしを追記')).length
+    const failed = lines.filter((l) => l.includes('文字起こし失敗')).length
+
+    if (appended > lastCount) {
+      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000))
+      step(`  文字起こし追記 ${appended} 件${failed ? `（失敗 ${failed}）` : ''} / 残り ${remaining}秒`)
+      lastCount = appended
     }
-    if (attempts % 3 === 0) {
-      step(`  まだ待機中…（${Math.round((maxSeconds - (deadline - Date.now()) / 1000))}秒 残り）`)
+
+    if (appended > 0) {
+      return {
+        ok: true,
+        segments: appended,
+        failed,
+        elapsed: ((Date.now() - started) / 1000).toFixed(1)
+      }
     }
-    await sleep(4000)
+    await sleep(3000)
   }
-  return { ok: false, detail: `${maxSeconds}秒以内に文字起こし結果が出なかった` }
+
+  return { ok: false, detail: `${maxSeconds}秒以内に文字起こしの追記ログが出なかった` }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,11 +336,17 @@ async function main() {
   }
   ok('KamoX 接続', `window=${JSON.stringify(status.data?.windows ?? [])}`)
 
-  const ui = await api('/check-ui', 'POST', {})
-  if (ui.data?.loaded) {
-    ok('UI の読み込み', `screenshot=${ui.data.screenshot ?? '(なし)'}`)
-  } else {
-    ng('UI の読み込み', 'loaded=false')
+  // /check-ui はスクリーンショットを伴うため、KamoX が応答しないことがある。
+  // UI の描画自体は element 操作の成否で判断できるため、ここは警告に降格する。
+  try {
+    const ui = await api('/check-ui', 'POST', {}, 25_000)
+    if (ui.data?.loaded) {
+      ok('UI の読み込み', `screenshot=${ui.data.screenshot ?? '(なし)'}`)
+    } else {
+      warn('UI の読み込み', 'loaded=false（後続の element 操作で検証する）')
+    }
+  } catch (error) {
+    warn('UI の読み込み', String(error.message ?? error))
   }
 
   await checkServer()
