@@ -6,7 +6,11 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, exec, execSync, ChildProcess, SpawnOptions } from 'child_process';
 import * as https from 'https';
-import { WhisperServerService } from './services/whisperServer';
+import {
+  WhisperServerService,
+  buildDevPythonCandidates,
+  resolveProjectRoot
+} from './services/whisperServer';
 import { listFiles } from './services/fileLibrary';
 import { resolveWithinRoot, transcriptionPathFor, aiChatPathFor } from './core/paths';
 import { AppError, toAppError } from './core/errors';
@@ -109,11 +113,9 @@ async function checkPythonAvailability(): Promise<boolean> {
 // 単に checkPython() で「python があるか」だけ見ると
 // 起動に失敗する（実測で確認）。
 async function resolveDevPython(): Promise<string | null> {
-  const appPath = app.getAppPath();
-  const candidates = [
-    path.join(appPath, 'whisper-server', '.venv', 'Scripts', 'python.exe'),
-    path.join(appPath, 'whisper-server', '.venv', 'bin', 'python')
-  ];
+  // app.getAppPath() は dist/ を指すため、リポジトリルートを基準に探索する
+  const projectRoot = resolveProjectRoot(__dirname);
+  const candidates = buildDevPythonCandidates(projectRoot);
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
       writeLog(`Using venv python: ${candidate}`);

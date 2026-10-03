@@ -89,6 +89,23 @@ async function element(selector, action, value, timeoutMs = 15_000) {
   return res.data
 }
 
+/**
+ * DOM スナップショットにクラス名の要素が含まれるか
+ *
+ * KamoX の Electron アダプタで isVisible などの action は
+ * 要素が存在しなくても success を返す（実質 no-op）ため、
+ * 要素の存在判定には /check-ui の HTML を使う。
+ */
+async function domHasClass(className) {
+  try {
+    const ui = await api('/check-ui', 'POST', {}, 25_000)
+    const html = ui.data?.dom?.html ?? ''
+    return html.includes(`class="${className}`)
+  } catch {
+    return false
+  }
+}
+
 async function logs() {
   const res = await api('/logs')
   const all = [...(res.data.runtime ?? [])]
@@ -125,12 +142,32 @@ async function checkRecording(recordingsDir) {
   const before = new Set(fsReadDir(recordingsDir))
 
   step('録音タブを開く')
-  await element('.action-card.success', 'click')
+  // 前回の実行の違割でアプリが録音タブのままになっていることがあるので、
+  // レコードカードのクリックは必ず成功せない。既に録音タブにいるならスキップする。
+  const onWelcomeScreen = await domHasClass('action-card success')
+  if (onWelcomeScreen) {
+    await element('.action-card.success', 'click')
+  } else {
+    if (!(await domHasClass('record-button'))) {
+      throw new Error(
+        '録音タブを開けません: .action-card.success も .record-button も見つかりません'
+      )
+    }
+    step('  既に録音タブにいるためナビジーションをスキップ')
+  }
   await sleep(1500)
 
   step('設定を開けて音声ソースを選ぶ')
-  await element('.accordion-header >> nth=0', 'click')
-  await sleep(600)
+  // アコーミハョンは開き替えなる。前回の実行で開いているとクリックした結果闭じてしまうので、
+  // セレクト箱が現在表示されているかを先に確認する。
+  if (!(await domHasClass('setting-select'))) {
+    step('  設定アコーミハョンを開く')
+    await element('.accordion-header >> nth=0', 'click')
+    await sleep(800)
+  }
+  if (!(await domHasClass('setting-select'))) {
+    throw new Error('.setting-select が表示されていない（設定アコーミハョンを開けなかった）')
+  }
   await element('.setting-select >> nth=0', 'select', SOURCE)
   await sleep(600)
 
@@ -256,7 +293,9 @@ async function waitForTranscription(maxSeconds) {
 
   while (Date.now() < deadline) {
     const lines = await logs()
-    const appended = lines.filter((l) => l.includes('文字起こしを追記')).length
+    // ログは実装によって「文字起こしを追記」（ファイル侥）と
+    // 「文字起こし追記完了」（コンテキスト側）の両方がある
+    const appended = lines.filter((l) => /文字起こし(を)?追記/.test(l)).length
     const failed = lines.filter((l) => l.includes('文字起こし失敗')).length
 
     if (appended > lastCount) {
@@ -329,7 +368,25 @@ async function main() {
   console.log('KamoX E2E スモーク開始')
   console.log(`  target: ${BASE} / source: ${SOURCE} / record: ${RECORD_SECONDS}秒\n`)
 
-  const status = await api('/status')
+  // KamoX は起動直後や 백그라운드処理中は応答が遅いことがあるため、
+// 足够的超时 + リトライで接続を確定させる
+let status = null
+let lastError = null
+for (let attempt = 1; attempt <= 5; attempt++) {
+  try {
+    status = await api('/status', 'GET', undefined, 30_000)
+    break
+  } catch (error) {
+    lastError = error
+    step(`  KamoX に応答なし（${attempt}/5回目）… 3秒待って再試行`)
+    await sleep(3000)
+  }
+}
+  if (!status) {
+    console.error(`  KamoX に接続できませんでした: ${lastError?.message ?? '不明なエラー'}`)
+    console.error('  `npx kamox electron` で起動しているか確認してください。')
+    process.exit(2)
+  }
   if (!status.success) {
     console.error('  KamoX が起動していません。`npx kamox electron` を先に起動してください。')
     process.exit(2)

@@ -506,7 +506,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     getTotalDataSize: () => recordingData.stats.totalDataSize,
     getChunksCount: () => recordingData.chunks.length,
     getErrorsCount: () => recordingData.errors.length,
-    getTranscriptionCount: () => recordingData.chunks.filter(c => c.transcriptionText).length,
+    getTranscriptionCount: () => recordingData.chunks.reduce((n, c) => (c.transcriptionText ? n + 1 : n), 0),
     hasTranscriptionData: () => recordingData.chunks.some(c => c.transcriptionText && c.transcriptionText.trim()),
 
     // ダウンロード機能

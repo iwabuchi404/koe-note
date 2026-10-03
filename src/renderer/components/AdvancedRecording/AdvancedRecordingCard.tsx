@@ -5,12 +5,19 @@
  */
 
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { AdvancedRecordingTabData } from '../../types/TabTypes'
 import { useRecordingContext, AdvancedRecordingConfig } from '../../contexts/RecordingContext'
 import { AudioChunkCalculator } from '../../utils/AudioChunkCalculator'
 import { modelDownloadService } from '../../services/ModelDownloadService'
 import type { ModelInfo } from '../../types/ModelTypes'
+import {
+  ChunkLogRow,
+  TranscriptChunkRow,
+  TruncationNotice,
+  countHiddenChunks,
+  selectVisibleChunks
+} from './ChunkViews'
 import './AdvancedRecordingCard.css'
 
 const logger = LoggerFactory.getLogger(LogCategories.UI_SETTINGS)
@@ -52,11 +59,35 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
     downloadAllChunks,
     getTotalDuration,
     getTotalDataSize,
-    getChunksCount,
     getErrorsCount,
-    getTranscriptionCount,
     hasTranscriptionData
   } = useRecordingContext()
+
+  // チャンク一覧は上限付きで切り出す。
+  // 全件を描画すると録音時間が長くなるほど O(N^2) になり、
+  // レンダラの main thread が飽和して録音ボタンが反応しなくなるため。
+  const visibleChunks = useMemo(
+    () => selectVisibleChunks(recordingData.chunks),
+    [recordingData.chunks]
+  )
+  const hiddenChunkCount = useMemo(
+    () => countHiddenChunks(recordingData.chunks),
+    [recordingData.chunks]
+  )
+  const { count: transcribedChunkCount, chars: transcribedCharCount } = useMemo(
+    () =>
+      recordingData.chunks.reduce(
+        (acc, chunk) => {
+          if (chunk.transcriptionText) {
+            acc.count += 1
+            acc.chars += chunk.transcriptionText.length
+          }
+          return acc
+        },
+        { count: 0, chars: 0 }
+      ),
+    [recordingData.chunks]
+  )
 
   // 録音開始（グローバル状態を使用）
   const startRecording = useCallback(async () => {
@@ -308,11 +339,11 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                 </div>
                 <div className="stat-item">
                   <label>文字起こし完了:</label>
-                  <span>{getTranscriptionCount()}/{getChunksCount()}</span>
+                  <span>{transcribedChunkCount}/{recordingData.chunks.length}</span>
                 </div>
                 <div className="stat-item">
                   <label>文字起こし文字数:</label>
-                  <span>{recordingData.chunks.reduce((total, chunk) => total + (chunk.transcriptionText?.length || 0), 0)}文字</span>
+                  <span>{transcribedCharCount}文字</span>
                 </div>
               </div>
             </div>
@@ -330,32 +361,10 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
                 </div>
               ) : (
                 <div className="transcription-timeline">
-                  {recordingData.chunks.map((chunk) => (
-                    <div key={chunk.id} className={`transcription-chunk ${chunk.transcriptionStatus}`}>
-                      <div className="chunk-header">
-                        <span className="chunk-time">
-                          {new Date(chunk.timestamp).toLocaleTimeString()}
-                        </span>
-                        <span className={`chunk-status-badge ${chunk.transcriptionStatus}`}>
-                          {chunk.transcriptionStatus === 'pending' && '⏳ 待機中'}
-                          {chunk.transcriptionStatus === 'processing' && '⚡ 処理中'}
-                          {chunk.transcriptionStatus === 'completed' && '✅ 完了'}
-                          {chunk.transcriptionStatus === 'failed' && '❌ キャンセル'}
-                        </span>
-                      </div>
-                      <div className="chunk-transcription-text">
-                        {chunk.transcriptionText ? (
-                          chunk.transcriptionText
-                        ) : chunk.transcriptionStatus === 'completed' ? (
-                          <span className="no-text">(音声なし)</span>
-                        ) : chunk.transcriptionStatus === 'failed' ? (
-                          <span className="no-text">(キャンセルされました)</span>
-                        ) : (
-                          <span className="processing-text">処理中...</span>
-                        )}
-                      </div>
-                    </div>
+                  {visibleChunks.map((chunk) => (
+                    <TranscriptChunkRow key={chunk.id} chunk={chunk} />
                   ))}
+                  <TruncationNotice total={recordingData.chunks.length} />
                 </div>
               )}
             </div>
@@ -395,25 +404,10 @@ const AdvancedRecordingCard: React.FC<AdvancedRecordingCardProps> = ({ tabId, da
             {chunksExpanded && (
               <div className="accordion-content">
                 <div className="chunks-list">
-                  {recordingData.chunks.map((chunk) => (
-                    <div key={chunk.id} className="chunk-item">
-                      <div className="chunk-info">
-                        <span className="chunk-id">チャンク #{chunk.id}</span>
-                        <span className="chunk-size">{(chunk.size / 1024).toFixed(1)}KB</span>
-                        <span className="chunk-time">{chunk.timestamp.toLocaleTimeString()}</span>
-                      </div>
-                      <div className={`chunk-status ${chunk.transcriptionStatus}`}>
-                        {chunk.transcriptionStatus}
-                      </div>
-                      <button 
-                        className="chunk-download-button"
-                        onClick={() => downloadChunk(chunk.id)}
-                        title={`チャンク#${chunk.id}をダウンロード`}
-                      >
-                        📥
-                      </button>
-                    </div>
+                  {visibleChunks.map((chunk) => (
+                    <ChunkLogRow key={chunk.id} chunk={chunk} onDownload={downloadChunk} />
                   ))}
+                  <TruncationNotice total={recordingData.chunks.length} />
                 </div>
               </div>
             )}

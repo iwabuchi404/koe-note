@@ -28,6 +28,48 @@ export interface WhisperServerPaths {
   bundleDir: string
 }
 
+/**
+ * リポジトリのルート（whisper-server/ の親ディレクトリ）
+ *
+ * app.getAppPath() は dist/main.js の起動なら `dist/` を指すため、
+ * 開発用の venv やビルド済み exe の探索基準には使えない。
+ * 実測でこれが原因で、2025 年にビルドされた古い exe が
+ * 実行，造成 chunkNumber が返らない致命的な不整合を起こした。
+ */
+export function resolveProjectRoot(bundleDir: string): string {
+  return path.resolve(bundleDir, '..')
+}
+
+/** 開発時に使う venv python の候補（Windows / Unix） */
+export function buildDevPythonCandidates(projectRoot: string): string[] {
+  return [
+    path.join(projectRoot, 'whisper-server', '.venv', 'Scripts', 'python.exe'),
+    path.join(projectRoot, 'whisper-server', '.venv', 'bin', 'python')
+  ]
+}
+
+/**
+ * ビルド済み whisper-server.exe の候補（優先順）
+ *
+ * 前提:
+ *   - 現在のビルドは PyInstaller の onedir 形式
+ *     （`dist/whisper-server/whisper-server.exe`）
+ *   - 古い onefile 形式（`dist/whisper-server.exe`）は
+ *     -protocol が古く(stale) ても混入する frustration があるため、
+ *     誤って起動されないよう候補から外している
+ */
+export function buildExeCandidates(paths: WhisperServerPaths): string[] {
+  const projectRoot = resolveProjectRoot(paths.bundleDir)
+  return [
+    // パッケージ版: resources 内の onedir
+    path.join(paths.resourcesPath, 'whisper-server', 'whisper-server.exe'),
+    // パッケージ版: onefile
+    path.join(paths.resourcesPath, 'whisper-server.exe'),
+    // ソースからビルドして実行する場合: onedir（現在の形式）
+    path.join(projectRoot, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe')
+  ]
+}
+
 export interface WhisperServerDeps {
   /** ログ出力 */
   log: (message: string) => void
@@ -288,25 +330,22 @@ export class WhisperServerService {
    * それ以外はビルド済み実行ファイルを候補パスから探す。
    */
   private async resolveLaunchCommand(): Promise<{ command: string; args: string[]; cwd: string }> {
-    const { appPath, resourcesPath, bundleDir } = this.paths
+    const { appPath } = this.paths
     const isDevelopment = process.env.NODE_ENV !== 'production' || appPath.includes('node_modules')
 
     if (isDevelopment) {
       const python = await this.resolvePython()
       if (python) {
-        return { command: python, args: ['main.py'], cwd: path.join(appPath, 'whisper-server') }
+        return {
+          command: python,
+          args: ['main.py'],
+          cwd: path.join(resolveProjectRoot(this.paths.bundleDir), 'whisper-server')
+        }
       }
       this.log('開発用のpythonが見つからないため、ビルド済み実行ファイルを使います')
     }
 
-    const candidates = [
-      path.join(appPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe'),
-      path.join(appPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-      path.resolve(bundleDir, '..', 'whisper-server', 'dist', 'whisper-server.exe'),
-      path.join(resourcesPath, 'whisper-server.exe'),
-      path.join(resourcesPath, 'whisper-server', 'dist', 'whisper-server.exe'),
-      path.join(resourcesPath, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe')
-    ]
+    const candidates = buildExeCandidates(this.paths)
 
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) {
