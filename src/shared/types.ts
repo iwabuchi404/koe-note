@@ -311,6 +311,14 @@ export interface ElectronAPI {
   // ---- ファイル操作 ----
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => Promise<string>
   saveFileToPath: (filePath: string, data: ArrayBuffer | Blob) => Promise<boolean>
+  /**
+   * ファイル末尾にバイナリを追記する（ファイルが無ければ作成する）
+   *
+   * 録音の書き込みはチャンクごとにこのを使う。saveFileToPath で
+   * 「読み込み → 結合 → 全体書き戻し」をすると O(n²) になり、
+   * 長時間録音ではファイル全体の読み書きが支配的になる。
+   */
+  appendFileToPath: (filePath: string, data: ArrayBuffer | Blob) => Promise<boolean>
   saveTextFile: (filePath: string, content: string) => Promise<boolean>
   getFileList: (folderPath: string) => Promise<AudioFile[]>
   deleteFile: (filePath: string) => Promise<boolean>

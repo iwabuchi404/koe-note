@@ -25,6 +25,11 @@ export const api: ElectronAPI = {
   saveTextFile: (filePath: string, content: string) =>
     ipcRenderer.invoke('file:saveText', filePath, content),
 
+  appendFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
+    const arrayBuffer = data instanceof Blob ? await data.arrayBuffer() : data
+    return ipcRenderer.invoke('file:appendToPath', filePath, Buffer.from(arrayBuffer))
+  },
+
   getFileList: (folderPath: string) => ipcRenderer.invoke('file:getList', folderPath),
 
   deleteFile: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
