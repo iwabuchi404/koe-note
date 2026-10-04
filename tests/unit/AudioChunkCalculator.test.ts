@@ -1,53 +1,66 @@
 /**
- * AudioChunkCalculator の現状契約テスト
+ * AudioChunkCalculator の契約テスト（Phase E で修正後）
  *
- * このテストは「いま何が起きているか」を固定するものである。
- * 録音パイプラインを時間ベースに再設計する段階（Phase 4）で、
- * 圧縮率の想定・最小64KBクランプ・UI表示との乖離がどう変わるかを
- * 差分としてレビューできるようにしておく。
+ * このファイルは从前「いま何が起きているか」を固定する現状契約テストで、
+ * 最後に次の 3 点を修正前の(diff)として記録していた:
+ *   1. 圧縮率 0.12 の想定（10,584 B/s）
+ *   2. 実際の 16,000 B/s に対する過小計算（約 1.51 倍）
+ *   3. 64KB 下限クランプによる実効チャンク長の乖離
  *
- * 関連: AudioWorkletRecordingService は lamejs に
- *   new Mp3Encoder(1, 44100, 128) を渡しており、実バイト数は 16,000 B/s。
- *   一方 AudioChunkCalculator は compression: 0.12（10,584 B/s）で計算するため
- *   実際の 1.51 倍小さく見積もる。加えて setChunkSizeThreshold が
- *   Math.max(64 * 1024, ...) で下限を固定するため、1〜5秒の指定は
- *   すべて約4.1秒に潰れる（= 64KB / 16,000 B/s）。
+ * Phase E でバイト⇔時間の換算を src/shared/audioFormat.ts（SSOT）に
+ * 集約し、1 と 2 は解消した。実測のエンコーダ設定
+ * （lamejs: Mp3Encoder(1, 44100, 128) = 16,000 B/s）に一致するようになった。
+ * 3 の 64KB 下限は AudioWorkletRecordingService.setChunkSizeThreshold に
+ * 残る仕様なので、引き続き固定する。
+ *
+ * 関連: src/shared/audioFormat.ts / src/shared/recordingManifest.ts
  */
 import { describe, it, expect } from 'vitest'
 import { AudioChunkCalculator } from '@renderer/utils/AudioChunkCalculator'
+import { bytesPerSecond, chunkBytesForDuration } from '@shared/audioFormat'
 
-const ACTUAL_MP3_BYTES_PER_SECOND = 128_000 / 8 // 16,000 B/s（lamejs 128kbps）
+/** 実バイト数（lamejs 128kbps） */
+const ACTUAL_MP3_BYTES_PER_SECOND = bytesPerSecond('mp3') // 16,000 B/s
 
-/** 現在のクランプ後の実効チャンク長（秒） */
+/**
+ * 現在のクランプ後の実効チャンク長（秒）
+ *
+ * AudioWorkletRecordingService.setChunkSizeThreshold が
+ * Math.max(64 * 1024, sizeInBytes) で下限を固定しているため、
+ * 64KB（= 4.096 秒）未満の指定はすべて 4.096 秒に潰れる。
+ */
 const effectiveDurationAfterClamp = (requestedSeconds: number): number => {
   const sizeKB = AudioChunkCalculator.durationToBytes(requestedSeconds)
   const clampedBytes = Math.max(64 * 1024, sizeKB * 1024)
   return clampedBytes / ACTUAL_MP3_BYTES_PER_SECOND
 }
 
-describe('AudioChunkCalculator - 現状の挙動', () => {
+describe('AudioChunkCalculator - 修正後の契約', () => {
   describe('durationToBytes', () => {
-    it('既定フォーマットは 44100Hz/16bit/モノラル/圧縮率0.12', () => {
-      // 44100 * 1ch * (16/8) * 0.12 = 10,584 B/s → 小数点以下を丸めてKB単位
-      expect(AudioChunkCalculator.durationToBytes(1)).toBe(10)
-      expect(AudioChunkCalculator.durationToBytes(3)).toBe(31)
-      expect(AudioChunkCalculator.durationToBytes(15)).toBe(155)
+    it('実バイト数 16,000 B/s で換算する', () => {
+      expect(AudioChunkCalculator.durationToBytes(1)).toBe(16) // 15.625 → 16
+      expect(AudioChunkCalculator.durationToBytes(3)).toBe(47) // 46.875 → 47
+      expect(AudioChunkCalculator.durationToBytes(15)).toBe(234) // 234.375 → 234
     })
 
-    it('実際のMP3バイト数より小さく見積もる（過小計算）', () => {
-      const estimatedKB = AudioChunkCalculator.durationToBytes(10)
-      const actualKB = (ACTUAL_MP3_BYTES_PER_SECOND * 10) / 1024
+    it('実際の MP3 バイト数と一致する（過小計算が解消した）', () => {
+      for (const seconds of [1, 3, 5, 10, 15]) {
+        const estimatedKB = AudioChunkCalculator.durationToBytes(seconds)
+        const actualKB = (ACTUAL_MP3_BYTES_PER_SECOND * seconds) / 1024
+        // KB 丸めによる 1KB 未満の差だけが残る
+        expect(Math.abs(estimatedKB - actualKB)).toBeLessThan(1)
+      }
+    })
 
-      expect(estimatedKB).toBeLessThan(actualKB)
-      // 約1.51倍のズレ
-      expect(actualKB / estimatedKB).toBeGreaterThan(1.4)
+    it('修正前の圧縮率 0.12 の値（1秒=10KB）を返さない', () => {
+      expect(AudioChunkCalculator.durationToBytes(1)).not.toBe(10)
     })
   })
 
   describe('bytesToDuration', () => {
-    it('KBから Compression を補正して秒数へ戻す', () => {
-      expect(AudioChunkCalculator.bytesToDuration(10)).toBe(1.0)
-      expect(AudioChunkCalculator.bytesToDuration(31)).toBe(3.0)
+    it('KB から 16,000 B/s で秒数へ戻す', () => {
+      expect(AudioChunkCalculator.bytesToDuration(16)).toBe(1.0)
+      expect(AudioChunkCalculator.bytesToDuration(47)).toBe(3.0)
     })
 
     it('プリセット値では往復の丸め誤差が 0.2 秒以内に収まる', () => {
@@ -59,29 +72,27 @@ describe('AudioChunkCalculator - 現状の挙動', () => {
     })
   })
 
-  describe('UIプリセットと実効チャンク長の乖離', () => {
-    it.each([1, 2, 3, 5])('%d秒指定は 64KB クランプにより約4.1秒に潰れる', (seconds) => {
+  describe('UIプリセットと実効チャンク長の乖離（64KB 下限は仕様）', () => {
+    it.each([1, 2, 3])('%d秒指定は 64KB クランプにより約4.1秒に潰れる', (seconds) => {
       expect(effectiveDurationAfterClamp(seconds)).toBeCloseTo(4.096, 2)
     })
 
-    it('10秒/15秒指定のみクランプされず指定どおりの長さになる', () => {
-      expect(effectiveDurationAfterClamp(10)).toBeCloseTo(6.592, 2)
-      expect(effectiveDurationAfterClamp(15)).toBeCloseTo(9.92, 2)
-    })
-  })
-
-  describe('calculateOptimalSize', () => {
-    it('durationモードは指定値をそのまま返す', () => {
-      expect(AudioChunkCalculator.calculateOptimalSize('duration', 5)).toEqual({
-        sizeKB: 52,
-        durationSeconds: 5
-      })
+    it('5秒以上は下限クランプに掛からず指定どおりになる（KB 丸めぶんだけ短くなる）', () => {
+      // UI は KB 単位の整数でチャンク境界を渡すため、
+      // 指定より最大 1KB 短い実動になる（128kbps で最大 62ms）。
+      // 5秒 → 78KB → 4.992秒 / 10秒 → 156KB → 9.984秒 / 15秒 → 234KB → 14.976秒
+      expect(effectiveDurationAfterClamp(5)).toBeCloseTo(4.992, 3)
+      expect(effectiveDurationAfterClamp(10)).toBeCloseTo(9.984, 3)
+      expect(effectiveDurationAfterClamp(15)).toBeCloseTo(14.976, 3)
     })
 
-    it('bytesモードはKBからdurationを逆算する', () => {
-      const result = AudioChunkCalculator.calculateOptimalSize('bytes', 64)
-      expect(result.sizeKB).toBe(64)
-      expect(result.durationSeconds).toBe(6.2)
+    it('実際のチャンク境界も SSOT の chunkBytesForDuration と一致する', () => {
+      // manifest が使う算出と UI が使う算出がずれないことの確認
+      for (const seconds of [1, 3, 5, 15]) {
+        const fromCalculator = AudioChunkCalculator.durationToBytes(seconds) * 1024
+        const fromSsot = chunkBytesForDuration(seconds, 'mp3')
+        expect(Math.abs(fromCalculator - fromSsot)).toBeLessThan(1024)
+      }
     })
   })
 

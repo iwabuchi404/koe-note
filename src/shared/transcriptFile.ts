@@ -32,8 +32,10 @@
  *   [00:00:04.0] Speaker: テキスト
  */
 
+import { bytesPerSecond } from './audioFormat'
+
 /** 128kbps モノラル MP3 の実バイトレート */
-export const MP3_BYTES_PER_SECOND = 16_000
+export const MP3_BYTES_PER_SECOND = bytesPerSecond('mp3')
 
 /** ヘッダーと本文の境界 */
 export const TRANSCRIPT_HEADER_BOUNDARY = '---\n\n'

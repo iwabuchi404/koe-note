@@ -1,85 +1,63 @@
 /**
- * AudioChunkCalculator - 音声チャンクサイズと時間の相互変換
+ * AudioChunkCalculator - 音声チャンクサイズの換算とプリセット表示
+ *
+ * 実測のエンコーダ設定（lamejs: モノラル / 44.1kHz / 128kbps）に対する
+ * バイト⇔時間の換算は src/shared/audioFormat.ts に集約した。
+ * 以前は圧縮率 0.12 を仮定して計算しており、実際早了 35% ずれていた。
+ * ここでは UI 用の表示とプリセット定義だけを持つ。
  */
+
+import { chunkBytesForDuration, durationFromBytes } from '@shared/audioFormat'
 
 export interface AudioFormat {
   sampleRate: number // Hz (通常44100)
-  bitDepth: number   // bit (通常16)
-  channels: number   // 1=モノ, 2=ステレオ
-  compression: number // MP3圧縮率 (0.1-0.15程度)
+  bitDepth: number // bit (通常16)
+  channels: number // 1=モノ, 2=ステレオ
+  /**
+   * 旧 API 互換のためのフィールド。
+   * 実際の換算には使わない（src/shared/audioFormat.ts を参照）。
+   */
+  compression: number
 }
 
 export class AudioChunkCalculator {
+  /** 実際のエンコーダ設定（src/shared/audioFormat.ts が SSOT） */
   private static readonly DEFAULT_FORMAT: AudioFormat = {
     sampleRate: 44100,
     bitDepth: 16,
     channels: 1, // モノラル録音
-    compression: 0.12 // MP3圧縮率約12%
+    compression: 0 // 未使用
   }
 
   /**
    * 秒数からチャンクサイズ(KB)を計算
+   *
+   * 128kbps では 1 秒 = 16,000 バイト = 15.6KB。
    */
-  static durationToBytes(durationSeconds: number, format: AudioFormat = AudioChunkCalculator.DEFAULT_FORMAT): number {
-    // 生音声データサイズ計算
-    const bytesPerSample = format.bitDepth / 8
-    const samplesPerSecond = format.sampleRate * format.channels
-    const rawBytesPerSecond = samplesPerSecond * bytesPerSample
-    
-    // 生データサイズ
-    const rawBytes = rawBytesPerSecond * durationSeconds
-    
-    // MP3圧縮後のサイズ
-    const compressedBytes = rawBytes * format.compression
-    
-    // KB単位で返す
-    return Math.round(compressedBytes / 1024)
+  static durationToBytes(
+    durationSeconds: number,
+    format: AudioFormat = AudioChunkCalculator.DEFAULT_FORMAT
+  ): number {
+    void format
+    return Math.round(chunkBytesForDuration(durationSeconds, 'mp3') / 1024)
   }
 
   /**
    * チャンクサイズ(KB)から秒数を計算
    */
-  static bytesToDuration(sizeKB: number, format: AudioFormat = AudioChunkCalculator.DEFAULT_FORMAT): number {
-    // KBからバイトに変換
-    const compressedBytes = sizeKB * 1024
-    
-    // 圧縮前の生データサイズを推定
-    const rawBytes = compressedBytes / format.compression
-    
-    // サンプル数計算
-    const bytesPerSample = format.bitDepth / 8
-    const samplesPerSecond = format.sampleRate * format.channels
-    const rawBytesPerSecond = samplesPerSecond * bytesPerSample
-    
-    // 秒数計算
-    const durationSeconds = rawBytes / rawBytesPerSecond
-    
-    return Math.round(durationSeconds * 10) / 10 // 小数点1桁で四捨五入
-  }
-
-  /**
-   * 現在の設定に基づいて適切なチャンクサイズを計算
-   */
-  static calculateOptimalSize(
-    mode: 'bytes' | 'duration',
-    value: number,
-    format?: AudioFormat
-  ): { sizeKB: number, durationSeconds: number } {
-    const audioFormat = format || AudioChunkCalculator.DEFAULT_FORMAT
-
-    if (mode === 'duration') {
-      const sizeKB = AudioChunkCalculator.durationToBytes(value, audioFormat)
-      return { sizeKB, durationSeconds: value }
-    } else {
-      const durationSeconds = AudioChunkCalculator.bytesToDuration(value, audioFormat)
-      return { sizeKB: value, durationSeconds }
-    }
+  static bytesToDuration(
+    sizeKB: number,
+    format: AudioFormat = AudioChunkCalculator.DEFAULT_FORMAT
+  ): number {
+    void format
+    const seconds = durationFromBytes(sizeKB * 1024, 'mp3')
+    return Math.round(seconds * 10) / 10 // 小数点1桁で四捨五入
   }
 
   /**
    * プリセット設定
    */
-  static getPresets(): Array<{ 
+  static getPresets(): Array<{
     label: string
     durationSeconds: number
     sizeKB: number
