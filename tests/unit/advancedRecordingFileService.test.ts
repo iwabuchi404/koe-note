@@ -1,174 +1,236 @@
 /**
- * AdvancedRecordingFileService.appendTranscription のテスト
+ * AdvancedRecordingFileService.saveChunk のPhase E 契約
  *
- * 実測で発見していた問題:
- * - ヘッダーが初回作成時の値のまま（segment_count: 1, duration: 0.000）
- * - model がハードコード
- * - タイムスタンプが結果の到着時刻
- *
- * ここでは electronAPI を型に追従したモック（tests/mocks）に差し替え、
- * 書き出したファイルの中身を検証する。
+ * 検証すること:
+ *   1. mp3 は追記される（O(n²) の「全体読み書き」をしない）
+ *   2. チャンク単体ファイルが追記ではなく新規保存される
+ *   3. manifest.json がチャンク数・合計バイト数と整合している
+ *   4. ディレクトリへのパスでしか書き込まない（パスガード）
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { AdvancedRecordingFileService } from '@renderer/services/AdvancedRecordingFileService'
-import { installElectronAPI } from '../mocks/electronAPI'
+import { parseManifest, validateManifest } from '@shared/recordingManifest'
+import { installElectronAPI, type ElectronAPIMock } from '../mocks/electronAPI'
 
-const WORKDIR = '/mock/save-folder'
+const DIR = 'D:\\work\\recordings'
+const BASE = 'recording_20261004_125800'
 
-/** saveTextFile で書き込まれた内容を保持する簡易ファイルシステム */
-function createFileSystemMock(initial: Record<string, string> = {}) {
-  const files = new Map<string, string>(Object.entries(initial))
-  const api = installElectronAPI({
-    readFile: vi.fn(async (filePath: string) => {
-      if (!files.has(filePath)) {
-        throw new Error(`ENOENT: ${filePath}`)
-      }
-      return Buffer.from(files.get(filePath)!, 'utf-8')
-    }),
-    saveTextFile: vi.fn(async (filePath: string, content: string) => {
-      files.set(filePath, content)
-      return true
-    })
-  })
-  return { files, api }
+/** 1 秒分 = 128kbps の MP3 チャンク相当 */
+function chunkBlob(bytes: number): Blob {
+  const data = new Uint8Array(bytes).fill(1)
+  const blob = new Blob([data], { type: 'audio/mp3' })
+  // jsdom の Blob には arrayBuffer() が無いため、最小限だけ代替する
+  if (typeof blob.arrayBuffer === 'function') {
+    return blob
+  }
+  return { arrayBuffer: async () => data.buffer } as unknown as Blob
 }
 
-const baseParams = {
-  baseName: 'recording_2026_10_01_0200',
-  audioFileName: 'recording_2026_10_01_0200.mp3',
-  model: 'small',
-  language: 'ja',
-  transcribedAt: '2026-10-01T02:00:13.937Z',
-  workingDirectory: WORKDIR
-}
+describe('AdvancedRecordingFileService.saveChunk', () => {
+  let api: ElectronAPIMock
 
-const TRANS_PATH = `${WORKDIR}/recording_2026_10_01_0200.trans.txt`
-
-describe('appendTranscription', () => {
   beforeEach(() => {
-    vi.restoreAllMocks()
+    api = installElectronAPI({
+      loadSettings: vi.fn().mockResolvedValue({ saveFolder: DIR } as never)
+    })
+    AdvancedRecordingFileService.clearManifest(BASE)
+    vi.mocked(api.appendFileToPath).mockClear()
+    vi.mocked(api.saveFileToPath).mockClear()
+    vi.mocked(api.saveTextFile).mockClear()
+    vi.mocked(api.readFile).mockClear()
   })
 
-  it('初回はヘッダーとセグメント1行を書き出す', async () => {
-    const { files } = createFileSystemMock()
+  /** saveTextFile の呼び出しから manifest.json の内容を取得する */
+  function lastManifestText(): string {
+    const calls = vi.mocked(api.saveTextFile).mock.calls
+    const manifestCalls = calls.filter((c) => String(c[0]).endsWith('.manifest.json'))
+    return String(manifestCalls[manifestCalls.length - 1]?.[1])
+  }
 
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 1,
-      audioOffsetSeconds: 0,
-      text: '最初のセグメント',
-      segmentCount: 1,
-      durationSeconds: 4.096
-    })
+  it('mp3 は追記される（読み込みを行わない）', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
 
-    const content = files.get(TRANS_PATH)!
-    expect(content).toContain('model: small')
-    expect(content).toContain('duration: 4.096')
-    expect(content).toContain('segment_count: 1')
-    expect(content).toContain('[00:00:00.0] 最初のセグメント')
+    expect(api.appendFileToPath).toHaveBeenCalledTimes(1)
+    expect(api.appendFileToPath).toHaveBeenCalledWith(
+      `${DIR}/${BASE}.mp3`,
+      expect.anything()
+    )
+    // O(n²) の原因だった「既存ファイルの読み込み」がないこと
+    expect(api.readFile).not.toHaveBeenCalled()
   })
 
-  it('追記時にヘッダーの segment_count と duration を更新する', async () => {
-    const { files } = createFileSystemMock()
-
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 1,
-      audioOffsetSeconds: 0,
-      text: '一つ目',
-      segmentCount: 1,
-      durationSeconds: 4.096
-    })
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 2,
-      audioOffsetSeconds: 4.096,
-      text: '二つ目',
-      segmentCount: 2,
-      durationSeconds: 8.192
-    })
-
-    const content = files.get(TRANS_PATH)!
-    expect(content).toContain('segment_count: 2')
-    expect(content).toContain('duration: 8.192')
+  it('mp3 を saveFileToPath で上書きしない', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    const mp3Writes = vi
+      .mocked(api.saveFileToPath)
+      .mock.calls.filter((c) => String(c[0]).endsWith(`${BASE}.mp3`))
+    expect(mp3Writes).toHaveLength(0)
   })
 
-  it('追記時にヘッダーが重複しない', async () => {
-    const { files } = createFileSystemMock()
+  it('チャンク単体は追記せず新規保存される', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
 
-    for (let i = 1; i <= 3; i++) {
-      await AdvancedRecordingFileService.appendTranscription({
-        ...baseParams,
-        chunkNumber: i,
-        audioOffsetSeconds: (i - 1) * 4.096,
-        text: `セグメント${i}`,
-        segmentCount: i,
-        durationSeconds: i * 4.096
-      })
+    expect(api.saveFileToPath).toHaveBeenCalledWith(
+      `${DIR}/${BASE}.chunks/chunk_000.mp3`,
+      expect.anything()
+    )
+    expect(api.appendFileToPath).not.toHaveBeenCalledWith(
+      expect.stringContaining('.chunks'),
+      expect.anything()
+    )
+  })
+
+  it('チャンク番号がファイル名に反映される', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 7, BASE, 'mp3', DIR)
+    expect(api.saveFileToPath).toHaveBeenCalledWith(
+      `${DIR}/${BASE}.chunks/chunk_007.mp3`,
+      expect.anything()
+    )
+  })
+
+  it('wav では拡張子の拡張子にはならない', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'wav', DIR)
+    expect(api.saveFileToPath).toHaveBeenCalledWith(
+      `${DIR}/${BASE}.chunks/chunk_000.wav`,
+      expect.anything()
+    )
+  })
+
+  it('manifest.json が保存される', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    expect(api.saveTextFile).toHaveBeenCalledWith(
+      `${DIR}/${BASE}.manifest.json`,
+      expect.any(String)
+    )
+  })
+
+  it('チャンクごとに manifest が更新され、整合が保たれる', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(3200), 1, BASE, 'mp3', DIR)
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 2, BASE, 'mp3', DIR)
+
+    const manifest = parseManifest(lastManifestText())
+    expect(manifest.chunks).toHaveLength(3)
+    expect(manifest.recording.totalBytes).toBe(6400)
+    expect(validateManifest(manifest)).toEqual([])
+  })
+
+  it('manifest のチャンク位置は累積になる', async () => {
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(3200), 0, BASE, 'mp3', DIR)
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(3200), 1, BASE, 'mp3', DIR)
+
+    const manifest = parseManifest(lastManifestText())
+    expect(manifest.chunks[0].audioOffsetSeconds).toBe(0)
+    expect(manifest.chunks[1].audioOffsetSeconds).toBe(0.2) // 3200 / 16000
+  })
+
+  it('manifest の合計バイト数は mp3 の追記量と一致する', async () => {
+    const sizes = [1600, 2400, 800]
+    for (let i = 0; i < sizes.length; i++) {
+      await AdvancedRecordingFileService.saveChunk(chunkBlob(sizes[i]), i, BASE, 'mp3', DIR)
     }
 
-    const content = files.get(TRANS_PATH)!
-    expect(content.match(/^---$/gm)?.length).toBe(2)
-    expect(content).toContain('[00:00:00.0] セグメント1')
-    expect(content).toContain('[00:00:04.0] セグメント2')
-    expect(content).toContain('[00:00:08.1] セグメント3')
-    // セグメント行は3行のまま（ヘッダー書き換えで複製されない）
-    expect(content.split('\n').filter((l) => l.startsWith('[')).length).toBe(3)
+    const appendedTotal = vi
+      .mocked(api.appendFileToPath)
+      .mock.calls.reduce((sum, c) => sum + (c[1] as Buffer).length, 0)
+    const manifest = parseManifest(lastManifestText())
+    expect(manifest.recording.totalBytes).toBe(appendedTotal)
   })
 
-  it('transcribed_at は渡された値をそのまま書く（呼び出し側がセッション開始時刻を固定する）', async () => {
-    const { files } = createFileSystemMock()
+  it('追記に失敗したら例外になる（黙って無視しない）', async () => {
+    vi.mocked(api.appendFileToPath).mockResolvedValueOnce(false)
+    await expect(
+      AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    ).rejects.toThrow()
+  })
 
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 1,
-      audioOffsetSeconds: 0,
-      text: 'a',
-      segmentCount: 1,
-      durationSeconds: 4.096
+  it('manifest 保存に失敗したら例外になる', async () => {
+    vi.mocked(api.saveTextFile).mockResolvedValueOnce(false)
+    await expect(
+      AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    ).rejects.toThrow()
+  })
+
+  it('保存先のディレクトリ下のパスだけを渡す（パストラバールを含らない）', async () => {
+    const written: string[] = []
+    vi.mocked(api.appendFileToPath).mockImplementation(async (p) => {
+      written.push(p)
+      return true
     })
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 2,
-      audioOffsetSeconds: 4.096,
-      text: 'b',
+    vi.mocked(api.saveFileToPath).mockImplementation(async (p) => {
+      written.push(p)
+      return true
+    })
+
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+    for (const p of written) {
+      expect(p.startsWith(DIR)).toBe(true)
+      expect(p.includes('..')).toBe(false)
+    }
+  })
+})
+
+describe('manifest の文字起こし情報', () => {
+  let api: ElectronAPIMock
+
+  beforeEach(() => {
+    api = installElectronAPI({
+      loadSettings: vi.fn().mockResolvedValue({ saveFolder: DIR } as never)
+    })
+    AdvancedRecordingFileService.clearManifest(BASE)
+    vi.mocked(api.saveTextFile).mockClear()
+  })
+
+  function lastManifestText(): string {
+    const calls = vi.mocked(api.saveTextFile).mock.calls
+    const m = calls.filter((c) => String(c[0]).endsWith('.manifest.json'))
+    return String(m[m.length - 1]?.[1])
+  }
+
+  it('ensureManifest が録音開始時の manifest を返す', () => {
+    const m = AdvancedRecordingFileService.ensureManifest(BASE, 'mp3', '2026-10-04T12:58:00.000Z')
+    expect(m.chunks).toEqual([])
+    expect(m.recording.createdAt).toBe('2026-10-04T12:58:00.000Z')
+  })
+
+  it('ensureManifest は2回呼んでも同じものを返す', () => {
+    const a = AdvancedRecordingFileService.ensureManifest(BASE, 'mp3', '2026-10-04T12:58:00.000Z')
+    const b = AdvancedRecordingFileService.ensureManifest(BASE, 'mp3', '2026-10-05T00:00:00.000Z')
+    expect(b).toBe(a)
+    expect(b.recording.createdAt).toBe('2026-10-04T12:58:00.000Z')
+  })
+
+  it('文字起こし情報が manifest に反映される', async () => {
+    AdvancedRecordingFileService.ensureManifest(BASE, 'mp3', '2026-10-04T12:58:00.000Z')
+    await AdvancedRecordingFileService.saveChunk(chunkBlob(1600), 0, BASE, 'mp3', DIR)
+
+    await AdvancedRecordingFileService.updateTranscriptionInManifest(BASE, {
+      enabled: true,
+      model: 'small',
+      language: 'ja',
+      file: `${BASE}.trans.txt`,
       segmentCount: 2,
-      durationSeconds: 8.192
+      transcribedAt: '2026-10-04T12:59:00.000Z'
     })
 
-    const content = files.get(TRANS_PATH)!
-    // ヘッダーは毎回作り直すため transcribed_at が2つ残ることは無い。
-    // 値がセッション内で一定かどうかは RecordingContext 側の責務
-    // （transcriptionStartedAtRef が初回のみ設定する）。
-    expect(content.match(/transcribed_at:/g)?.length).toBe(1)
-    expect(content).toContain('transcribed_at: 2026-10-01T02:00:13.937Z')
+    const manifest = parseManifest(lastManifestText())
+    expect(manifest.transcription.enabled).toBe(true)
+    expect(manifest.transcription.model).toBe('small')
+    expect(manifest.transcription.segmentCount).toBe(2)
+    expect(manifest.transcription.file).toBe(`${BASE}.trans.txt`)
+    expect(validateManifest(manifest)).toEqual([])
   })
 
-  it('話者ラベルが空配列のまま出力される（話者分離は未実装）', async () => {
-    const { files } = createFileSystemMock()
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      chunkNumber: 1,
-      audioOffsetSeconds: 0,
-      text: 'a',
-      segmentCount: 1,
-      durationSeconds: 4.096
-    })
-    expect(files.get(TRANS_PATH)!).toContain('speakers: []')
+  it('manifest 未作成時の文字起こし反映は黙って無視される', async () => {
+    await expect(
+      AdvancedRecordingFileService.updateTranscriptionInManifest('unknown', { enabled: true })
+    ).resolves.toBeUndefined()
   })
 
-  it('保存先ディレクトリ未指定なら設定のsaveFolderを使う', async () => {
-    const { files, api } = createFileSystemMock()
-    await AdvancedRecordingFileService.appendTranscription({
-      ...baseParams,
-      workingDirectory: undefined,
-      chunkNumber: 1,
-      audioOffsetSeconds: 0,
-      text: 'a',
-      segmentCount: 1,
-      durationSeconds: 4.096
-    })
-    expect(api.loadSettings).toHaveBeenCalled()
-    expect(files.has('/mock/save-folder/recording_2026_10_01_0200.trans.txt')).toBe(true)
+  it('clearManifest 後は peekManifest が undefined を返す', () => {
+    AdvancedRecordingFileService.ensureManifest(BASE, 'mp3', '2026-10-04T12:58:00.000Z')
+    expect(AdvancedRecordingFileService.peekManifest(BASE)).toBeDefined()
+    AdvancedRecordingFileService.clearManifest(BASE)
+    expect(AdvancedRecordingFileService.peekManifest(BASE)).toBeUndefined()
   })
 })

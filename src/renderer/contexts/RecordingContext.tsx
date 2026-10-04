@@ -235,6 +235,19 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           durationSeconds: durationFromBytes(totalBytes),
           transcribedAt: transcriptionStartedAtRef.current
         })
+        // Phase E: manifest の文字起こし情報も同期に更新する（セグメント数などが增えたかより）
+        await AdvancedRecordingFileService.updateTranscriptionInManifest(
+          baseFileNameRef.current,
+          {
+            enabled: true,
+            model: config.transcriptionSettings.model,
+            language: config.transcriptionSettings.language,
+            file: `${baseFileNameRef.current}.trans.txt`,
+            segmentCount: transcribedSegmentCountRef.current,
+            transcribedAt: transcriptionStartedAtRef.current
+          }
+        )
+
         logger.info(`グローバル録音 チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
 
         // 文字起こしファイル保存後は左ペインが自動更新
@@ -282,6 +295,14 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         .replace(/[-T]/g, '_')
         .slice(0, 15) // YYYYMMDD_HHMMSS
       baseFileNameRef.current = `recording_${timestamp}`
+
+      // Phase E: 録音のチャンク索引（manifest）を開始化する。
+      // 以降はチャンクごとに書き込みられる。
+      AdvancedRecordingFileService.ensureManifest(
+        baseFileNameRef.current,
+        config.recordingSettings.format,
+        new Date().toISOString()
+      )
 
       // 文字起こしメタデータ用の補助refをセッション単位でリセット
       chunkSizesRef.current = new Map()
