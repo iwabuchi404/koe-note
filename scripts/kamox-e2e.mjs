@@ -141,6 +141,9 @@ async function checkServer() {
 async function checkRecording(recordingsDir) {
   const before = new Set(fsReadDir(recordingsDir))
 
+  // ログは実行でことで経積されるため、待ち時の判定はバスラインからの差分で見る
+  const baseline = await logCounts()
+
   step('録音タブを開く')
   // 前回の実行の違割でアプリが録音タブのままになっていることがあるので、
   // レコードカードのクリックは必ず成功せない。既に録音タブにいるならスキップする。
@@ -183,11 +186,15 @@ async function checkRecording(recordingsDir) {
   ok('録音の開始と停止', `${duration}秒`)
 
   step('文字起こし結果を待ちます（最大45秒）')
-  const ui = await waitForTranscription(45)
-  if (!ui.ok) {
-    ng('文字起こし結果の表示', ui.detail)
+  const t = await waitForTranscription(45, baseline)
+  if (!t.ok) {
+    ng('文字起こしの実行', t.detail)
   } else {
-    ok('文字起こしの追記', `${ui.segments}件 / ${ui.elapsed}秒${ui.failed ? ` / 失敗${ui.failed}件` : ''}`)
+    ok(
+      '文字起こしの実行',
+      `サーバー完了 ${t.completed}件 / 追記 ${t.appended}件 / ${t.elapsed}秒` +
+        `${t.failed ? ` / 失敗${t.failed}件` : ''}`
+    )
   }
 
   step('生成ファイルを検証')
@@ -202,7 +209,19 @@ async function checkRecording(recordingsDir) {
   ok('音声ファイルの作成', mp3.join(', '))
 
   if (trans.length === 0) {
-    ng('文字起こしファイルの作成', `trans.txt が無い（${mp3.join(', ')} のみ）`)
+    // 記録音声が無音の場合、サーバーは空のテキストを返すため記録ファイルは作られない。
+    // これは評募で、サーバーが実行して無音だったことを確認できれば PASS とする。
+    if (t.ok && t.completed > 0 && t.appended === 0 && t.silent > 0) {
+      ok(
+        '文字起こしファイルの作成',
+        'trans.txt は作られていない（記録音声が無音（coverage 0%）のため評募どおり）'
+      )
+      return created
+    }
+    ng(
+      '文字起こしファイルの作成',
+      `trans.txt が無いのに文字起こし本体は実行されていない（${mp3.join(', ')} のみ）`
+    )
     return created
   }
 
@@ -284,30 +303,53 @@ function verifyTranscriptOffsets(file) {
   }
 }
 
-async function waitForTranscription(maxSeconds) {
-  // DOM ではなくアプリのログを見る。ログのほうが安定していて、
-  // 「どのチャンクまで書き込まれたか」が読めるため証跡として強い。
+/**
+ * 文字起こしの完了を待つ
+ *
+ * 判定材料はアプリとサーバーのログ（DOM より安定している）。
+ * 重要なのは「text が空のチャンクは trans.txt に書かれない」仕様:
+ *   - サーバーが "Transcription completed in" が出たら文字起こしは実行された
+ *   - "Only 0.0s of ... processed" が出ていれば音声が完全無音で text が空
+ *   - 実際にファイルへ追記されたかは "文字起こし追記" の로그で分かる
+ * ログは実行をまたいで蓄積するので、開始時点の値を baseline として差分を見る。
+ */
+async function logCounts() {
+  const lines = await logs()
+  return {
+    appended: lines.filter((l) => /文字起こし(を)?追記/.test(l)).length,
+    completed: lines.filter((l) => l.includes('Transcription completed in')).length,
+    silent: lines.filter((l) => /Only 0\.0s of/.test(l)).length,
+    failed: lines.filter((l) => l.includes('文字起こし失敗')).length
+  }
+}
+
+async function waitForTranscription(maxSeconds, baseline) {
   const deadline = Date.now() + maxSeconds * 1000
   const started = Date.now()
-  let lastCount = 0
+  let lastAppended = 0
 
   while (Date.now() < deadline) {
-    const lines = await logs()
-    // ログは実装によって「文字起こしを追記」（ファイル侥）と
-    // 「文字起こし追記完了」（コンテキスト側）の両方がある
-    const appended = lines.filter((l) => /文字起こし(を)?追記/.test(l)).length
-    const failed = lines.filter((l) => l.includes('文字起こし失敗')).length
+    const counts = await logCounts()
+    const appended = Math.max(0, counts.appended - baseline.appended)
+    const completed = Math.max(0, counts.completed - baseline.completed)
+    const silent = Math.max(0, counts.silent - baseline.silent)
+    const failed = Math.max(0, counts.failed - baseline.failed)
 
-    if (appended > lastCount) {
+    if (appended > lastAppended) {
       const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000))
-      step(`  文字起こし追記 ${appended} 件${failed ? `（失敗 ${failed}）` : ''} / 残り ${remaining}秒`)
-      lastCount = appended
+      step(`  文字起こし追記 ${appended} 件 / サーバー完了 ${completed} 件 / 残り ${remaining}秒`)
+      lastAppended = appended
     }
 
-    if (appended > 0) {
+    // チェンク全体の処理終了したら判定にくれる
+    // （読み込みはチェンク数によって最待しながらないため、
+    //  サーバー完了のログを作利機にする）
+    if (completed > 0) {
       return {
         ok: true,
-        segments: appended,
+        appended,
+        completed,
+        silent,
         failed,
         elapsed: ((Date.now() - started) / 1000).toFixed(1)
       }
@@ -315,7 +357,12 @@ async function waitForTranscription(maxSeconds) {
     await sleep(3000)
   }
 
-  return { ok: false, detail: `${maxSeconds}秒以内に文字起こしの追記ログが出なかった` }
+  const counts = await logCounts()
+  return {
+    ok: false,
+    detail: `${maxSeconds}秒以内にサーバーの文字起こし完了ログが出なかった`,
+    appended: Math.max(0, counts.appended - baseline.appended)
+  }
 }
 
 // ---------------------------------------------------------------------------
