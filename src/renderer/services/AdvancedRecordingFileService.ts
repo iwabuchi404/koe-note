@@ -135,7 +135,7 @@ export class AdvancedRecordingFileService {
       }
 
       // 3) manifest の更新
-      await this.updateManifest(baseName, format, buffer.length, directory)
+      await this.updateManifest(baseName, format, chunkNumber, buffer.length, directory)
 
       logger.info(`チャンク#${chunkNumber}保存完了`, {
         filePath,
@@ -161,6 +161,7 @@ export class AdvancedRecordingFileService {
   private static async updateManifest(
     baseName: string,
     format: AudioFormat,
+    chunkNumber: number,
     bytes: number,
     directory: string
   ): Promise<RecordingManifest> {
@@ -173,6 +174,7 @@ export class AdvancedRecordingFileService {
       })
 
     const next = appendChunkToManifest(current, {
+      chunkNumber,
       bytes,
       recordedAt: new Date().toISOString()
     })

@@ -228,7 +228,128 @@ async function checkRecording(recordingsDir) {
   verifyTranscriptHeader(`${recordingsDir}\\${trans[0]}`)
   verifyTranscriptOffsets(`${recordingsDir}\\${trans[0]}`)
 
+  // Phase E: chunk 群と manifest の検証
+  const baseName = mp3[0].replace(/\.[^.]+$/, '')
+  // manifest を先に読み、chunk 群と照合させる
+  const manifestChunks = readManifestChunks(`${recordingsDir}\\${baseName}.manifest.json`)
+  verifyChunkGroup(`${recordingsDir}\\${baseName}`, mp3[0], manifestChunks)
+  verifyManifest(`${recordingsDir}\\${baseName}.manifest.json`)
+
   return created
+}
+
+/**
+ * チャンク群（<base>.chunks/chunk_NNN.<ext>）を検証
+ *
+ * 追加ではないので、ファイル各のサイズが
+ * 単体 mp3 のサイズと一致していることを確認する。
+ */
+function verifyChunkGroup(basePath, mp3Name, manifestChunks = []) {
+  const dir = `${basePath}.chunks`
+  if (!fsExistsSync(dir)) {
+    ng('chunk 群の作成', `ディレクトリが存在しない: ${dir}`)
+    return
+  }
+
+  const files = fsReadDir(dir).sort()
+  if (files.length === 0) {
+    ng('chunk 群の作成', 'chunk ファイルが 1 件もない')
+    return
+  }
+
+  // manifest が指すファイル名とディレクトリの実体が一致することが本討。
+  // 連番の起始値（1开始るなど 0 とは定めない）は確認しない。
+  if (manifestChunks.length > 0) {
+    const declared = manifestChunks.map((c) => String(c.file).split('/').pop())
+    const missing = declared.filter((f) => !files.includes(f))
+    if (missing.length > 0) {
+      ng('chunk 群と manifest の一致', `manifest が指すファイルが避けている: ${missing.join(', ')}`)
+      return
+    }
+    const unlisted = files.filter((f) => !declared.includes(f))
+    if (unlisted.length > 0) {
+      ng('chunk 群と manifest の一致', `manifest にない chunk がある: ${unlisted.join(', ')}`)
+      return
+    }
+    ok('chunk 群と manifest の一致', `${declared.length} 件のファイル名が一致`)
+  }
+
+  // 合計サイズ = mp3 のサイズ（追加本体が壊れていないことの確誌）
+  const chunkTotal = files.reduce((sum, f) => sum + fsStatSize(`${dir}\\${f}`), 0)
+  const mp3Size = fsStatSize(`${basePath}.${mp3Name.split('.').pop()}`)
+  if (chunkTotal !== mp3Size) {
+    ng('chunk 群の完全性', `chunk 合計 ${chunkTotal} と mp3 ${mp3Size} が不一致`)
+    return
+  }
+  ok('chunk 群の作成', `${files.length} 件 / 合計 ${chunkTotal} bytes（mp3 と一致）`)
+}
+
+/** manifest.json の内容を検証 */
+function verifyManifest(manifestPath) {
+  if (!fsExistsSync(manifestPath)) {
+    ng('manifest.json の作成', `ファイルが存在しない: ${manifestPath}`)
+    return
+  }
+
+  let manifest
+  try {
+    manifest = JSON.parse(readFile(manifestPath))
+  } catch (error) {
+    ng('manifest.json の作成', `JSON として読めない: ${error.message}`)
+    return
+  }
+
+  if (typeof manifest.version !== 'number' || !manifest.recording || !Array.isArray(manifest.chunks)) {
+    ng('manifest.json の作成', 'スキーマに合わない')
+    return
+  }
+  ok('manifest.json の作成', `version=${manifest.version} / chunks=${manifest.chunks.length}`)
+
+  // 合訃の検証
+  const sum = manifest.chunks.reduce((t, c) => t + c.bytes, 0)
+  if (sum !== manifest.recording.totalBytes) {
+    ng('manifest の合計バイト数', `chunks 合計 ${sum} != totalBytes ${manifest.recording.totalBytes}`)
+    return
+  }
+  ok('manifest の合計バイト数', `${sum} bytes`)
+
+  if (manifest.chunks.length !== manifest.recording.chunkCount) {
+    ng('manifest のチャンク件数', `${manifest.chunks.length} != chunkCount ${manifest.recording.chunkCount}`)
+    return
+  }
+  ok('manifest のチャンク件数', `${manifest.chunks.length}`)
+
+  // 連番と位置の単调性
+  let cursor = 0
+  // 連番は 0 始まりではなく、単调增加でないことを確認する
+  // （録音パイプラインは 1 始まりの chunkNumber を渡す）
+  for (const [i, c] of manifest.chunks.entries()) {
+    if (i > 0 && c.chunkNumber <= manifest.chunks[i - 1].chunkNumber) {
+      ng(
+        'manifest のチャンク連番',
+        `chunks[${i}].chunkNumber=${c.chunkNumber} が前の ${manifest.chunks[i - 1].chunkNumber} 以上でない`
+      )
+      return
+    }
+    if (c.bytes <= 0) {
+      ng('manifest のチャンクサイズ', `chunks[${i}].bytes=${c.bytes}`)
+      return
+    }
+    if (c.audioOffsetSeconds < cursor) {
+      ng('manifest のチャンク位置', `chunks[${i}].audioOffsetSeconds=${c.audioOffsetSeconds} < ${cursor}`)
+      return
+    }
+    cursor = c.audioOffsetSeconds
+  }
+  ok('manifest のチャンク位置', `単调增加 / 最終 ${cursor.toFixed(3)}秒`)
+
+  // 実測値と計算値の一致
+  const estimated = manifest.recording.estimatedDurationSeconds
+  if (typeof estimated !== 'number' || estimated <= 0) {
+    ng('manifest の長さ', `estimatedDurationSeconds=${estimated}`)
+    return
+  }
+  ok('manifest の長さ', `推定 ${estimated.toFixed(3)}秒 / ${manifest.recording.bytesPerSecond} B/s`)
 }
 
 function verifyTranscriptHeader(file) {
@@ -372,6 +493,24 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+/** manifest.json が読めるなら chunks を返す（読めないものは空アライ） */
+function readManifestChunks(manifestPath) {
+  try {
+    if (!fs.existsSync(manifestPath)) return []
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8')).chunks ?? []
+  } catch {
+    return []
+  }
+}
+
+function fsExistsSync(p) {
+  return fs.existsSync(p)
+}
+
+function fsStatSize(p) {
+  return fs.statSync(p).size
+}
+
 function fsReadDir(dir) {
   try {
     return fs.readdirSync(dir)
@@ -467,8 +606,14 @@ for (let attempt = 1; attempt <= 5; attempt++) {
   if (created.length > 0 && !KEEP) {
     for (const file of created) {
       try {
-        fs.unlinkSync(path.join(recordingsDir, file))
-        console.log(`  cleanup: ${file} を削除`)
+        const target = path.join(recordingsDir, file)
+        if (fs.statSync(target).isDirectory()) {
+          fs.rmSync(target, { recursive: true })
+          console.log(`  cleanup: ${file}/ を削除`)
+        } else {
+          fs.unlinkSync(target)
+          console.log(`  cleanup: ${file} を削除`)
+        }
       } catch {
         console.log(`  cleanup: ${file} を削除できませんでした`)
       }

@@ -129,20 +129,21 @@ export function createManifest(params: {
 /**
  * 既存 manifest にチャンクを追記した次の manifest を返す（イミュータブル）
  *
- * 総バイト数は「既に記録済みのものの合計 + 新しいチャンク」として
- * 再計算する。逐次加算すると食い違うため、index から求める。
+ * chunkNumber は呼び出し側（録音パイプライン）が持つ値をそのまま使う。
+ * manifest 側で連番を振り直さないこと。実ファイル名と食い違うと
+ * manifest からチャンクを引けなくなるため。
+ * 連番の検証は「0 始まりであること」ではなく「単調増加であること」で行う。
  */
 export function appendChunkToManifest(
   manifest: RecordingManifest,
-  chunk: { bytes: number; recordedAt: string }
+  chunk: { chunkNumber: number; bytes: number; recordedAt: string }
 ): RecordingManifest {
-  const chunkNumber = manifest.chunks.length
   const totalBytes =
     manifest.chunks.reduce((sum, c) => sum + c.bytes, 0) + chunk.bytes
 
   const entry: ManifestChunk = {
-    chunkNumber,
-    file: chunkFileName(chunkNumber, manifest.recording.format),
+    chunkNumber: chunk.chunkNumber,
+    file: chunkFileName(chunk.chunkNumber, manifest.recording.format),
     bytes: chunk.bytes,
     audioOffsetSeconds: durationFromBytes(
       totalBytes - chunk.bytes,
@@ -241,11 +242,21 @@ export function validateManifest(manifest: RecordingManifest): string[] {
     )
   }
   manifest.chunks.forEach((chunk, index) => {
-    if (chunk.chunkNumber !== index) {
-      problems.push(`chunks[${index}].chunkNumber が ${chunk.chunkNumber} です（連番が崩れています）`)
+    if (index > 0) {
+      const previous = manifest.chunks[index - 1]
+      if (chunk.chunkNumber <= previous.chunkNumber) {
+        problems.push(
+          `chunks[${index}].chunkNumber ${chunk.chunkNumber} が前の ${previous.chunkNumber} より大きくなっていません（単調増加でないか重複）`
+        )
+      }
     }
     if (chunk.durationSeconds < 0 || !Number.isFinite(chunk.durationSeconds)) {
       problems.push(`chunks[${index}].durationSeconds が不正です: ${chunk.durationSeconds}`)
+    }
+    if (chunk.file !== chunkFileName(chunk.chunkNumber, manifest.recording.format)) {
+      problems.push(
+        `chunks[${index}].file ${chunk.file} が chunkNumber ${chunk.chunkNumber} から作る名前と一致しません`
+      )
     }
   })
 

@@ -31,10 +31,14 @@ function newManifest() {
 }
 
 /** 15秒録音相当（64KB 刻み = 1秒 16,000 byte）を模す */
+/**
+ * 録音パイプラインと同じ採番（1 始まり）でチャンクirinophysikめる
+ */
 function appendChunks(manifest: ReturnType<typeof newManifest>, count: number, bytes = 16_000) {
   let m = manifest
   for (let i = 0; i < count; i++) {
     m = appendChunkToManifest(m, {
+      chunkNumber: i + 1,
       bytes,
       recordedAt: `2026-10-04T12:58:0${i}.000Z`
     })
@@ -86,9 +90,22 @@ describe('createManifest', () => {
 })
 
 describe('appendChunkToManifest', () => {
-  it('チャンク番号は 0 始まりで連番になる', () => {
+  it('チャンク番号は録音パイプライン（1 始まり）の値をそのまま保持する', () => {
     const m = appendChunks(newManifest(), 3)
-    expect(m.chunks.map((c) => c.chunkNumber)).toEqual([0, 1, 2])
+    expect(m.chunks.map((c) => c.chunkNumber)).toEqual([1, 2, 3])
+  })
+
+  it('ファイル名は chunkNumber から作られ、実ファイル名と一致する', () => {
+    const m = appendChunks(newManifest(), 2)
+    expect(m.chunks.map((c) => c.file)).toEqual(['chunk_001.mp3', 'chunk_002.mp3'])
+  })
+
+  it('渡された chunkNumber がそのまま使われる（manifest 側で振り直さない）', () => {
+    let m = newManifest()
+    m = appendChunkToManifest(m, { chunkNumber: 5, bytes: 16_000, recordedAt: 'x' })
+    m = appendChunkToManifest(m, { chunkNumber: 6, bytes: 16_000, recordedAt: 'y' })
+    expect(m.chunks.map((c) => c.chunkNumber)).toEqual([5, 6])
+    expect(m.chunks.map((c) => c.file)).toEqual(['chunk_005.mp3', 'chunk_006.mp3'])
   })
 
   it('各チャンクの開始位置は前のチャンクの長さの累積になる', () => {
@@ -106,7 +123,7 @@ describe('appendChunkToManifest', () => {
   it('元の manifest を破壊しない（イミュータブル）', () => {
     const before = newManifest()
     const snapshot = JSON.stringify(before)
-    appendChunkToManifest(before, { bytes: 16_000, recordedAt: '2026-10-04T12:58:00.000Z' })
+    appendChunkToManifest(before, { chunkNumber: 1, bytes: 16_000, recordedAt: 'x' })
     expect(JSON.stringify(before)).toBe(snapshot)
   })
 
@@ -117,7 +134,7 @@ describe('appendChunkToManifest', () => {
   it('チャンクごとにサイズが違っても合計が合う', () => {
     let m = newManifest()
     for (const bytes of [10_000, 20_000, 30_000]) {
-      m = appendChunkToManifest(m, { bytes, recordedAt: '2026-10-04T12:58:00.000Z' })
+      m = appendChunkToManifest(m, { chunkNumber: m.chunks.length + 1, bytes, recordedAt: 'x' })
     }
     expect(m.recording.totalBytes).toBe(60_000)
     expect(m.chunks.map((c) => c.bytes)).toEqual([10_000, 20_000, 30_000])
@@ -125,7 +142,7 @@ describe('appendChunkToManifest', () => {
   })
 
   it('0 バイトのチャンクでも壊れない', () => {
-    const m = appendChunkToManifest(newManifest(), { bytes: 0, recordedAt: 'x' })
+    const m = appendChunkToManifest(newManifest(), { chunkNumber: 1, bytes: 0, recordedAt: 'x' })
     expect(m.chunks[0].durationSeconds).toBe(0)
     expect(validateManifest(m)).toEqual([])
   })
@@ -215,10 +232,16 @@ describe('validateManifest', () => {
     expect(validateManifest(m).some((p) => p.includes('chunkCount'))).toBe(true)
   })
 
-  it('連番の崩れを検出する', () => {
+  it('連番の重複・逆行を検出する', () => {
     const m = appendChunks(newManifest(), 3)
-    m.chunks[1].chunkNumber = 7
-    expect(validateManifest(m).some((p) => p.includes('連番'))).toBe(true)
+    m.chunks[2].chunkNumber = 2
+    expect(validateManifest(m).some((p) => p.includes('単調増加'))).toBe(true)
+  })
+
+  it('ファイル名が chunkNumber と食い違えば検出する', () => {
+    const m = appendChunks(newManifest(), 2)
+    m.chunks[1].file = 'chunk_999.mp3'
+    expect(validateManifest(m).some((p) => p.includes('file'))).toBe(true)
   })
 
   it('estimatedDurationSeconds の不一致を検出する', () => {
