@@ -8,6 +8,7 @@ import { useTabContext } from '../../contexts/TabContext'
 import { TabStatus, PlayerTabData } from '../../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import { TextDisplayViewer, TranscriptionAdapter } from '../common/TextDisplay'
+import RecordingChunksPanel from './RecordingChunksPanel'
 import './PlayerCard.css'
 
 const logger = LoggerFactory.getLogger(LogCategories.UI_BOTTOM_PANEL)
@@ -581,6 +582,14 @@ if (!serverStatus.isRunning) {
             />
           </div>
         </div>
+      )}
+
+      {/* Phase E: manifest.json と trans.txt を突き合わせたチャンク詳細 */}
+      {fileType === 'audio' && filePath && (
+        <RecordingChunksPanel
+          audioFilePath={filePath}
+          transcriptionPath={hasTranscriptionFile ? transcriptionPath : undefined}
+        />
       )}
     </div>
   )
