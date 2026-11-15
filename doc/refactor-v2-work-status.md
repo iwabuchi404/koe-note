@@ -1,8 +1,8 @@
-# 作業状況: refactor/architecture-v2（Phase A〜F1）
+# 作業状況: refactor/architecture-v2（Phase A〜G1）
 
-最終更新: 2026-10-05
+最終更新: 2026-11-15
 ブランチ: `refactor/architecture-v2`
-HEAD: `322ae3e feat(Phase F): 録音のチャンク詳細 UI を追加（F1）`
+HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/* に分割（G1）`
 
 目的: KoeNote を拡張性・安全性・保守性の高い構造へ再構成する。
 方針: 推測しない（実測値のみ記録）、死亡コードは削除、到達可能性は import graph で確認、
@@ -79,6 +79,30 @@ HEAD: `322ae3e feat(Phase F): 録音のチャンク詳細 UI を追加（F1）`
 - `src/renderer/components/LeftPanel/SimpleFileList.tsx`: ファイル行に `file-list-item` クラス付与（E2E の操作用フック）
 - ローカル専用（コミット対象外）: `.claude/settings.local.json`、`dist/*`、` .claude/project-mixer-hook.cjs`、`.opencode/`
 
+## 4.5 追加フェーズ（2026-11-15、Devin）
+
+### F1 追完コミット
+- `802c39c` 未コミットだった chunk パネル E2E（checkChunkPanel + file-list-item フック）と kamox 0.1.12 を確定
+
+### 孤児クリーンアップ
+- `3ad66d5` tsx 削除後に残った CSS-only ディレクトリ（AudioWorkletTest / ToneRecorderTest /
+  AudioFileCard）と types/tone.d.ts を削除
+
+### Phase G1: main.ts の起動専用化
+- `63daf2b` main.ts 1,684 → 232 行。構成:
+  - `main/` … 起動・ウィンドウ・ライフサイクルのみ
+  - `main/ipc/` … handle.ts（既存）+ context.ts + register.ts + ドメイン別 7 ファイル
+    （dialog / window / files / settings / transcription / speech / models）
+  - `main/services/` … appLog（writeLog）、workspace（許可ルート・settings.json）、
+    modelStore（モデル配置・検証・DL）、whisperClient（WS 1往復の足回り）、
+    whisperServer（isPortInUse / resolveDevPython も移管、Electron非依存のまま）
+- 挙動の意図的変更点:
+  - whisperCall で終了時にソケットを必ず close（此前は server error 経路で未クローズのまま残り得た）
+  - models:cancelDownload の cancelledDownloads（読み取り先が無い Set）を除去
+- 死亡コード除去: getTranscriptionPath、generateAIChatFileContent / parseAIChatFileContent、
+  未使用 import（ipcMain / execSync / ChildProcess / SpawnOptions / aiChatPathFor）
+- 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）
@@ -90,9 +114,14 @@ HEAD: `322ae3e feat(Phase F): 録音のチャンク詳細 UI を追加（F1）`
 1. **チャンク詳細パネルの E2E WARN 解消**（優先）: 旧録音を開けなかった
    （`advanced_recording_2025-08-03T16-59-57.mp3`）。ファイル行クリックの
    セレクタ（`:has-text`）を再ビルド後に再実行して確認する
-2. 未コミット 2 ファイルのコミット（1 の確認後）
+2. ~~未コミット 2 ファイルのコミット~~ → `802c39c` で済
 3. Phase F の次: F2（未文字起こしチャンクの再文字起こし、`selectMissingChunkNumbers` は用意済み）、F3（mp3 の再構成）
 4. E2E の CI 組み込み（`npm run verify` とは別フローで固定する案あり）
+5. G 系の残り:
+   - G2: renderer の feature 再編 + AppContext（god context）解体
+   - G3: IPC 型付き契約（shared に req/res 型。preload/main を契約準拠に）
+   - 基盤: Electron 28(EOL) 更新、lamejs scriptタグ読み込み → ESM import 化、（任意で electron-vite）
+   - whisper-server: pyproject.toml の pyinstaller → dev 移動、asyncio-mqtt 要否確認
 
 ## 7. 運用メモ
 
