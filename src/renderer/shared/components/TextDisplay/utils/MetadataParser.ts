@@ -17,6 +17,7 @@ import {
   parseTranscriptFile,
   parseTranscriptSegments
 } from '@shared/transcriptFile'
+import { parseTranscript, type TranscriptResult } from '@shared/transcript'
 import type {
   TextSelection,
   FileStats,
@@ -33,6 +34,11 @@ export class MetadataParser {
     content: string,
     filePath: string
   ): { metadata: DisplayMetadata; segments: DisplaySegment[]; rawText: string } {
+    // v2 セッションの transcript（transcripts/*.json）は別スキーマ
+    if (filePath.endsWith('.json')) {
+      return parseV2Transcript(content, filePath)
+    }
+
     const { header, segments, body } = parseTranscriptFile(content)
     const stats = calculateContentStats(body)
 
@@ -189,6 +195,49 @@ function toDisplaySegments(
       speaker: segment.speaker
     }
   })
+}
+
+/**
+ * v2 TranscriptResult（transcripts/*.json）を表示用の形に写す
+ *
+ * セグメントは start/end を実値で持つ。rawText は canonical な
+ * "[HH:MM:SS.s] テキスト" 行に復元する。
+ */
+function parseV2Transcript(
+  content: string,
+  filePath: string
+): { metadata: DisplayMetadata; segments: DisplaySegment[]; rawText: string } {
+  const transcript: TranscriptResult = parseTranscript(content)
+  const rawText = transcript.segments
+    .map((segment) => `[${formatAudioOffset(segment.start)}] ${segment.text}`)
+    .join('\n')
+
+  return {
+    metadata: {
+      sourceFile: getFileName(filePath),
+      fileType: 'transcription',
+      createdAt: transcript.createdAt,
+      transcription: {
+        audioFile: transcript.sessionId,
+        model: transcript.model || 'unknown',
+        transcribedAt: transcript.createdAt,
+        duration: transcript.segments.reduce((max, s) => Math.max(max, s.end), 0),
+        segmentCount: transcript.segments.length,
+        language: transcript.language,
+        speakers: []
+      },
+      stats: calculateContentStats(rawText)
+    },
+    segments: transcript.segments.map((segment, index) => ({
+      id: index + 1,
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      speaker: segment.speakerId ?? undefined,
+      isEdited: transcript.edited
+    })),
+    rawText
+  }
 }
 
 /**

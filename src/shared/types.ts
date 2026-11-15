@@ -55,6 +55,9 @@ export interface AudioFile {
   isTranscriptionFile?: boolean
   /** 音声ファイルと .trans.txt のペアとして扱うか */
   isPairedFile?: boolean
+  /** v2 セッション形式の録音（filepath は sessions/<id>/ ディレクトリ） */
+  isSession?: boolean
+  sessionId?: string
 }
 
 // =============================================================================

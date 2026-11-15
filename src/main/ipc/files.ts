@@ -9,6 +9,7 @@ import fs from 'fs'
 import path from 'path'
 import type { AudioFile } from '@shared/types'
 import { listFiles } from '../services/fileLibrary'
+import { readSessionAudio } from '../services/sessionStore'
 import { workspaceRoot } from '../services/workspace'
 import { resolveWithinRoot } from '../core/paths'
 import { AppError, toAppError } from '../core/errors'
@@ -130,6 +131,14 @@ export function registerFileIpc(): void {
       const target = resolveWithinRoot(workspaceRoot(), filePath);
       if (!fs.existsSync(target)) {
         throw new AppError('NOT_FOUND', `File not found: ${filePath}`);
+      }
+
+      // v2 セッション（ディレクトリ）はチャンクを結合して返す
+      if (fs.statSync(target).isDirectory()) {
+        const sessionAudio = readSessionAudio(target);
+        const dataUrl = `data:${sessionAudio.mimeType};base64,${sessionAudio.data.toString('base64')}`;
+        writeLog(`Session Audio Loading Completed: ${filePath} (${sessionAudio.data.length} bytes)`);
+        return dataUrl;
       }
 
       // 録音中のファイルかチェック（録音中は読み込みを拒否）

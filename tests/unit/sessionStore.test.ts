@@ -20,6 +20,7 @@ import {
   listSessions,
   loadSession,
   loadSessionTranscript,
+  readSessionAudio,
   saveSessionTranscript,
   updateSession
 } from '@main/services/sessionStore'
@@ -369,5 +370,84 @@ describe('updateSession', () => {
     updateSession(sessionsDir, session.id, {})
     const loaded = loadSession(sessionsDir, session.id)
     expect(loaded).toEqual({ ...session, state: 'interrupted' })
+  })
+})
+
+// =============================================================================
+// readSessionAudio（再生用のチャンク結合）
+// =============================================================================
+
+describe('readSessionAudio', () => {
+  /** 44byte RIFF ヘッダ + PCM の最小 WAV を作る（テスト用） */
+  const makeWavChunk = (pcm: number[]): Buffer => {
+    const header = Buffer.alloc(44)
+    header.write('RIFF', 0, 'ascii')
+    header.writeUInt32LE(36 + pcm.length, 4)
+    header.write('WAVE', 8, 'ascii')
+    header.write('fmt ', 12, 'ascii')
+    header.writeUInt32LE(16, 16)
+    header.writeUInt16LE(1, 20)
+    header.writeUInt16LE(1, 22)
+    header.writeUInt32LE(44100, 24)
+    header.writeUInt32LE(88200, 28)
+    header.writeUInt16LE(2, 32)
+    header.writeUInt16LE(16, 34)
+    header.write('data', 36, 'ascii')
+    header.writeUInt32LE(pcm.length, 40)
+    return Buffer.concat([header, Buffer.from(pcm)])
+  }
+
+  it('mp3 チャンクはそのまま連結される', () => {
+    const meta = {
+      ...BASE_META,
+      sources: [{ ...BASE_META.sources[0], format: 'mp3' as const }]
+    }
+    const session = createSessionOnDisk(sessionsDir, meta)
+    appendSessionChunk(sessionsDir, {
+      sessionId: session.id,
+      sourceId: 'microphone',
+      data: new Uint8Array([1, 2, 3]),
+      audioOffsetSeconds: 0,
+      durationSeconds: 1,
+      recordedAt: '2026-11-15T13:42:00.000Z'
+    })
+    appendSessionChunk(sessionsDir, {
+      sessionId: session.id,
+      sourceId: 'microphone',
+      data: new Uint8Array([4, 5]),
+      audioOffsetSeconds: 1,
+      durationSeconds: 1,
+      recordedAt: '2026-11-15T13:42:01.000Z'
+    })
+
+    const audio = readSessionAudio(path.join(sessionsDir, session.id))
+    expect(audio.mimeType).toBe('audio/mpeg')
+    expect(Array.from(audio.data)).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('wav チャンクは PCM を結合し先頭ヘッダのサイズを書き換える', () => {
+    const session = createSessionOnDisk(sessionsDir, BASE_META) // wav
+    for (const pcm of [[1, 2], [3, 4, 5]]) {
+      appendSessionChunk(sessionsDir, {
+        sessionId: session.id,
+        sourceId: 'microphone',
+        data: new Uint8Array(makeWavChunk(pcm)),
+        audioOffsetSeconds: 0,
+        durationSeconds: 1,
+        recordedAt: '2026-11-15T13:42:00.000Z'
+      })
+    }
+
+    const audio = readSessionAudio(path.join(sessionsDir, session.id))
+    expect(audio.mimeType).toBe('audio/wav')
+    expect(audio.data.toString('ascii', 0, 4)).toBe('RIFF')
+    // data サイズ = 2 + 3 = 5
+    expect(audio.data.readUInt32LE(40)).toBe(5)
+    expect(Array.from(audio.data.subarray(44))).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('チャンクのないセッションはエラーになる', () => {
+    const session = createSessionOnDisk(sessionsDir, BASE_META)
+    expect(() => readSessionAudio(path.join(sessionsDir, session.id))).toThrow()
   })
 })

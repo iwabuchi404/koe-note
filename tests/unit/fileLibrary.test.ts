@@ -17,6 +17,14 @@ import {
   readDurationFromMeta,
   type FileEntry
 } from '../../src/main/services/fileLibrary'
+import {
+  appendSessionChunk,
+  createSessionOnDisk,
+  saveSessionTranscript,
+  updateSession
+} from '../../src/main/services/sessionStore'
+import { SESSIONS_DIR } from '../../src/shared/session'
+import { DEFAULT_ENCODING } from '../../src/shared/audioFormat'
 
 const entry = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => ({
   name,
@@ -176,5 +184,90 @@ describe('listFiles / readDurationFromMeta（実ファイルでの統合）', ()
     expect(readDurationFromMeta(dir, 'solo.wav')).toBe(0)
     fs.writeFileSync(path.join(dir, 'bad.mp3.meta.json'), 'not json')
     expect(readDurationFromMeta(dir, 'bad.mp3')).toBe(0)
+  })
+})
+
+describe('listFiles の v2 セッション表示', () => {
+  let dir: string
+
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'koenote-sessions-'))
+
+    // sessions/<id>/ に session.json + チャンク + transcript を作る
+    const sessionsDir = path.join(dir, SESSIONS_DIR)
+    const session = createSessionOnDisk(sessionsDir, {
+      sources: [
+        {
+          id: 'microphone',
+          kind: 'microphone',
+          format: 'mp3',
+          encoding: { ...DEFAULT_ENCODING }
+        }
+      ],
+      createdAt: '2026-11-15T13:42:00.000Z',
+      meta: { title: 'テスト' }
+    })
+    appendSessionChunk(sessionsDir, {
+      sessionId: session.id,
+      sourceId: 'microphone',
+      data: new Uint8Array(16000),
+      audioOffsetSeconds: 0,
+      durationSeconds: 1,
+      recordedAt: '2026-11-15T13:42:01.000Z'
+    })
+    saveSessionTranscript(sessionsDir, session.id, {
+      version: 1,
+      id: 'live-001',
+      sessionId: session.id,
+      mode: 'live',
+      engine: 'faster-whisper',
+      model: 'small',
+      sourceId: 'microphone',
+      language: 'ja',
+      status: 'completed',
+      createdAt: '2026-11-15T13:42:05.000Z',
+      edited: false,
+      segments: [{ id: 'seg-0000', start: 0, end: 1, text: 'こんにちは' }]
+    })
+    updateSession(sessionsDir, session.id, {
+      state: 'completed',
+      endedAt: '2026-11-15T13:52:00.000Z',
+      durationSeconds: 600
+    })
+
+    // 旧形式も混在させる（並存して一覧に出ること）
+    fs.writeFileSync(path.join(dir, 'legacy.mp3'), Buffer.alloc(100))
+  })
+
+  afterAll(() => {
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('セッションを AudioFile として一覧に含める', () => {
+    const files = listFiles(dir)
+    const sessionFile = files.find((f) => f.isSession)
+
+    expect(sessionFile).toBeDefined()
+    expect(sessionFile?.isAudioFile).toBe(true)
+    expect(sessionFile?.filename).toMatch(/^\d{8}_\d{6}_[0-9a-z]{4}$/)
+    // filepath はセッションディレクトリ（絶対パス）
+    expect(sessionFile?.filepath).toBe(path.join(dir, SESSIONS_DIR, sessionFile!.sessionId!))
+    expect(sessionFile?.duration).toBe(600)
+    expect(sessionFile?.format).toBe('mp3')
+  })
+
+  it('transcript があればペア情報を付ける', () => {
+    const files = listFiles(dir)
+    const sessionFile = files.find((f) => f.isSession)
+
+    expect(sessionFile?.hasTranscriptionFile).toBe(true)
+    expect(sessionFile?.isPairedFile).toBe(true)
+    expect(sessionFile?.transcriptionPath).toContain('live-001.json')
+  })
+
+  it('旧形式のファイルと並存して列挙する', () => {
+    const files = listFiles(dir)
+    expect(files.find((f) => f.filename === 'legacy.mp3')).toBeDefined()
+    expect(files.find((f) => f.isSession)).toBeDefined()
   })
 })

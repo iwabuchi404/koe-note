@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import type { TranscriptionFile, TranscriptionSegmentExtended } from '@shared/types'
 import { parseTranscriptFile, type ParsedTranscriptFile } from '@shared/transcriptFile'
+import { parseTranscript, type TranscriptResult } from '@shared/transcript'
 import { resolveWithinRoot, transcriptionPathFor } from '../core/paths'
 import { AppError } from '../core/errors'
 import { workspaceRoot } from '../services/workspace'
@@ -22,7 +23,11 @@ export function registerTranscriptionIpc(): void {
       }
 
       const content = fs.readFileSync(target, 'utf8');
-      const transcription = toTranscriptionFile(parseTranscriptFile(content), target);
+
+      // v2 セッションの transcript（transcripts/*.json）は別スキーマ
+      const transcription = transFilePath.endsWith('.json')
+        ? transcriptResultToFile(parseTranscript(content), target)
+        : toTranscriptionFile(parseTranscriptFile(content), target);
 
       writeLog(`文字起こしファイル読み込み完了: ${transFilePath}`);
       return transcription;
@@ -93,5 +98,35 @@ function toTranscriptionFile(parsed: ParsedTranscriptFile, filePath: string): Tr
     segments,
     filePath,
     isModified: false
+  };
+}
+
+/**
+ * v2 TranscriptResult を表示用の TranscriptionFile 形に写す
+ *
+ * セグメントは start/end を実値で持つ（旧形式のような推定は不要）。
+ */
+function transcriptResultToFile(
+  transcript: TranscriptResult,
+  filePath: string
+): TranscriptionFile {
+  return {
+    metadata: {
+      audioFile: transcript.sessionId,
+      model: transcript.model,
+      transcribedAt: transcript.createdAt,
+      duration: transcript.segments.reduce((max, s) => Math.max(max, s.end), 0),
+      segmentCount: transcript.segments.length,
+      language: transcript.language,
+      speakers: []
+    },
+    segments: transcript.segments.map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      speaker: segment.speakerId ?? undefined
+    })),
+    filePath,
+    isModified: transcript.edited
   };
 }

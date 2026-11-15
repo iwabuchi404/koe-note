@@ -251,6 +251,60 @@ export function loadSessionTranscript(
 }
 
 /**
+ * セッションの音声を結合して返す（再生用）
+ *
+ * mp3 チャンクはフレーム連結で有効なのでそのまま結合する。
+ * wav チャンクは各ファイルの 44byte RIFF ヘッダを除いた PCM 部分を
+ * 連結し、先頭ヘッダのサイズを書き換える（自前の writer は
+ * 常に 44byte ヘッダなのでその前提でよい）。
+ *
+ * sessionDirPath は sessions/<session-id>/ の絶対パス。
+ */
+export function readSessionAudio(sessionDirPath: string): { data: Buffer; mimeType: string } {
+  const sessionFile = path.join(sessionDirPath, 'session.json')
+  if (!fs.existsSync(sessionFile)) {
+    throw new Error(`セッションが見つかりません: ${sessionDirPath}`)
+  }
+  const session = parseSession(fs.readFileSync(sessionFile, 'utf8'))
+
+  const source = session.sources.find((s) => s.enabled) ?? session.sources[0]
+  if (!source) {
+    throw new Error(`セッション ${session.id} に音声ソースがありません`)
+  }
+  if (source.audio.chunks.length === 0) {
+    throw new Error(`セッション ${session.id} に音声チャンクがありません`)
+  }
+
+  const chunks = source.audio.chunks.map((chunk) =>
+    fs.readFileSync(path.join(sessionDirPath, chunk.file))
+  )
+
+  if (source.audio.format === 'wav') {
+    return { data: mergeWavChunks(chunks), mimeType: 'audio/wav' }
+  }
+  return { data: Buffer.concat(chunks), mimeType: 'audio/mpeg' }
+}
+
+/** WAV チャンクの PCM 部分を連結し、先頭ヘッダを書き換えて返す */
+const WAV_HEADER_SIZE = 44
+
+function mergeWavChunks(chunks: Buffer[]): Buffer {
+  const first = chunks[0]
+  if (first.length < WAV_HEADER_SIZE || first.toString('ascii', 0, 4) !== 'RIFF') {
+    // ヘッダが読めなければ素直に連結する
+    return Buffer.concat(chunks)
+  }
+  const pcms = chunks.map((chunk) =>
+    chunk.length > WAV_HEADER_SIZE ? chunk.subarray(WAV_HEADER_SIZE) : Buffer.alloc(0)
+  )
+  const dataSize = pcms.reduce((total, buffer) => total + buffer.length, 0)
+  const header = Buffer.from(first.subarray(0, WAV_HEADER_SIZE))
+  header.writeUInt32LE(36 + dataSize, 4)
+  header.writeUInt32LE(dataSize, 40)
+  return Buffer.concat([header, ...pcms])
+}
+
+/**
  * セッション一覧を返す（session.json を持つディレクトリのみ）
  *
  * 壊れた session.json はスキップしてログに残さない（呼び出し側が

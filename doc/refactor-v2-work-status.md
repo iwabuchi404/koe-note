@@ -194,7 +194,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 | 1 | `shared/session.ts` + `shared/transcript.ts`（`4f54987`、+41 tests） | 完了 |
 | 2 | main 側 fs `sessionStore.ts` + `sessions:*` IPC | 完了（下記） |
 | 3 | renderer `IpcSessionStore` + RecordingContext を usecase 経由に | 完了（下記） |
-| 4 | fileLibrary を sessions/ 読み対応に拡張 | 未着手 |
+| 4 | fileLibrary を sessions/ 読み対応に拡張 | 完了（下記） |
 | 5 | 旧書き込み経路（AdvancedRecordingFileService）削除 | 未着手 |
 
 #### Step 2 の内容
@@ -237,6 +237,25 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
     エラー（セッション作成失敗等）を消していた
     → 開始時に先にクリアし、末尾は prev.errors を引き継ぐよう修正
 - 検証: `npm run verify`（tsc clean + 348 tests）・`npm run build` 通過
+
+#### Step 4 の内容（sessions/ の読み対応）
+
+- `shared/types.ts` — `AudioFile` に `isSession` / `sessionId` を追加
+- `sessionStore.ts` — `readSessionAudio(dir)` 追加。再生用にチャンクを結合:
+  - mp3 はそのまま連結、wav は 44byte ヘッダを後続チャンクから除去し
+    PCM 連結 + 先頭 RIFF ヘッダのサイズを書き換え
+- `fileLibrary.ts` — `listFiles` で `<workspace>/sessions` を `listSessions` で走査し、
+  セッションを `AudioFile`（`isSession: true`、filepath=セッションディレクトリ、
+  transcript 参照からは `transcripts/<id>.json` の絶対パス）として旧形式と混在ソート
+- `ipc/files.ts` — `file:loadAudio` がディレクトリを検出したら `readSessionAudio` で
+  再構築し `data:<mime>;base64,...` を返す
+- `ipc/transcription.ts` — `transcription:load` が `.json` を検出したら
+  `parseTranscript` で読み `TranscriptionFile` 形に変換（renderer は既存型のまま）
+- `MetadataParser.ts` — `parseTranscriptionFile` が `.json` 対応。
+  v2 セグメントは実値の start/end をそのまま使い表示セグメントへ変換
+- テスト: `fileLibrary.test.ts` +3（セッション列挙・transcript ペア・旧形式と並存）、
+  `sessionStore.test.ts` +3（mp3 連結・wav ヘッダ書き換え・空セッションでエラー）
+- 検証: `npm run verify`（tsc clean + 354 tests）・`npm run build` 通過
 
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 

@@ -12,6 +12,8 @@
 import fs from 'fs'
 import path from 'path'
 import type { AudioFile, AudioFileFormat } from '@shared/types'
+import { SESSIONS_DIR, sessionTotalBytes, type Session } from '@shared/session'
+import { listSessions } from './sessionStore'
 import { transcriptionBaseName } from '../core/paths'
 
 const AUDIO_EXTENSIONS = new Set(['webm', 'wav', 'mp3'])
@@ -169,6 +171,42 @@ export function buildFileList(entries: FileEntry[]): AudioFile[] {
   return result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 }
 
+/**
+ * セッションをファイル一覧の AudioFile 形に写す
+ *
+ * filepath は sessions/<id>/（相対）。呼び出し側が folderPath を前置する。
+ * transcriptionPath は最初の completed（無ければ先頭）の transcript を指す。
+ */
+export function sessionToAudioFile(folderPath: string, session: Session): AudioFile {
+  const sessionDir = path.join(SESSIONS_DIR, session.id)
+  const source = session.sources.find((s) => s.enabled) ?? session.sources[0]
+  const transcript =
+    session.transcripts.find((t) => t.status === 'completed') ?? session.transcripts[0]
+
+  const transcriptAbsolutePath = transcript
+    ? path.join(folderPath, sessionDir, transcript.file)
+    : null
+  const hasTranscript =
+    transcriptAbsolutePath !== null && fs.existsSync(transcriptAbsolutePath)
+
+  return {
+    id: `session-${session.id}`,
+    filename: session.id,
+    filepath: sessionDir,
+    format: (source?.audio.format ?? 'wav') as AudioFileFormat,
+    size: sessionTotalBytes(session),
+    createdAt: new Date(session.createdAt),
+    duration: session.recording.durationSeconds,
+    isAudioFile: true,
+    isSession: true,
+    sessionId: session.id,
+    isRealtimeTranscription: false,
+    hasTranscriptionFile: hasTranscript,
+    transcriptionPath: hasTranscript ? transcriptAbsolutePath! : undefined,
+    isPairedFile: hasTranscript
+  }
+}
+
 /** 1ファイル分の統計（メタファイルが存在しなければ 0） */
 export function readDurationFromMeta(folderPath: string, fileName: string): number {
   const metaPath = path.join(folderPath, `${fileName}.meta.json`)
@@ -215,6 +253,15 @@ export function listFiles(folderPath: string, log?: (message: string) => void): 
   }
 
   const files = buildFileList(entries)
+
+  // v2 セッションを一覧に混ぜる（sessions/<id>/ 配下の録音）。
+  // filepath は session ディレクトリ — file:loadAudio がディレクトリを
+  // 検出してチャンクを結合して返す。削除系は Step 5 で別チャンネル化する。
+  const sessionsRoot = path.join(folderPath, SESSIONS_DIR)
+  for (const session of listSessions(sessionsRoot)) {
+    files.push(sessionToAudioFile(folderPath, session))
+  }
+  files.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
   log?.(
     `ファイル一覧取得: ${files.length}件 ` +
