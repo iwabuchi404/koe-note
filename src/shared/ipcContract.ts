@@ -15,6 +15,8 @@
 import type {
   AppSettings,
   AudioFile,
+  ChunkTranscriptionProgress,
+  ChunkTranscriptionResult,
   TranscriptionFile,
   TranscriptionResult,
 } from './types'
@@ -97,6 +99,11 @@ export interface IpcContract {
   'sessions:load': { req: [sessionId: string]; res: Session }
   'sessions:loadTranscript': { req: [sessionId: string, transcriptId: string]; res: TranscriptResult }
 
+  // ---- ライブ文字起こし（Phase 2: renderer→main→WS） ----
+  'transcription:connect': { req: [serverUrl: string, language?: string]; res: boolean }
+  'transcription:sendChunk': { req: [chunk: LiveTranscriptionChunkRequest]; res: boolean }
+  'transcription:disconnect': { req: []; res: void }
+
   // ---- ウィンドウ操作 ----
   'window:minimize': { req: []; res: void }
   'window:maximize': { req: []; res: void }
@@ -138,6 +145,14 @@ export interface SessionAppendChunkRequest {
   recordedAt: string
 }
 
+/** transcription:sendChunk の引数（wire 上の data は Uint8Array） */
+export interface LiveTranscriptionChunkRequest {
+  chunkNumber: number
+  data: Uint8Array
+  /** 送信時刻（epoch ms）。サーバーが応答にそのまま返す */
+  timestamp: number
+}
+
 /** sessions:update の patch（明示フィールドのみ更新可能） */
 export interface SessionUpdateRequest {
   state?: SessionState
@@ -151,4 +166,8 @@ export interface SessionUpdateRequest {
 export interface IpcEvents {
   'speech:serverStatus': SpeechServerStatusEvent
   'models:downloadProgress': ModelDownloadProgressEvent
+  'transcription:connection': { connected: boolean }
+  'transcription:result': ChunkTranscriptionResult
+  'transcription:progress': ChunkTranscriptionProgress
+  'transcription:error': { message: string }
 }

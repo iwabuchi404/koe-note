@@ -10,6 +10,7 @@ import { registerTranscriptionIpc } from './transcription'
 import { registerSpeechIpc } from './speech'
 import { registerModelsIpc } from './models'
 import { registerSessionsIpc } from './sessions'
+import { registerLiveTranscriptionIpc } from './liveTranscription'
 
 export function registerAllIpc(ctx: MainContext): void {
   registerDialogIpc(ctx)
@@ -20,4 +21,5 @@ export function registerAllIpc(ctx: MainContext): void {
   registerSpeechIpc(ctx)
   registerModelsIpc(ctx)
   registerSessionsIpc()
+  registerLiveTranscriptionIpc()
 }

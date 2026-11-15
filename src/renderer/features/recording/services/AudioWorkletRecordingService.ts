@@ -9,11 +9,11 @@
 declare const lamejs: any;
 
 import { LoggerFactory, LogCategories } from '@renderer/shared/utils/LoggerFactory'
-import {
-  TranscriptionWebSocketService,
-  type ChunkTranscriptionResult,
-  type ChunkTranscriptionProgress
-} from './TranscriptionWebSocketService';
+import { IpcTranscriptionEngine } from './IpcTranscriptionEngine';
+import type {
+  ChunkTranscriptionResult,
+  ChunkTranscriptionProgress
+} from '@shared/types';
 import { AudioMixingService, MixingConfig } from './AudioMixingService';
 import { captureDesktopAudioStream, toUserFacingDesktopAudioError } from './desktopAudioSource';
 
@@ -73,7 +73,7 @@ export class AudioWorkletRecordingService {
   private onChunkTranscriptionProgress?: (progress: ChunkTranscriptionProgress) => void;
   
   // 文字起こし機能
-  private transcriptionService: TranscriptionWebSocketService | null = null;
+  private transcriptionService: IpcTranscriptionEngine | null = null;
   private transcriptionConfig: TranscriptionConfig | null = null;
   
   // 統計更新タイマー
@@ -401,7 +401,7 @@ export class AudioWorkletRecordingService {
       
       const serverUrl = this.transcriptionConfig.serverUrl || 'ws://localhost:8770';
       
-      this.transcriptionService = new TranscriptionWebSocketService(serverUrl, {
+      this.transcriptionService = new IpcTranscriptionEngine(serverUrl, {
         onConnectionChange: (connected) => {
           logger.debug('🎵 文字起こしサーバー接続状態:', connected);
         },
@@ -417,7 +417,7 @@ export class AudioWorkletRecordingService {
           logger.error('🎵 文字起こしエラー:', error);
           this.onError(new Error(`文字起こしエラー: ${error}`));
         }
-      });
+      }, this.transcriptionConfig.language);
 
       // サーバーに接続
       const connected = await this.transcriptionService.connect();

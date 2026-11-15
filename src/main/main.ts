@@ -15,6 +15,7 @@ import { resolveModelsRoot } from './services/modelStore';
 import { writeLog } from './services/appLog';
 import { setIpcContext } from './ipc/handle';
 import { registerAllIpc } from './ipc/register';
+import { disposeLiveTranscription } from './ipc/liveTranscription';
 import type { MainContext } from './ipc/context';
 import type { SpeechServerStatusEvent } from '@shared/ipcContract';
 
@@ -231,6 +232,7 @@ app.on('before-quit', async (event) => {
   whisperServer.setQuitting(true);
   // isStoppingをリセットしてstopServer()が実際に実行されるようにする
   whisperServer.resetStopping();
+  disposeLiveTranscription();
   await whisperServer.stop().catch(e => writeLog(`before-quit stopServer error: ${e}`));
   app.exit();
 });

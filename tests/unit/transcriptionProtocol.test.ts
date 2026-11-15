@@ -1,5 +1,5 @@
 /**
- * TranscriptionWebSocketService のメッセージ解釈
+ * ライブ文字起こしのメッセージ解釈（main 側 LiveTranscriptionEngine）
  *
  * D0 の変更点（サーバーが chunkNumber を返すようになった）に伴い、
  * 「最古の pending から推測する」処理を削除した。
@@ -7,7 +7,10 @@
  * 固定する。
  */
 import { describe, it, expect, vi } from 'vitest'
-import { extractText } from '@renderer/features/recording/services/TranscriptionWebSocketService'
+
+vi.mock('../../src/main/services/appLog', () => ({ writeLog: vi.fn() }))
+
+import { extractText } from '@main/services/liveTranscription'
 import type {
   ServerMessage,
   WhisperTranscriptionResult

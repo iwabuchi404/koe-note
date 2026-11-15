@@ -303,6 +303,37 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   - 残 WARN: 旧録音のチャンク詳細パネルが開けない（file-list-item クリック
     セレクタの既知の不安定。新規 v2 セッション検証とは無関係）
 
+### Phase 2 Step 1: ライブ文字起こしの renderer→main→WS 移行（実施）
+
+Phase 0 設計の決定どおり、録音中の逐次文字起こしが持っていた
+renderer→WS 直結を廃止し、WS を main 側に移した。
+
+- `src/main/services/liveTranscription.ts`（新規）:
+  `LiveTranscriptionEngine` — 永続 WS + `transcribe_chunk` プロトコル。
+  `createSocket` 注入で Electron/ws 非依存にテスト可能。
+  旧実装の不変条件を継承（chunkNumber 必須・推測紐付けしない、
+  5MB 上限、再接続 5 回/2 秒間隔、code=1000 は再接続しない）。
+  `language` は引数化（旧実装は 'ja' 固定だった）。
+- `src/main/ipc/liveTranscription.ts`（新規）:
+  `transcription:connect / sendChunk / disconnect` の3 invoke +
+  push 4イベント（`transcription:connection/result/progress/error`）。
+  push は `event.sender` を捕捉し `isDestroyed()` ガード付きで送信。
+  `before-quit` で `disposeLiveTranscription()` を呼び後始末。
+- `src/renderer/features/recording/services/IpcTranscriptionEngine.ts`（新規）:
+  旧 `TranscriptionWebSocketService` と同じ面（connect /
+  sendChunkForTranscription / disconnect）を持つ薄いアダプタ。
+  AudioWorkletRecordingService は差し替えのみで動作。
+- 削除: `TranscriptionWebSocketService.ts` + `transcriptionWebSocket.test.ts`
+  → `tests/unit/liveTranscription.test.ts`（ws 互換 FakeSocket で 16 tests）
+  に移植。`extractText` は main 側へ移管。
+- preload: Blob→Uint8Array 変換が3箇所目になったため `toUint8Array` に集約。
+- これで文字起こしエンジンが全て main 側に統一され、speech.cpp アダプタ
+  （Phase 3）を追加する際も同じ IPC 面で差し替え可能になった。
+- 検証: tsc clean / **340 tests** 全通過 / build OK（警告は既知のみ）
+- 実機検証: KamoX E2E **14 pass / 0 fail** — 新経路
+  （renderer→IPC→main→WS）でライブ文字起こし動作を確認
+  （3セグメント実テキスト取得、transcript completed）
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）

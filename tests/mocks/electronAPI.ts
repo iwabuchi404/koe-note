@@ -119,6 +119,16 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
     sessionLoad: vi.fn().mockRejectedValue(new Error('セッションが見つかりません')),
     sessionLoadTranscript: vi.fn().mockRejectedValue(new Error('transcript が見つかりません')),
 
+    // ---- ライブ文字起こし ----
+    transcriptionConnect: vi.fn().mockResolvedValue(true),
+    transcriptionSendChunk: vi.fn().mockResolvedValue(true),
+    transcriptionDisconnect: vi.fn().mockResolvedValue(undefined),
+    onTranscriptionConnection: vi.fn((callback) =>
+      subscribe('transcription:connection', callback)),
+    onTranscriptionResult: vi.fn((callback) => subscribe('transcription:result', callback)),
+    onTranscriptionProgress: vi.fn((callback) => subscribe('transcription:progress', callback)),
+    onTranscriptionError: vi.fn((callback) => subscribe('transcription:error', callback)),
+
     // ---- ウィンドウ操作 ----
     windowMinimize: vi.fn().mockResolvedValue(undefined),
     windowMaximize: vi.fn().mockResolvedValue(undefined),

@@ -243,6 +243,25 @@ export const createMockElectronAPI = (): ElectronAPI => ({
     throw new Error(`transcript が見つかりません: ${sessionId}/${transcriptId}`)
   },
 
+  // ライブ文字起こし
+  transcriptionConnect: async () => true,
+  transcriptionSendChunk: async () => true,
+  transcriptionDisconnect: async () => {
+    console.log('Mock transcriptionDisconnect')
+  },
+  onTranscriptionConnection: () => {
+    return () => undefined
+  },
+  onTranscriptionResult: () => {
+    return () => undefined
+  },
+  onTranscriptionProgress: () => {
+    return () => undefined
+  },
+  onTranscriptionError: () => {
+    return () => undefined
+  },
+
   // ログ（モックでは標準出力へ）
   logWrite: async (message: string) => {
     console.log('[mock log]', message)

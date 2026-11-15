@@ -16,6 +16,7 @@
  */
 import type {
   FileFilter,
+  LiveTranscriptionChunkRequest,
   ModelDownloadProgressEvent,
   SelectedFileResult,
   SessionAppendChunkRequest,
@@ -322,6 +323,17 @@ export interface SessionAppendChunkInput
 }
 
 /**
+ * transcriptionSendChunk の renderer 向け引数
+ *
+ * wire 型（ipcContract.LiveTranscriptionChunkRequest）の data は Uint8Array。
+ * renderer は Blob/ArrayBuffer を持っているため preload が変換する。
+ */
+export interface LiveTranscriptionChunkInput
+  extends Omit<LiveTranscriptionChunkRequest, 'data'> {
+  data: ArrayBuffer | Blob
+}
+
+/**
  * renderer が window.electronAPI として参照する API
  *
  * 実装は src/preload/api.ts。ワイヤ上の引数・戻り値の契約は
@@ -392,6 +404,18 @@ export interface ElectronAPI {
   sessionList: () => Promise<Session[]>
   sessionLoad: (sessionId: string) => Promise<Session>
   sessionLoadTranscript: (sessionId: string, transcriptId: string) => Promise<TranscriptResult>
+
+  // ---- ライブ文字起こし（Phase 2: WS は main が保持） ----
+  /** WS 接続を main 側に張る。同時に1接続のみ */
+  transcriptionConnect: (serverUrl: string, language?: string) => Promise<boolean>
+  /** チャンクを送信。未接続・サイズ超過は false（エラーは onTranscriptionError でも通知） */
+  transcriptionSendChunk: (chunk: LiveTranscriptionChunkInput) => Promise<boolean>
+  transcriptionDisconnect: () => Promise<void>
+  /** 以下、戻り値は購読解除関数 */
+  onTranscriptionConnection: (callback: (event: { connected: boolean }) => void) => () => void
+  onTranscriptionResult: (callback: (result: ChunkTranscriptionResult) => void) => () => void
+  onTranscriptionProgress: (callback: (progress: ChunkTranscriptionProgress) => void) => () => void
+  onTranscriptionError: (callback: (event: { message: string }) => void) => () => void
 
   // ---- ウィンドウ操作 ----
   windowMinimize: () => Promise<void>

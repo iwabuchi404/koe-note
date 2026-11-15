@@ -27,6 +27,20 @@ const subscribe = <E extends keyof IpcEvents>(
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+/**
+ * ArrayBuffer | Blob を Uint8Array に変換する
+ *
+ * contextBridge の realm 境界を越えると instanceof Blob が機能しないため、
+ * arrayBuffer() の有無で Blob を判定する（duck-typing）。
+ */
+const toUint8Array = async (data: ArrayBuffer | Blob): Promise<Uint8Array> => {
+  const arrayBuffer =
+    typeof (data as Blob).arrayBuffer === 'function'
+      ? await (data as Blob).arrayBuffer()
+      : (data as ArrayBuffer)
+  return new Uint8Array(arrayBuffer)
+}
+
 export const api: ElectronAPI = {
   // ---- ダイアログ ----
   selectFolder: () => invoke('dialog:selectFolder'),
@@ -37,15 +51,8 @@ export const api: ElectronAPI = {
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) =>
     invoke('file:save', new Uint8Array(buffer), filename, subfolder),
 
-  saveFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
-    // contextBridge の realm 境界を越えると instanceof Blob が機能しないため、
-    // arrayBuffer() の有無で Blob を判定する（duck-typing）
-    const arrayBuffer =
-      typeof (data as Blob).arrayBuffer === 'function'
-        ? await (data as Blob).arrayBuffer()
-        : (data as ArrayBuffer)
-    return invoke('file:saveToPath', filePath, new Uint8Array(arrayBuffer))
-  },
+  saveFileToPath: async (filePath: string, data: ArrayBuffer | Blob) =>
+    invoke('file:saveToPath', filePath, await toUint8Array(data)),
 
   saveTextFile: (filePath: string, content: string) =>
     invoke('file:saveText', filePath, content),
@@ -107,15 +114,8 @@ export const api: ElectronAPI = {
   // ---- セッション（v2 録音保存形式） ----
   sessionCreate: (meta) => invoke('sessions:create', meta),
 
-  sessionAppendChunk: async (req) => {
-    // contextBridge の realm 境界を越えると instanceof Blob が機能しないため、
-    // arrayBuffer() の有無で Blob を判定する（duck-typing）
-    const arrayBuffer =
-      typeof (req.data as Blob).arrayBuffer === 'function'
-        ? await (req.data as Blob).arrayBuffer()
-        : (req.data as ArrayBuffer)
-    return invoke('sessions:appendChunk', { ...req, data: new Uint8Array(arrayBuffer) })
-  },
+  sessionAppendChunk: async (req) =>
+    invoke('sessions:appendChunk', { ...req, data: await toUint8Array(req.data) }),
 
   sessionUpdate: (sessionId, patch) => invoke('sessions:update', sessionId, patch),
 
@@ -128,6 +128,23 @@ export const api: ElectronAPI = {
 
   sessionLoadTranscript: (sessionId, transcriptId) =>
     invoke('sessions:loadTranscript', sessionId, transcriptId),
+
+  // ---- ライブ文字起こし（WS は main が保持） ----
+  transcriptionConnect: (serverUrl, language) =>
+    invoke('transcription:connect', serverUrl, language),
+
+  transcriptionSendChunk: async (chunk) =>
+    invoke('transcription:sendChunk', { ...chunk, data: await toUint8Array(chunk.data) }),
+
+  transcriptionDisconnect: () => invoke('transcription:disconnect'),
+
+  onTranscriptionConnection: (callback) => subscribe('transcription:connection', callback),
+
+  onTranscriptionResult: (callback) => subscribe('transcription:result', callback),
+
+  onTranscriptionProgress: (callback) => subscribe('transcription:progress', callback),
+
+  onTranscriptionError: (callback) => subscribe('transcription:error', callback),
 
   // ---- ウィンドウ操作 ----
   windowMinimize: () => invoke('window:minimize'),
