@@ -201,6 +201,11 @@ export const createMockElectronAPI = (): ElectronAPI => ({
   // サーバー状態通知
   onSpeechServerStatus: () => {
     console.log('Mock onSpeechServerStatus')
+    return () => undefined
+  },
+
+  onModelDownloadProgress: () => {
+    return () => undefined
   },
 
   // 追加のファイル操作
@@ -218,10 +223,6 @@ export const createMockElectronAPI = (): ElectronAPI => ({
     return true
   },
   getWorkingDirectory: async () => '/mock/path',
-
-  // 汎用イベント（モックでは何もしない）
-  on: () => undefined,
-  removeListener: () => undefined,
 
   // ログ（モックでは標準出力へ）
   logWrite: async (message: string) => {

@@ -1,108 +1,118 @@
 /**
  * preload の IPC 実装
  *
- * 型は src/shared/types.ts を参照する。ここでは Electron の
- * ipcRenderer を呼び出すだけにして、型定義や副作用を持たない。
+ * ワイヤ契約は src/shared/ipcContract.ts。invoke/subscribe ヘルパが
+ * チャンネル名・引数・戻り値を契約どおりに検査するため、ここで
+ * チャンネル名を間違えてもコンパイルエラーになる。
+ *
+ * preload の役割は「wire 型 ⇔ renderer 向け型」の変換のみ
+ * （ArrayBuffer/Blob → Uint8Array、Uint8Array 戻り値のラップなど）。
  */
 import { ipcRenderer } from 'electron'
 import type { ElectronAPI } from '@shared/types'
+import type { IpcContract, IpcEvents } from '@shared/ipcContract'
+
+const invoke = <C extends keyof IpcContract>(
+  channel: C,
+  ...args: IpcContract[C]['req']
+): Promise<IpcContract[C]['res']> => ipcRenderer.invoke(channel, ...args)
+
+/** push イベントを購読し、解除関数を返す */
+const subscribe = <E extends keyof IpcEvents>(
+  channel: E,
+  callback: (payload: IpcEvents[E]) => void
+): (() => void) => {
+  const listener = (_event: unknown, payload: IpcEvents[E]) => callback(payload)
+  ipcRenderer.on(channel, listener)
+  return () => ipcRenderer.removeListener(channel, listener)
+}
 
 export const api: ElectronAPI = {
   // ---- ダイアログ ----
-  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectFolder: () => invoke('dialog:selectFolder'),
 
-  selectFile: (filters) => ipcRenderer.invoke('dialog:selectFile', filters),
+  selectFile: (filters) => invoke('dialog:selectFile', filters),
 
   // ---- ファイル操作 ----
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) =>
-    ipcRenderer.invoke('file:save', Buffer.from(buffer), filename, subfolder),
+    invoke('file:save', Buffer.from(buffer), filename, subfolder),
 
   saveFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
     const arrayBuffer = data instanceof Blob ? await data.arrayBuffer() : data
-    return ipcRenderer.invoke('file:saveToPath', filePath, Buffer.from(arrayBuffer))
+    return invoke('file:saveToPath', filePath, Buffer.from(arrayBuffer))
   },
 
   saveTextFile: (filePath: string, content: string) =>
-    ipcRenderer.invoke('file:saveText', filePath, content),
+    invoke('file:saveText', filePath, content),
 
   appendFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
     const arrayBuffer = data instanceof Blob ? await data.arrayBuffer() : data
-    return ipcRenderer.invoke('file:appendToPath', filePath, Buffer.from(arrayBuffer))
+    return invoke('file:appendToPath', filePath, Buffer.from(arrayBuffer))
   },
 
-  getFileList: (folderPath: string) => ipcRenderer.invoke('file:getList', folderPath),
+  getFileList: (folderPath: string) => invoke('file:getList', folderPath),
 
-  deleteFile: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
+  deleteFile: (filePath: string) => invoke('file:delete', filePath),
 
-  loadAudioFile: (filePath: string) => ipcRenderer.invoke('file:loadAudio', filePath),
+  loadAudioFile: (filePath: string) => invoke('file:loadAudio', filePath),
 
   readFile: async (filePath: string): Promise<Uint8Array> => {
-    const buffer = await ipcRenderer.invoke('file:read', filePath)
+    const buffer = await invoke('file:read', filePath)
     return new Uint8Array(buffer)
   },
 
-  getWorkingDirectory: () => ipcRenderer.invoke('file:getWorkingDirectory'),
+  getWorkingDirectory: () => invoke('file:getWorkingDirectory'),
 
   // ---- 設定 ----
-  loadSettings: () => ipcRenderer.invoke('settings:load'),
+  loadSettings: () => invoke('settings:load'),
 
   // ---- 文字起こしサーバー ----
-  speechGetServerStatus: () => ipcRenderer.invoke('speech:getServerStatus'),
+  speechGetServerStatus: () => invoke('speech:getServerStatus'),
 
-  speechStartServer: () => ipcRenderer.invoke('speech:startServer'),
+  speechStartServer: () => invoke('speech:startServer'),
 
-  speechStopServer: () => ipcRenderer.invoke('speech:stopServer'),
+  speechStopServer: () => invoke('speech:stopServer'),
 
-  speechTranscribe: (filePath: string) => ipcRenderer.invoke('speech:transcribe', filePath),
+  speechTranscribe: (filePath: string) => invoke('speech:transcribe', filePath),
 
-  speechChangeModel: (modelName: string) => ipcRenderer.invoke('speech:changeModel', modelName),
+  speechChangeModel: (modelName: string) => invoke('speech:changeModel', modelName),
 
-  onSpeechServerStatus: (callback) => {
-    ipcRenderer.on('speech:serverStatus', (_event, status) => callback(status))
-  },
+  onSpeechServerStatus: (callback) => subscribe('speech:serverStatus', callback),
 
   // ---- 文字起こしファイル ----
   loadTranscriptionFile: (transFilePath: string) =>
-    ipcRenderer.invoke('transcription:load', transFilePath),
+    invoke('transcription:load', transFilePath),
 
   checkTranscriptionExists: (audioFilePath: string) =>
-    ipcRenderer.invoke('transcription:exists', audioFilePath),
+    invoke('transcription:exists', audioFilePath),
 
   getTranscriptionPath: (audioFilePath: string) =>
-    ipcRenderer.invoke('transcription:getPath', audioFilePath),
+    invoke('transcription:getPath', audioFilePath),
 
   // ---- モデル管理 ----
-  getModelsPath: () => ipcRenderer.invoke('models:getModelsPath'),
+  getModelsPath: () => invoke('models:getModelsPath'),
 
-  getInstalledModels: () => ipcRenderer.invoke('models:getInstalledModels'),
+  getInstalledModels: () => invoke('models:getInstalledModels'),
 
   downloadWhisperModel: (modelId: string) =>
-    ipcRenderer.invoke('models:downloadWhisperModel', modelId),
+    invoke('models:downloadWhisperModel', modelId),
 
-  cancelModelDownload: (modelId: string) => ipcRenderer.invoke('models:cancelDownload', modelId),
+  cancelModelDownload: (modelId: string) => invoke('models:cancelDownload', modelId),
 
-  // 旧APIは modelId を無視してモデルディレクトリ全体を受けていた。
-  // main 側 handlers:removeModel の実装校正は Phase D で揃える。
-  removeModel: (modelId: string) => ipcRenderer.invoke('models:removeModel', modelId),
+  // 実引数はモデルIDではなく削除対象のディレクトリパス（ipcContract の注記参照）
+  removeModel: (modelPath: string) => invoke('models:removeModel', modelPath),
+
+  onModelDownloadProgress: (callback) => subscribe('models:downloadProgress', callback),
 
   // ---- ウィンドウ操作 ----
-  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMinimize: () => invoke('window:minimize'),
 
-  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowMaximize: () => invoke('window:maximize'),
 
-  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowClose: () => invoke('window:close'),
 
-  windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
-
-  // ---- 汎用イベント ----
-  on: <TArgs extends unknown[]>(channel: string, callback: (event: unknown, ...args: TArgs) => void) =>
-    ipcRenderer.on(channel, callback as never),
-
-  removeListener: <TArgs extends unknown[]>(
-    channel: string,
-    callback: (event: unknown, ...args: TArgs) => void
-  ) => ipcRenderer.removeListener(channel, callback as never),
+  windowIsMaximized: () => invoke('window:isMaximized'),
 
   // ---- ログ ----
-  logWrite: (message: string) => ipcRenderer.invoke('log:write', message)
+  logWrite: (message: string) => invoke('log:write', message)
 }

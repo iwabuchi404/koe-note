@@ -57,10 +57,13 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
     listeners.get(channel)?.forEach((listener) => listener(...args))
   }
 
-  const subscribe = (channel: string, callback: (...args: unknown[]) => void): void => {
+  const subscribe = (channel: string, callback: (...args: unknown[]) => void): (() => void) => {
     const set = listeners.get(channel) ?? new Set()
     set.add(callback)
     listeners.set(channel, set)
+    return () => {
+      listeners.get(channel)?.delete(callback)
+    }
   }
 
   const api: ElectronAPI = {
@@ -114,9 +117,8 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
     windowClose: vi.fn().mockResolvedValue(undefined),
     windowIsMaximized: vi.fn().mockResolvedValue(false),
 
-    // ---- 汎用イベント ----
-    on: vi.fn(subscribe) as unknown as ElectronAPI['on'],
-    removeListener: vi.fn() as unknown as ElectronAPI['removeListener'],
+    // ---- イベント ----
+    onModelDownloadProgress: vi.fn((callback) => subscribe('models:downloadProgress', callback)),
 
     // ---- ログ ----
     logWrite: vi.fn().mockResolvedValue(undefined)

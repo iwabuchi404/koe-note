@@ -121,7 +121,24 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   - CLAUDE.md の構成記述・配置基準を新構造に更新
 - 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
 - 注: SettingsModal の `currentModel` は `'small'` 初期値のローカル state（元の AppContext と同等）。
-  `settings.transcription.model` との二重管理は残課題（G3 以降で整理）
+  `settings.transcription.model` との二重管理は残課題
+
+### Phase G3: IPC 型付き契約
+
+- `src/shared/ipcContract.ts` 新設: 全30 invoke チャンネルの req/res と
+  2 push イベント（speech:serverStatus / models:downloadProgress）のペイロードを定義
+- `ipc/handle.ts` の handle() を `keyof IpcContract` ジェネリック化。
+  契約外チャンネル名・シグネチャ不一致はコンパイルエラーになる
+- preload api.ts: 型付き `invoke()`/`subscribe()` ヘルパで全呼び出しを契約検査
+- ElectronAPI: 汎用 `on`/`removeListener` を削除し `onModelDownloadProgress` を追加。
+  `onSpeechServerStatus`/`onModelDownloadProgress` は購読解除関数を返す
+- `speech:transcribe` の res を `unknown` → `TranscriptionResult` に確定
+- `file:*` の wire バイナリ型を `Buffer` → `Uint8Array` に（Buffer は Uint8Array の部分型）
+- `models:downloadProgress` 送信 payload を `ModelDownloadProgressEvent` で型付け
+- 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
+- 既知の残課題: `models:removeModel` の実引数はモデルIDではなくモデルルートパス
+  （ModelDownloadService.getModelPath がルートを返すため全モデル削除の可能性。
+   契約コメントに注記済み、動作変更は別途対応）
 
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
@@ -139,7 +156,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 4. E2E の CI 組み込み（`npm run verify` とは別フローで固定する案あり）
 5. G 系の残り:
    - ~~G2: renderer の feature 再編 + AppContext（god context）解体~~ → Phase G2 で済
-   - G3: IPC 型付き契約（shared に req/res 型。preload/main を契約準拠に）
+   - ~~G3: IPC 型付き契約（shared に req/res 型。preload/main を契約準拠に）~~ → Phase G3 で済
    - 基盤: Electron 28(EOL) 更新、lamejs scriptタグ読み込み → ESM import 化、（任意で electron-vite）
    - whisper-server: pyproject.toml の pyinstaller → dev 移動、asyncio-mqtt 要否確認
 

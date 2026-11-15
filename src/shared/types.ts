@@ -14,6 +14,12 @@
  *
  * ここでは「1つの概念に1つの型」を确立する。进程的寿命や実装には依存させない。
  */
+import type {
+  FileFilter,
+  ModelDownloadProgressEvent,
+  SelectedFileResult,
+  SpeechServerStatusEvent,
+} from './ipcContract'
 
 // =============================================================================
 // ファイル・録音
@@ -300,13 +306,15 @@ export interface ModelVerificationResult {
 /**
  * renderer が window.electronAPI として参照する API
  *
- * 実装は src/preload/api.ts。型に追従したテスト用モックは
+ * 実装は src/preload/api.ts。ワイヤ上の引数・戻り値の契約は
+ * src/shared/ipcContract.ts（main の handle() と preload の invoke() が
+ * 同じ契約で検査される）。型に追従したテスト用モックは
  * tests/mocks/electronAPI.ts。
  */
 export interface ElectronAPI {
   // ---- ダイアログ ----
   selectFolder: () => Promise<string | null>
-  selectFile: (filters?: Array<{ name: string; extensions: string[] }>) => Promise<{ path: string; name: string } | null>
+  selectFile: (filters?: FileFilter[]) => Promise<SelectedFileResult | null>
 
   // ---- ファイル操作 ----
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) => Promise<string>
@@ -344,8 +352,11 @@ export interface ElectronAPI {
   speechTranscribe: (filePath: string) => Promise<TranscriptionResult>
   speechChangeModel: (modelName: string) => Promise<boolean>
 
-  /** サーバー状態変化の通知（starting / running / stopped / failed / external） */
-  onSpeechServerStatus: (callback: (status: { status: string; pid?: number }) => void) => void
+  /**
+   * サーバー状態変化の通知（starting / running / stopped / failed / external）
+   * 戻り値は購読解除関数
+   */
+  onSpeechServerStatus: (callback: (status: SpeechServerStatusEvent) => void) => () => void
 
   // ---- 文字起こしファイル ----
   loadTranscriptionFile: (transFilePath: string) => Promise<TranscriptionFile>
@@ -365,21 +376,12 @@ export interface ElectronAPI {
   windowClose: () => Promise<void>
   windowIsMaximized: () => Promise<boolean>
 
-  // ---- 汎用イベント（モデルダウンロード進捗など） ----
+  // ---- イベント ----
   /**
-   * 任意のチャンネルを購読する
-   *
-   * 型引数でペイロードを指定する（例: on<DownloadProgressPayload>('models:downloadProgress', cb)）。
+   * モデルダウンロード進捗の通知
+   * 戻り値は購読解除関数
    */
-  on: <TArgs extends unknown[]>(
-    channel: string,
-    callback: (event: unknown, ...args: TArgs) => void
-  ) => void
-
-  removeListener: <TArgs extends unknown[]>(
-    channel: string,
-    callback: (event: unknown, ...args: TArgs) => void
-  ) => void
+  onModelDownloadProgress: (callback: (progress: ModelDownloadProgressEvent) => void) => () => void
 
   // ---- ログ ----
   /** main のアプリログへ1行追記する */

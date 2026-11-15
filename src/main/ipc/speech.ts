@@ -4,6 +4,7 @@
  * WS の足回り（接続→送信→応答待ち→timeout/切断）は services/whisperClient.ts に集約。
  */
 import fs from 'fs'
+import type { TranscriptionResult } from '@shared/types'
 import { AppError } from '../core/errors'
 import { writeLog } from '../services/appLog'
 import { whisperCall } from '../services/whisperClient'
@@ -58,7 +59,7 @@ export function registerSpeechIpc(ctx: MainContext): void {
   });
 
   // 音声ファイル文字起こし
-  handle('speech:transcribe', async (event, filePath: string): Promise<unknown> => {
+  handle('speech:transcribe', async (event, filePath: string): Promise<TranscriptionResult> => {
     writeLog(`音声認識開始: ${filePath}`);
 
     // ファイル存在確認
@@ -66,7 +67,7 @@ export function registerSpeechIpc(ctx: MainContext): void {
       throw new Error('音声ファイルが見つかりません');
     }
 
-    return whisperCall<unknown>({
+    return whisperCall<TranscriptionResult>({
       request: {
         type: 'transcribe_file',
         file_path: filePath,
@@ -85,7 +86,7 @@ export function registerSpeechIpc(ctx: MainContext): void {
           if (response.status === 'completed') {
             const result = response.result as { segment_count?: number } | undefined
             writeLog(`音声認識完了: セグメント数 ${result?.segment_count}`);
-            return { type: 'resolve', value: response.result };
+            return { type: 'resolve', value: response.result as TranscriptionResult };
           }
           if (response.status === 'failed') {
             writeLog(`音声認識失敗: ${response.message}`);

@@ -17,7 +17,7 @@ import { handle } from './handle'
 
 export function registerFileIpc(): void {
   // ファイル保存
-  handle('file:save', async (event, buffer: Buffer, filename: string, subfolder?: string): Promise<string> => {
+  handle('file:save', async (event, buffer: Uint8Array, filename: string, subfolder?: string): Promise<string> => {
     try {
       // デフォルトの保存フォルダ（デスクトップのVoiceRecordingsフォルダ）
       // 保存先は許可ルート（作業フォルダ）基準。subfolder はその配下のみ許可
@@ -237,7 +237,7 @@ export function registerFileIpc(): void {
   });
 
   // バイナリファイル保存ハンドラー（新録音システム用）
-  handle('file:saveToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
+  handle('file:saveToPath', async (event, filePath: string, buffer: Uint8Array): Promise<boolean> => {
     try {
       const target = resolveWithinRoot(workspaceRoot(), filePath);
 
@@ -261,7 +261,7 @@ export function registerFileIpc(): void {
   // 録音はチャンクごとにこの IPC を呼ぶ。saveToPath で「既存を読み込み →
   // 新規と結合 → 全体書き戻し」をすると O(n²) になり、長時間録音では
   // ファイル全体の読み書きが支配的になるため、追記専用の IPC を用意する。
-  handle('file:appendToPath', async (event, filePath: string, buffer: Buffer): Promise<boolean> => {
+  handle('file:appendToPath', async (event, filePath: string, buffer: Uint8Array): Promise<boolean> => {
     try {
       const target = resolveWithinRoot(workspaceRoot(), filePath);
 

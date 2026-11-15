@@ -12,6 +12,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { toAppError, type AppErrorCode } from '../core/errors'
 import { formatIpcError } from '@shared/ipcError'
+import type { IpcContract } from '@shared/ipcContract'
 
 export interface IpcContext {
   log: (message: string) => void
@@ -27,17 +28,22 @@ export function setIpcContext(next: IpcContext): void {
 /**
  * ハンドラを登録する
  *
- * 返り値の型はT。例外は必ず AppError に変換されて投げられる。
+ * チャンネル名・引数・返り値は src/shared/ipcContract.ts の契約に従う。
+ * 契約外のチャンネル名や食い違うシグネチャはここでコンパイルエラーになる。
+ * 例外は必ず AppError に変換されて投げられる。
  */
-export function handle<T>(
-  channel: string,
-  handler: (event: IpcMainInvokeEvent, ...args: never[]) => Promise<T> | T
+export function handle<C extends keyof IpcContract>(
+  channel: C,
+  handler: (
+    event: IpcMainInvokeEvent,
+    ...args: IpcContract[C]['req']
+  ) => Promise<IpcContract[C]['res']> | IpcContract[C]['res']
 ): void {
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     try {
-      return await (handler as (e: IpcMainInvokeEvent, ...a: unknown[]) => Promise<T> | T)(
+      return await (handler as (e: IpcMainInvokeEvent, ...a: unknown[]) => unknown)(
         event,
-        ...(args as never[])
+        ...args
       )
     } catch (error) {
       const appError = toAppError(error)

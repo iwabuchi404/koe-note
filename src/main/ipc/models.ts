@@ -15,6 +15,7 @@ import {
 } from '../services/modelStore'
 import { writeLog } from '../services/appLog'
 import { handle } from './handle'
+import type { ModelDownloadProgressEvent } from '@shared/ipcContract'
 import type { MainContext } from './context'
 
 export function registerModelsIpc(ctx: MainContext): void {
@@ -133,7 +134,7 @@ export function registerModelsIpc(ctx: MainContext): void {
           // ウィンドウが破棄されていないかチェック
           const mainWindow = ctx.getMainWindow()
           if (mainWindow && !mainWindow.isDestroyed()) {
-            event.sender.send('models:downloadProgress', {
+            const payload: ModelDownloadProgressEvent = {
               modelId,
               percent: Math.round(overallProgress),
               message: `Downloading ${fileName}...`,
@@ -141,7 +142,8 @@ export function registerModelsIpc(ctx: MainContext): void {
               totalBytes,
               speed: speedBps,
               eta: etaSec
-            });
+            };
+            event.sender.send('models:downloadProgress', payload);
           }
         });
         // 原子的リネーム
@@ -165,22 +167,24 @@ export function registerModelsIpc(ctx: MainContext): void {
       const mainWindow = ctx.getMainWindow()
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (verificationResult.valid) {
-          event.sender.send('models:downloadProgress', {
+          const payload: ModelDownloadProgressEvent = {
             modelId,
             percent: 100,
             message: 'Download completed and verified',
             verified: true
-          });
+          };
+          event.sender.send('models:downloadProgress', payload);
           writeLog(`Model download completed and verified: ${modelId}`);
         } else {
           // 検証失敗時は破損モデルとして通知
-          event.sender.send('models:downloadProgress', {
+          const payload: ModelDownloadProgressEvent = {
             modelId,
             percent: 100,
             message: 'Download completed but verification failed',
             verified: false,
             errors: verificationResult.errors.length > 0 ? verificationResult.errors : ['Unknown verification error']
-          });
+          };
+          event.sender.send('models:downloadProgress', payload);
           writeLog(`Model download completed but verification failed: ${modelId}`);
 
           // エラーをスローして呼び出し元に通知

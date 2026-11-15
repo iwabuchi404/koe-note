@@ -16,6 +16,7 @@ import { writeLog } from './services/appLog';
 import { setIpcContext } from './ipc/handle';
 import { registerAllIpc } from './ipc/register';
 import type { MainContext } from './ipc/context';
+import type { SpeechServerStatusEvent } from '@shared/ipcContract';
 
 writeLog('アプリケーション開始');
 
@@ -49,7 +50,8 @@ const whisperServer = new WhisperServerService({
   onStatus: (status, pid) => {
     writeLog(`Server status notification: ${status}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('speech:serverStatus', { status, pid });
+      const payload: SpeechServerStatusEvent = { status, pid };
+      mainWindow.webContents.send('speech:serverStatus', payload);
     }
   },
   resolveModelsRoot,

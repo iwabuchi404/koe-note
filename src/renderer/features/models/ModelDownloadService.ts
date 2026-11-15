@@ -168,7 +168,7 @@ const fullModelInfo: ModelInfo = {
   ): Promise<void> {
     try {
       // 進捗リスナーを設定
-      const progressListener = (_event: unknown, data: { modelId: string, percent: number, message?: string, bytesDownloaded?: number, totalBytes?: number, speed?: number, eta?: number }) => {
+      const progressListener = (data: { modelId: string, percent: number, message?: string, bytesDownloaded?: number, totalBytes?: number, speed?: number, eta?: number }) => {
         if (data.modelId === modelInfo.id) {
           progress.progress = data.percent
           if (typeof data.bytesDownloaded === 'number') {
@@ -184,14 +184,15 @@ const fullModelInfo: ModelInfo = {
         }
       }
 
-      // 進捗イベントリスナーを追加
-      window.electronAPI.on('models:downloadProgress', progressListener)
+      // 進捗イベントリスナーを追加（戻り値は購読解除関数）
+      const unsubscribe = window.electronAPI.onModelDownloadProgress(progressListener)
 
-      // faster-whisperのモデルダウンロードを実行
-      await window.electronAPI.downloadWhisperModel(modelInfo.id)
-
-      // 進捗イベントリスナーを削除
-      window.electronAPI.removeListener('models:downloadProgress', progressListener)
+      try {
+        // faster-whisperのモデルダウンロードを実行
+        await window.electronAPI.downloadWhisperModel(modelInfo.id)
+      } finally {
+        unsubscribe()
+      }
 
     } catch (error) {
       if (signal.aborted) {
