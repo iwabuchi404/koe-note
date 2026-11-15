@@ -163,6 +163,7 @@ const SimpleFileList: React.FC<SimpleFileListProps> = ({
         <div key={file.id} style={{ marginBottom: 'var(--spacing-sm)' }}>
           {/* メイン音声ファイル */}
           <div
+            className="file-list-item"
             onClick={() => onFileSelect(file.id)}
             style={{
               padding: 'var(--spacing-sm)',

@@ -135,6 +135,153 @@ async function checkServer() {
   }
 }
 
+/**
+ * Phase F: 録音を開いてチャンク詳細パンルを確認
+ *
+ * パストしたまと利用ではない実機テストの代替になる。
+ */
+async function checkChunkPanel(recordingsDir) {
+  step('チャンク詳細パンルを開くタブに移り、旧録音を開く')
+
+  // バットのリスト画面に戻る（PlayerCard がのるところ）
+  const backOnLibrary = await domHasClass('tab-bar')
+  if (!backOnLibrary) {
+    throw new Error('ライブラリ画面に移れません')
+  }
+
+  // Phase E 前の録音（manifest がない）を 1 件択げる
+  const legacy = fsReadDir(recordingsDir)
+    .filter((f) => f.endsWith('.mp3'))
+    .filter((f) => !fsExistsSync(path.join(recordingsDir, f.replace(/\.[^.]+$/, '.manifest.json'))))
+  if (legacy.length === 0) {
+    warn('チャンク詳細パンル', 'Phase E 前の録音がなく、パンルの読み込みだけは確認しない')
+    return
+  }
+
+  // ファイル一覧は録音物の削除後にリフレッシュされるため、
+  // 行が描画されるまで最大15秒待つ（即クリックすると失敗する）
+  step('  ファイル一覧の描画を待ちます（最大15秒）')
+  let listReady = false
+  for (let i = 0; i < 15; i++) {
+    if (await domHasClass('file-list-item')) {
+      listReady = true
+      break
+    }
+    await sleep(1000)
+  }
+  if (!listReady) {
+    warn('チャンク詳細パネル', 'ファイル一覧が描画されませんでした')
+    return
+  }
+
+  const target = legacy[0]
+  // ファイル行は .file-list-item の class でクリック実行できる。
+  // ファイル行は .file-list-item の class でクリックする。
+  // :has-text は Playwright のセレクタ語なので、ファイル名で拥功をなく。
+  // 録音直後はファイル一覧がリフレッシュ中のため、行の detach が起きて
+  // クリックが失敗することがある。さらに KamoX は check-ui（重い）と
+  // element を直列処理するため、check-ui 連打直後のクリックは飢餓する。
+  // 対策: 5秒の静寂（KamoX を呼ばない）でドレインしてから試す。
+  step('  KamoX の処理落ち着き待ち（5秒）')
+  await sleep(5000)
+
+  // 対象のプレイヤータブが既に開いていればそれを使う。
+  // タブは数が少なく再描画の影響を受けないため、1065 行の一覧より確実。
+  const short = target.replace(/^advanced_recording_/, '').replace(/\.mp3$/, '')
+  let opened = await element(
+    `.tab:has-text("${short}") >> nth=0`,
+    'click',
+    undefined,
+    8000
+  ).catch(() => null)
+  if (opened) {
+    step('  既存のプレイヤータブを使用')
+    await sleep(1500)
+  } else {
+    step('  一覧から開く（プレイヤータブが無いため）')
+  }
+  for (let attempt = 1; opened === null && attempt <= 2; attempt++) {
+    opened = await element(
+      `.file-list-item:has-text("${target}") >> nth=0`,
+      'click',
+      undefined,
+      15000
+    ).catch(() => null)
+    if (opened) {
+      break
+    }
+    step(`  クリック再試行 (${attempt}/2)… 4秒待ち`)
+    await sleep(4000)
+  }
+  if (!opened) {
+    // 次の調査用に facts だけ残す（推測しない）
+    try {
+      const html = await domHtml()
+      const items = (html.match(/class="file-list-item"/g) || []).length
+      const hits = html.split(target).length - 1
+      const tabs = [...html.matchAll(/class="tab (active)?[^"]*"[^>]*title="([^"]*)"/g)].map(
+        (m) => `${m[1] ? '*' : ''}${m[2].slice(0, 40)}`
+      )
+      warn(
+        'チャンク詳細パネル診断',
+        `file-list-item=${items} / 対象名出現=${hits} / tabs=[${tabs.join(' | ')}]`
+      )
+    } catch {
+      // 診断自体が失敗しても本筋の WARN は出す
+    }
+    warn('チャンク詳細パンル', `録音行をクリックできなかった: ${target}`)
+    return
+  }
+  await sleep(2000)
+
+  // パンルが出てきるまで待ち
+  step('  パンルの表示を待ち')
+  let panelVisible = false
+  for (let i = 0; i < 10; i++) {
+    if (await domHasClass('chunks-panel')) {
+      panelVisible = true
+      break
+    }
+    await sleep(1000)
+  }
+
+  if (!panelVisible) {
+    ng('チャンク詳細パヲル', '.chunks-panel が表示されない')
+    return
+  }
+
+  const html = await domHtml()
+  if (!html.includes('Phase E 引入前の録音です')) {
+    ng('チャンク詳細パンル', 'manifest 無い録音での表示が出ない')
+    return
+  }
+  ok('チャンク詳細パンル', `manifest 無い録音でも利用できる: ${target}`)
+
+  // 開閉してチャンク一覧を開く
+  const expanded = await element('.chunks-panel__header', 'click').catch(() => null)
+  if (!expanded) {
+    warn('チャンク一覧', 'パンルを開けなかった')
+    return
+  }
+  await sleep(800)
+
+  if (await domHasClass('chunks-table')) {
+    ok('チャンク一覧', '表が表示された')
+  } else {
+    warn('チャンク一覧', '表は表示されない（チャンク情報のない録音の場合は正常）')
+  }
+}
+
+/** DOM スナップショートの HTML を取得 */
+async function domHtml() {
+  try {
+    const ui = await api('/check-ui', 'POST', {}, 25_000)
+    return ui.data?.dom?.html ?? ''
+  } catch {
+    return ''
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 2. 録音 → 文字起こし → メタデータの検証
 // ---------------------------------------------------------------------------
@@ -551,11 +698,27 @@ function resolveRecordingsDir() {
 // 実行
 // ---------------------------------------------------------------------------
 async function main() {
+  // PANEL_ONLY=1 のときはパネル検証だけを実行する。
+  // 呼び出し回数が少ない状態で通るかどうかで、
+  // 「KamoX の累積負荷で後半が飢餓する」仮説を検証できる。
+  if (process.env.PANEL_ONLY === '1') {
+    console.log('KamoX E2E パネル単独検証開始')
+    const recordingsDir = resolveRecordingsDir()
+    await checkChunkPanel(recordingsDir)
+    console.log(`\n結果: ${passed} pass / ${failed} fail`)
+    if (failed > 0) {
+      console.log('失敗:')
+      for (const f of failures) console.log(`  - ${f}`)
+      process.exit(1)
+    }
+    return
+  }
+
   console.log('KamoX E2E スモーク開始')
   console.log(`  target: ${BASE} / source: ${SOURCE} / record: ${RECORD_SECONDS}秒\n`)
 
   // KamoX は起動直後や 백그라운드処理中は応答が遅いことがあるため、
-// 足够的超时 + リトライで接続を確定させる
+// 十分なタイムアウト + リトライで接続を確定させる
 let status = null
 let lastError = null
 for (let attempt = 1; attempt <= 5; attempt++) {
@@ -622,7 +785,10 @@ for (let attempt = 1; attempt <= 5; attempt++) {
     console.log(`  KAMOX_E2E_KEEP=1 のため作成物を残します: ${created.join(', ')}`)
   }
 
-  console.log(`\n結果: ${passed} pass / ${failed} fail`)
+    // Phase F: 旧録音を開いてチャンク詳細パンルを確認（新作成物の削除後に行う）
+  await checkChunkPanel(recordingsDir)
+
+console.log(`\n結果: ${passed} pass / ${failed} fail`)
   if (failed > 0) {
     console.log('失敗:')
     for (const f of failures) console.log(`  - ${f}`)
