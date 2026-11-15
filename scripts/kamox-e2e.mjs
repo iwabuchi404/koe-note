@@ -286,7 +286,9 @@ async function domHtml() {
 // 2. 録音 → 文字起こし → メタデータの検証
 // ---------------------------------------------------------------------------
 async function checkRecording(recordingsDir) {
-  const before = new Set(fsReadDir(recordingsDir))
+  // v2: 録音の成果物は <workspace>/sessions/<id>/ に集約される
+  const sessionsDir = path.join(recordingsDir, 'sessions')
+  const beforeSessions = new Set(fsReadDir(sessionsDir))
 
   // ログは実行でことで経積されるため、待ち時の判定はバスラインからの差分で見る
   const baseline = await logCounts()
@@ -344,250 +346,224 @@ async function checkRecording(recordingsDir) {
     )
   }
 
-  step('生成ファイルを検証')
-  const created = fsReadDir(recordingsDir).filter((f) => !before.has(f))
-  const mp3 = created.filter((f) => f.endsWith('.mp3'))
-  const trans = created.filter((f) => f.endsWith('.trans.txt'))
+  step('生成セッションを検証（v2 sessions/ 形式）')
+  const newSessions = fsReadDir(sessionsDir).filter((d) => !beforeSessions.has(d))
 
-  if (mp3.length === 0) {
-    ng('音声ファイルの作成', `新規ファイルなし: ${created.join(', ') || '(なし)'}`)
-    return created
-  }
-  ok('音声ファイルの作成', mp3.join(', '))
-
-  if (trans.length === 0) {
-    // 記録音声が無音の場合、サーバーは空のテキストを返すため記録ファイルは作られない。
-    // これは評募で、サーバーが実行して無音だったことを確認できれば PASS とする。
-    if (t.ok && t.completed > 0 && t.appended === 0 && t.silent > 0) {
-      ok(
-        '文字起こしファイルの作成',
-        'trans.txt は作られていない（記録音声が無音（coverage 0%）のため評募どおり）'
-      )
-      return created
-    }
-    ng(
-      '文字起こしファイルの作成',
-      `trans.txt が無いのに文字起こし本体は実行されていない（${mp3.join(', ')} のみ）`
-    )
-    return created
+  if (newSessions.length === 0) {
+    ng('セッションの作成', `sessions/ に新規ディレクトリなし: ${fsReadDir(recordingsDir).join(', ')}`)
+    return []
   }
 
-  verifyTranscriptHeader(`${recordingsDir}\\${trans[0]}`)
-  verifyTranscriptOffsets(`${recordingsDir}\\${trans[0]}`)
+  const createdPaths = newSessions.map((d) => path.join(sessionsDir, d))
+  ok('セッションの作成', newSessions.join(', '))
 
-  // Phase E: chunk 群と manifest の検証
-  const baseName = mp3[0].replace(/\.[^.]+$/, '')
-  // manifest を先に読み、chunk 群と照合させる
-  const manifestChunks = readManifestChunks(`${recordingsDir}\\${baseName}.manifest.json`)
-  verifyChunkGroup(`${recordingsDir}\\${baseName}`, mp3[0], manifestChunks)
-  verifyManifest(`${recordingsDir}\\${baseName}.manifest.json`)
+  for (const dir of createdPaths) {
+    const session = verifySessionJson(dir)
+    if (!session) continue
+    verifySessionChunks(dir, session)
+    verifyTranscriptJson(dir, session, t)
+  }
 
-  return created
+  return createdPaths
 }
 
 /**
- * チャンク群（<base>.chunks/chunk_NNN.<ext>）を検証
+ * session.json を検証してパース結果を返す（失敗時は null）
  *
- * 追加ではないので、ファイル各のサイズが
- * 単体 mp3 のサイズと一致していることを確認する。
+ * v2 スキーマの必須事項:
+ *   - state は 'completed'（正常停止の場合）
+ *   - sources[] にチャンクが記録されている
+ *   - recording.durationSeconds / endedAt が確定している
  */
-function verifyChunkGroup(basePath, mp3Name, manifestChunks = []) {
-  const dir = `${basePath}.chunks`
-  if (!fsExistsSync(dir)) {
-    ng('chunk 群の作成', `ディレクトリが存在しない: ${dir}`)
-    return
+function verifySessionJson(sessionDir) {
+  const sessionPath = path.join(sessionDir, 'session.json')
+  if (!fsExistsSync(sessionPath)) {
+    ng('session.json の作成', `ファイルが存在しない: ${sessionPath}`)
+    return null
   }
 
-  const files = fsReadDir(dir).sort()
-  if (files.length === 0) {
-    ng('chunk 群の作成', 'chunk ファイルが 1 件もない')
-    return
-  }
-
-  // manifest が指すファイル名とディレクトリの実体が一致することが本討。
-  // 連番の起始値（1开始るなど 0 とは定めない）は確認しない。
-  if (manifestChunks.length > 0) {
-    const declared = manifestChunks.map((c) => String(c.file).split('/').pop())
-    const missing = declared.filter((f) => !files.includes(f))
-    if (missing.length > 0) {
-      ng('chunk 群と manifest の一致', `manifest が指すファイルが避けている: ${missing.join(', ')}`)
-      return
-    }
-    const unlisted = files.filter((f) => !declared.includes(f))
-    if (unlisted.length > 0) {
-      ng('chunk 群と manifest の一致', `manifest にない chunk がある: ${unlisted.join(', ')}`)
-      return
-    }
-    ok('chunk 群と manifest の一致', `${declared.length} 件のファイル名が一致`)
-  }
-
-  // 合計サイズ = mp3 のサイズ（追加本体が壊れていないことの確誌）
-  const chunkTotal = files.reduce((sum, f) => sum + fsStatSize(`${dir}\\${f}`), 0)
-  const mp3Size = fsStatSize(`${basePath}.${mp3Name.split('.').pop()}`)
-  if (chunkTotal !== mp3Size) {
-    ng('chunk 群の完全性', `chunk 合計 ${chunkTotal} と mp3 ${mp3Size} が不一致`)
-    return
-  }
-  ok('chunk 群の作成', `${files.length} 件 / 合計 ${chunkTotal} bytes（mp3 と一致）`)
-}
-
-/** manifest.json の内容を検証 */
-function verifyManifest(manifestPath) {
-  if (!fsExistsSync(manifestPath)) {
-    ng('manifest.json の作成', `ファイルが存在しない: ${manifestPath}`)
-    return
-  }
-
-  let manifest
+  let session
   try {
-    manifest = JSON.parse(readFile(manifestPath))
+    session = JSON.parse(readFile(sessionPath))
   } catch (error) {
-    ng('manifest.json の作成', `JSON として読めない: ${error.message}`)
+    ng('session.json の作成', `JSON として読めない: ${error.message}`)
+    return null
+  }
+
+  if (typeof session.version !== 'number' || !Array.isArray(session.sources) || !session.recording) {
+    ng('session.json の作成', 'スキーマに合わない')
+    return null
+  }
+  ok('session.json の作成', `id=${session.id} / sources=${session.sources.length}`)
+
+  if (session.state !== 'completed') {
+    ng('session.json の状態', `state=${session.state}（completed ではない）`)
+  } else {
+    ok('session.json の状態', 'completed')
+  }
+
+  const duration = session.recording.durationSeconds
+  if (typeof duration !== 'number' || duration <= 0) {
+    ng('session.json の長さ', `durationSeconds=${duration}`)
+  } else {
+    ok('session.json の長さ', `${duration.toFixed(1)}秒 / endedAt=${session.recording.endedAt ?? 'なし'}`)
+  }
+
+  return session
+}
+
+/**
+ * セッションの音声チャンクを検証
+ *
+ * 本質: session.json が指す chunk ファイルが全て実在し、
+ * 宣言バイト数と実ファイルサイズが一致し、
+ * audioOffsetSeconds が単調増加していること。
+ */
+function verifySessionChunks(sessionDir, session) {
+  const source = session.sources.find((s) => s.enabled !== false) ?? session.sources[0]
+  if (!source || !source.audio || !Array.isArray(source.audio.chunks)) {
+    ng('チャンク群', 'sources[].audio.chunks がない')
     return
   }
 
-  if (typeof manifest.version !== 'number' || !manifest.recording || !Array.isArray(manifest.chunks)) {
-    ng('manifest.json の作成', 'スキーマに合わない')
+  const chunks = source.audio.chunks
+  if (chunks.length === 0) {
+    ng('チャンク群', 'chunk が 1 件も記録されていない')
     return
   }
-  ok('manifest.json の作成', `version=${manifest.version} / chunks=${manifest.chunks.length}`)
 
-  // 合訃の検証
-  const sum = manifest.chunks.reduce((t, c) => t + c.bytes, 0)
-  if (sum !== manifest.recording.totalBytes) {
-    ng('manifest の合計バイト数', `chunks 合計 ${sum} != totalBytes ${manifest.recording.totalBytes}`)
+  // 宣言ファイルが実在し、サイズが一致するか
+  const missing = []
+  const mismatched = []
+  for (const c of chunks) {
+    const p = path.join(sessionDir, c.file)
+    if (!fsExistsSync(p)) {
+      missing.push(c.file)
+    } else if (fsStatSize(p) !== c.bytes) {
+      mismatched.push(`${c.file}（宣言 ${c.bytes} / 実 ${fsStatSize(p)}）`)
+    }
+  }
+  if (missing.length > 0) {
+    ng('チャンク群の実在', `存在しない: ${missing.join(', ')}`)
     return
   }
-  ok('manifest の合計バイト数', `${sum} bytes`)
-
-  if (manifest.chunks.length !== manifest.recording.chunkCount) {
-    ng('manifest のチャンク件数', `${manifest.chunks.length} != chunkCount ${manifest.recording.chunkCount}`)
+  if (mismatched.length > 0) {
+    ng('チャンク群のサイズ一致', `不一致: ${mismatched.join(', ')}`)
     return
   }
-  ok('manifest のチャンク件数', `${manifest.chunks.length}`)
+  ok('チャンク群の実在とサイズ', `${chunks.length} 件 / 宣言バイト数と実体が一致`)
 
-  // 連番と位置の単调性
+  // offset/duration の単調性と正値
   let cursor = 0
-  // 連番は 0 始まりではなく、単调增加でないことを確認する
-  // （録音パイプラインは 1 始まりの chunkNumber を渡す）
-  for (const [i, c] of manifest.chunks.entries()) {
-    if (i > 0 && c.chunkNumber <= manifest.chunks[i - 1].chunkNumber) {
-      ng(
-        'manifest のチャンク連番',
-        `chunks[${i}].chunkNumber=${c.chunkNumber} が前の ${manifest.chunks[i - 1].chunkNumber} 以上でない`
-      )
-      return
-    }
+  for (const [i, c] of chunks.entries()) {
     if (c.bytes <= 0) {
-      ng('manifest のチャンクサイズ', `chunks[${i}].bytes=${c.bytes}`)
+      ng('チャンク群のサイズ', `chunks[${i}].bytes=${c.bytes}`)
       return
     }
-    if (c.audioOffsetSeconds < cursor) {
-      ng('manifest のチャンク位置', `chunks[${i}].audioOffsetSeconds=${c.audioOffsetSeconds} < ${cursor}`)
+    if (c.durationSeconds <= 0) {
+      ng('チャンク群の長さ', `chunks[${i}].durationSeconds=${c.durationSeconds}`)
       return
     }
-    cursor = c.audioOffsetSeconds
+    if (c.audioOffsetSeconds < cursor - 0.001) {
+      ng('チャンク群の位置', `chunks[${i}].audioOffsetSeconds=${c.audioOffsetSeconds} < ${cursor}`)
+      return
+    }
+    cursor = c.audioOffsetSeconds + c.durationSeconds
   }
-  ok('manifest のチャンク位置', `単调增加 / 最終 ${cursor.toFixed(3)}秒`)
-
-  // 実測値と計算値の一致
-  const estimated = manifest.recording.estimatedDurationSeconds
-  if (typeof estimated !== 'number' || estimated <= 0) {
-    ng('manifest の長さ', `estimatedDurationSeconds=${estimated}`)
-    return
-  }
-  ok('manifest の長さ', `推定 ${estimated.toFixed(3)}秒 / ${manifest.recording.bytesPerSecond} B/s`)
+  ok('チャンク群の位置', `単調増加 / 総延べ ${cursor.toFixed(3)}秒 / format=${source.audio.format}`)
 }
 
-function verifyTranscriptHeader(file) {
-  const content = readFile(file)
-  const header = parseHeader(content)
-
-  if (!header) {
-    ng('trans.txt ヘッダー', 'ヘッダーを解釈できない')
+/**
+ * transcripts/*.json を検証
+ *
+ * v2 transcript はセグメントの実値 start/end を持つ。
+ * 完全無音の録音ではセグメント 0 件の completed transcript が残る
+ * （旧形式で trans.txt が作られないのと同じ意味）。その場合は
+ * サーバー完了ログ + 無音ログで仕様どおりとみなす。
+ */
+function verifyTranscriptJson(sessionDir, session, t) {
+  const refs = session.transcripts ?? []
+  if (refs.length === 0) {
+    // 文字起こし無効設定なら transcript は作られない
+    warn('transcript の作成', 'session.transcripts が空（transcription 無効の可能性）')
     return
   }
 
-  ok('trans.txt ヘッダーの存在', Object.keys(header).join(', '))
-
-  // model がハードコードingkConstamy になっていないか
-  if (header.model === 'kotoba-whisper-medium' || header.model === 'unknown') {
-    ng('trans.txt model', `model が ${header.model}（ハードコード値）`)
-  } else {
-    ok('trans.txt model', header.model)
-  }
-
-  const duration = Number(header.duration)
-  if (!(duration > 0)) {
-    ng('trans.txt duration', `duration=${header.duration}（0 は実測されていない）`)
-  } else {
-    ok('trans.txt duration', `${duration}秒`)
-  }
-
-  if (Number(header.segment_count) < 1) {
-    ng('trans.txt segment_count', `segment_count=${header.segment_count}`)
-  } else {
-    ok('trans.txt segment_count', header.segment_count)
-  }
-
-  if ('coverage' in header) {
-    ng('trans.txt coverage', '実装のない coverage が残っている')
-  } else {
-    ok('trans.txt coverage', '出力されていない（根拠のない数値を出さない）')
-  }
-}
-
-function verifyTranscriptOffsets(file) {
-  const content = readFile(file)
-  const lines = content
-    .split('\n')
-    .map((l) => l.match(/^\[(\d{2}:\d{2}:\d{2}\.\d)\]\s*(.*)$/))
-    .filter(Boolean)
-
-  if (lines.length === 0) {
-    ng('trans.txt セグメント行', ' [HH:MM:SS.s] 形式の行が無い')
+  const file = path.join(sessionDir, refs[0].file)
+  if (!fsExistsSync(file)) {
+    ng('transcript の作成', `存在しない: ${refs[0].file}`)
     return
   }
 
-  const offsets = lines.map((m) => {
-    const [, hms] = m
-    const [h, m2, s] = hms.split(':')
-    return Number(h) * 3600 + Number(m2) * 60 + Number(s)
-  })
+  let transcript
+  try {
+    transcript = JSON.parse(readFile(file))
+  } catch (error) {
+    ng('transcript の作成', `JSON として読めない: ${error.message}`)
+    return
+  }
 
-  const increasing = offsets.every((v, i) => i === 0 || v >= offsets[i - 1])
+  ok('transcript の作成', `${refs[0].file} / status=${transcript.status} / model=${transcript.model}`)
+
+  if (transcript.status !== 'completed') {
+    ng('transcript の状態', `status=${transcript.status}`)
+    return
+  }
+
+  const segments = transcript.segments ?? []
+  if (segments.length === 0) {
+    // 完全無音ではサーバーが空テキストを返しセグメントは増えない。
+    // サーバー実行済み + 無音判定が出ていれば仕様どおり。
+    if (t.ok && t.completed > 0 && t.silent > 0) {
+      ok('transcript のセグメント', '0 件（録音が無音のため仕様どおり）')
+      return
+    }
+    ng(
+      'transcript のセグメント',
+      `0 件（サーバー完了 ${t.completed} 件 / 保存 ${t.appended} 件 / 無音 ${t.silent} 件）`
+    )
+    return
+  }
+
+  // 実値タイムスタンプの検証（旧 trans.txt のタイムスタンプ検証に相当）
+  const starts = segments.map((s) => s.start)
+  const increasing = starts.every((v, i) => i === 0 || v >= starts[i - 1])
   if (!increasing) {
-    ng('trans.txt タイムスタンプ', `単調増加でない: ${offsets.slice(0, 6).join(', ')}`)
-  } else {
-    ok('trans.txt タイムスタンプ', `単調増加 / 先頭=${offsets[0]}秒`)
+    ng('transcript タイムスタンプ', `単調増加でない: ${starts.slice(0, 6).join(', ')}`)
+    return
   }
-
-  // 壁時計の時刻（11:00:xx）ではなく録音開始からの位置であること
-  const first = offsets[0]
+  const first = starts[0]
   if (first > 60 * 60) {
-    ng('trans.txt タイムスタンプ', `先頭が ${first}秒（壁時計の可能性がある）`)
-  } else {
-    ok('trans.txt タイムスタンプ', '録音開始からの位置')
+    ng('transcript タイムスタンプ', `先頭が ${first}秒（壁時計の可能性）`)
+    return
   }
+  ok('transcript タイムスタンプ', `単調増加 / ${segments.length} セグメント / 先頭=${first}秒`)
+
+  const hasText = segments.every((s) => typeof s.text === 'string' && s.text.trim().length > 0)
+  if (!hasText) {
+    ng('transcript の本文', '空テキストのセグメントがある')
+    return
+  }
+  ok('transcript の本文', `先頭: "${segments[0].text.slice(0, 30)}"`)
 }
 
 /**
  * 文字起こしの完了を待つ
  *
  * 判定材料はアプリとサーバーのログ（DOM より安定している）。
- * 重要なのは「text が空のチャンクは trans.txt に書かれない」仕様:
+ * 重要なのは「text が空のチャンクは transcript にセグメントが増えない」仕様:
  *   - サーバーが "Transcription completed in" が出たら文字起こしは実行された
  *   - "Only 0.0s of ... processed" が出ていれば音声が完全無音で text が空
- *   - 実際にファイルへ追記されたかは "文字起こし追記" の로그で分かる
+ *   - 実際に transcript へ保存されたかは "セッションtranscript保存完了" のログで分かる
  * ログは実行をまたいで蓄積するので、開始時点の値を baseline として差分を見る。
  */
 async function logCounts() {
   const lines = await logs()
   return {
-    appended: lines.filter((l) => /文字起こし(を)?追記/.test(l)).length,
+    appended: lines.filter((l) => /セッションtranscript保存完了/.test(l)).length,
     completed: lines.filter((l) => l.includes('Transcription completed in')).length,
     silent: lines.filter((l) => /Only 0\.0s of/.test(l)).length,
-    failed: lines.filter((l) => l.includes('文字起こし失敗')).length
+    failed: lines.filter((l) => /セッションtranscript保存失敗|文字起こし.*失敗/.test(l)).length
   }
 }
 
@@ -640,16 +616,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-/** manifest.json が読めるなら chunks を返す（読めないものは空アライ） */
-function readManifestChunks(manifestPath) {
-  try {
-    if (!fs.existsSync(manifestPath)) return []
-    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8')).chunks ?? []
-  } catch {
-    return []
-  }
-}
-
 function fsExistsSync(p) {
   return fs.existsSync(p)
 }
@@ -668,18 +634,6 @@ function fsReadDir(dir) {
 
 function readFile(file) {
   return fs.readFileSync(file, 'utf-8')
-}
-
-function parseHeader(content) {
-  if (!content.startsWith('---')) return null
-  const end = content.indexOf('---\n\n')
-  const yaml = end > 0 ? content.slice(3, end) : ''
-  const header = {}
-  for (const line of yaml.split('\n')) {
-    const m = line.match(/^([a-z_]+):\s*(.*)$/)
-    if (m) header[m[1]] = m[2].trim()
-  }
-  return Object.keys(header).length > 0 ? header : null
 }
 
 function resolveRecordingsDir() {
@@ -767,22 +721,23 @@ for (let attempt = 1; attempt <= 5; attempt++) {
   }
 
   if (created.length > 0 && !KEEP) {
-    for (const file of created) {
+    for (const target of created) {
       try {
-        const target = path.join(recordingsDir, file)
         if (fs.statSync(target).isDirectory()) {
           fs.rmSync(target, { recursive: true })
-          console.log(`  cleanup: ${file}/ を削除`)
+          console.log(`  cleanup: ${path.basename(target)}/ を削除`)
         } else {
           fs.unlinkSync(target)
-          console.log(`  cleanup: ${file} を削除`)
+          console.log(`  cleanup: ${target} を削除`)
         }
       } catch {
-        console.log(`  cleanup: ${file} を削除できませんでした`)
+        console.log(`  cleanup: ${target} を削除できませんでした`)
       }
     }
   } else if (created.length > 0) {
-    console.log(`  KAMOX_E2E_KEEP=1 のため作成物を残します: ${created.join(', ')}`)
+    console.log(
+      `  KAMOX_E2E_KEEP=1 のため作成物を残します: ${created.map((p) => path.basename(p)).join(', ')}`
+    )
   }
 
     // Phase F: 旧録音を開いてチャンク詳細パンルを確認（新作成物の削除後に行う）

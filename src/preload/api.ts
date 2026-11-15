@@ -35,11 +35,16 @@ export const api: ElectronAPI = {
 
   // ---- ファイル操作 ----
   saveFile: (buffer: ArrayBuffer, filename: string, subfolder?: string) =>
-    invoke('file:save', Buffer.from(buffer), filename, subfolder),
+    invoke('file:save', new Uint8Array(buffer), filename, subfolder),
 
   saveFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
-    const arrayBuffer = data instanceof Blob ? await data.arrayBuffer() : data
-    return invoke('file:saveToPath', filePath, Buffer.from(arrayBuffer))
+    // contextBridge の realm 境界を越えると instanceof Blob が機能しないため、
+    // arrayBuffer() の有無で Blob を判定する（duck-typing）
+    const arrayBuffer =
+      typeof (data as Blob).arrayBuffer === 'function'
+        ? await (data as Blob).arrayBuffer()
+        : (data as ArrayBuffer)
+    return invoke('file:saveToPath', filePath, new Uint8Array(arrayBuffer))
   },
 
   saveTextFile: (filePath: string, content: string) =>
@@ -103,8 +108,13 @@ export const api: ElectronAPI = {
   sessionCreate: (meta) => invoke('sessions:create', meta),
 
   sessionAppendChunk: async (req) => {
-    const arrayBuffer = req.data instanceof Blob ? await req.data.arrayBuffer() : req.data
-    return invoke('sessions:appendChunk', { ...req, data: Buffer.from(arrayBuffer) })
+    // contextBridge の realm 境界を越えると instanceof Blob が機能しないため、
+    // arrayBuffer() の有無で Blob を判定する（duck-typing）
+    const arrayBuffer =
+      typeof (req.data as Blob).arrayBuffer === 'function'
+        ? await (req.data as Blob).arrayBuffer()
+        : (req.data as ArrayBuffer)
+    return invoke('sessions:appendChunk', { ...req, data: new Uint8Array(arrayBuffer) })
   },
 
   sessionUpdate: (sessionId, patch) => invoke('sessions:update', sessionId, patch),

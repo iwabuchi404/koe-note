@@ -123,7 +123,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       errors: [...prev.errors, newError]
     }))
 
-    logger.error(`グローバル録音 ${type} エラー:`, new Error(message))
+    logger.error(`グローバル録音 ${type} エラー: ${message}`)
   }, [])
 
   // チャンク準備完了コールバック
@@ -197,6 +197,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (result.text && result.text.trim()) {
       try {
         await recordingSessionRef.current?.appendTranscription(result.chunkNumber, result.text)
+        logger.info(`グローバル録音 チャンク#${result.chunkNumber}セッションtranscript保存完了`)
       } catch (error) {
         const errorMessage = `チャンク#${result.chunkNumber}セッションtranscript保存失敗: ${error instanceof Error ? error.message : String(error)}`
         addError('transcription', errorMessage)

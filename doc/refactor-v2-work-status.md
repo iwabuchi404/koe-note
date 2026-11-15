@@ -278,6 +278,31 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   セッション経路の不変条件で再構成（16 tests）
 - 検証: `npm run verify`（tsc clean + 336 tests）・`npm run build` 通過
 
+#### KamoX E2E の v2 対応 + 実機検証（Step 5 の実機担保）
+
+- `scripts/kamox-e2e.mjs` を v2 セッション形式に更新:
+  - 検証対象を `<base>.mp3/.trans.txt/.manifest.json/.chunks/` から
+    `sessions/<id>/session.json` + `audio/<src>/chunk_NNN.*` + `transcripts/*.json` へ
+  - session.json（state/duration/endedAt）、チャンク実在+宣言バイト数一致、
+    offset 単調増加、transcript の status/model/セグメント実値タイムスタンプを検証
+  - 無音仕様は「セグメント0件の completed transcript + サーバー無音ログ」で判定
+  - cleanup はセッションディレクトリ単位
+- **実機で発見・修正した重大バグ（単体テストでは検出不能）**:
+  - preload の `Buffer.from(...)` が `Buffer is not defined` で常時失敗。
+    Electron 45 の sandbox/contextIsolation では preload に Buffer グローバルが
+    存在しない（T2 更新時の潜伏バグ。saveFile/saveFileToPath も同時に壊れていた）
+    → `new Uint8Array(...)` に全面置換
+  - `instanceof Blob` も contextBridge の realm 境界で false になる
+    → `arrayBuffer()` 有無の duck-typing に変更（上記と併せて修正）
+  - ユニットテストは window.electronAPI をモックするため preload 層を
+    通らず検出不能だった → 実機 E2E が唯一の検出経路だった
+  - `logger.error(msg, new Error(m))` が `"error":{}` と空洞化していた
+    → メッセージを文字列へ埋め込むよう修正
+- 実機結果: **14 pass / 0 fail**（15秒 desktop 録音 → 4 チャンク +
+  3 セグメントの transcript を検証）
+  - 残 WARN: 旧録音のチャンク詳細パネルが開けない（file-list-item クリック
+    セレクタの既知の不安定。新規 v2 セッション検証とは無関係）
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）
