@@ -193,7 +193,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 |---|---|---|
 | 1 | `shared/session.ts` + `shared/transcript.ts`（`4f54987`、+41 tests） | 完了 |
 | 2 | main 側 fs `sessionStore.ts` + `sessions:*` IPC | 完了（下記） |
-| 3 | renderer `IpcSessionStore` + RecordingContext を usecase 経由に | 未着手 |
+| 3 | renderer `IpcSessionStore` + RecordingContext を usecase 経由に | 完了（下記） |
 | 4 | fileLibrary を sessions/ 読み対応に拡張 | 未着手 |
 | 5 | 旧書き込み経路（AdvancedRecordingFileService）削除 | 未着手 |
 
@@ -216,6 +216,27 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   - `appendSessionChunk` の戻り値が Windows で `\` 区切りになる
     → POSIX 相対パスで返すよう修正
 - 検証: `npm run verify`（tsc clean + 333 tests）・`npm run build` 通過
+
+#### Step 3 の内容（dual-write 移行）
+
+- `features/recording/ports/SessionStore.ts` — 永続化ポート（注入用 IF）
+- `features/recording/usecases/RecordingSession.ts` — Electron 非依存の
+  オーケストレーション。chunk offset/duration の連続採番、
+  タイミング未到着の transcription 結果のペンディング→後追い、
+  finalize で transcript completed + セッション締め
+- `features/recording/services/IpcSessionStore.ts` — ポートの実装
+  （window.electronAPI の session* を呼ぶ）
+- `RecordingContext` — 録音開始時に RecordingSession を起動し、
+  chunk/transcription/stop を旧 manifest 経路と並走して書く（dual-write）。
+  旧経路は Step 4（library の sessions 読み対応）→ Step 5 で削除する
+- `tests/unit/recordingSession.test.ts` — 8 tests（インメモリ SessionStore 注入）
+- `tests/unit/RecordingContext.test.tsx` — +7 tests（IpcSessionStore モック化し
+  セッション呼び出し・失敗時の録音継続を検証）
+- 実装中に検出・修正したバグ:
+  - startRecording 末尾の `errors: []` リセットが開始処理中に記録した
+    エラー（セッション作成失敗等）を消していた
+    → 開始時に先にクリアし、末尾は prev.errors を引き継ぐよう修正
+- 検証: `npm run verify`（tsc clean + 348 tests）・`npm run build` 通過
 
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 

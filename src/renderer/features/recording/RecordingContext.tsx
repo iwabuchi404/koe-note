@@ -11,7 +11,11 @@ import type {
   ChunkTranscriptionProgress
 } from '@shared/types'
 import { AdvancedRecordingFileService } from './services/AdvancedRecordingFileService'
+import { RecordingSession } from './usecases/RecordingSession'
+import { IpcSessionStore } from './services/IpcSessionStore'
 import { durationFromBytes } from '@shared/transcriptFile'
+import { DEFAULT_ENCODING } from '@shared/audioFormat'
+import type { SessionSourceKind } from '@shared/session'
 import { AdvancedRecordingTabData } from '@renderer/features/tabs/TabTypes'
 import { LoggerFactory, LogCategories } from '@renderer/shared/utils/LoggerFactory'
 
@@ -105,6 +109,8 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const audioWorkletServiceRef = useRef<AudioWorkletRecordingService | null>(null)
   const recordingStartTimeRef = useRef<number>(0)
   const baseFileNameRef = useRef<string>('')
+  // v2 セッション永続化（旧 manifest 経路と並走する dual-write）
+  const recordingSessionRef = useRef<RecordingSession | null>(null)
 
   // 文字起こしヘッダーのメタデータを実測値で書くための補助ref
   // （非同期コールバックの中から最新のReact stateを参照できないため）
@@ -160,10 +166,22 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         format
       )
       logger.info(`グローバル録音 チャンク#${event.chunkNumber}自動保存完了`, { filePath })
-      
+
       // 初回チャンク保存時は左ペインが自動更新
     } catch (error) {
       const errorMessage = `チャンク#${event.chunkNumber}自動保存失敗: ${error instanceof Error ? error.message : String(error)}`
+      addError('recording', errorMessage)
+    }
+
+    // v2 セッションへの保存（dual-write。失敗しても録音は継続する）
+    try {
+      await recordingSessionRef.current?.appendChunk(
+        event.chunkNumber,
+        event.chunk,
+        new Date(event.timestamp).toISOString()
+      )
+    } catch (error) {
+      const errorMessage = `チャンク#${event.chunkNumber}セッション保存失敗: ${error instanceof Error ? error.message : String(error)}`
       addError('recording', errorMessage)
     }
   }, [addError, setRecordingFile])
@@ -257,6 +275,14 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const errorMessage = `チャンク#${result.chunkNumber}文字起こし追記失敗: ${error instanceof Error ? error.message : String(error)}`
         addError('transcription', errorMessage)
       }
+
+      // v2 セッションの transcript に反映（dual-write。失敗しても録音は継続する）
+      try {
+        await recordingSessionRef.current?.appendTranscription(result.chunkNumber, result.text)
+      } catch (error) {
+        const errorMessage = `チャンク#${result.chunkNumber}セッションtranscript保存失敗: ${error instanceof Error ? error.message : String(error)}`
+        addError('transcription', errorMessage)
+      }
     }
   }, [addError, setRecordingFile])
 
@@ -290,6 +316,10 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // 設定を更新
       currentConfigRef.current = config
 
+      // 前回セッションのエラーをクリア（この後の開始処理で記録される
+      // エラーは末尾の状態初期化で消えないよう prev.errors を引き継ぐ）
+      setRecordingData(prev => ({ ...prev, errors: [] }))
+
       // ベースファイル名生成（design-doc準拠）
       const timestamp = new Date().toISOString()
         .replace(/:/g, '')
@@ -305,6 +335,38 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         config.recordingSettings.format,
         new Date().toISOString()
       )
+
+      // v2 セッション開始（dual-write。失敗しても録音は継続する）
+      recordingSessionRef.current = null
+      try {
+        const session = new RecordingSession(new IpcSessionStore())
+        const sourceKindMap: Record<typeof config.recordingSettings.source, SessionSourceKind> = {
+          microphone: 'microphone',
+          desktop: 'desktop',
+          mix: 'mixed'
+        }
+        const sourceKind = sourceKindMap[config.recordingSettings.source]
+        await session.start({
+          sourceId: sourceKind,
+          sourceKind,
+          device: config.recordingSettings.deviceId,
+          format: config.recordingSettings.format,
+          encoding: { ...DEFAULT_ENCODING },
+          transcription: config.transcriptionSettings.enabled
+            ? {
+                engine: 'faster-whisper',
+                model: config.transcriptionSettings.model,
+                language: config.transcriptionSettings.language
+              }
+            : undefined,
+          meta: { legacyBaseName: baseFileNameRef.current }
+        })
+        recordingSessionRef.current = session
+        logger.info('v2 セッション開始', { sessionId: session.id })
+      } catch (error) {
+        const errorMessage = `セッション作成失敗: ${error instanceof Error ? error.message : String(error)}`
+        addError('recording', errorMessage)
+      }
 
       // 文字起こしメタデータ用の補助refをセッション単位でリセット
       chunkSizesRef.current = new Map()
@@ -350,8 +412,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         startTime: now,
         recordingSettings: config.recordingSettings,
         transcriptionSettings: config.transcriptionSettings,
-        chunks: [],
-        errors: []
+        chunks: []
       }))
 
       // 左ペインとの連携: 録音中ファイル情報を設定
@@ -410,6 +471,19 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           return chunk
         })
       }))
+
+      // v2 セッションを締める（dual-write。失敗しても停止処理は継続する）
+      try {
+        const endedAt = new Date().toISOString()
+        const elapsed = recordingStartTimeRef.current
+          ? (Date.now() - recordingStartTimeRef.current) / 1000
+          : 0
+        await recordingSessionRef.current?.finalize(endedAt, elapsed)
+      } catch (error) {
+        const errorMessage = `セッション確定失敗: ${error instanceof Error ? error.message : String(error)}`
+        addError('recording', errorMessage)
+      }
+      recordingSessionRef.current = null
 
       // サービスクリーンアップ
       audioWorkletServiceRef.current = null
