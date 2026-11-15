@@ -136,9 +136,25 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 - `file:*` の wire バイナリ型を `Buffer` → `Uint8Array` に（Buffer は Uint8Array の部分型）
 - `models:downloadProgress` 送信 payload を `ModelDownloadProgressEvent` で型付け
 - 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
-- 既知の残課題: `models:removeModel` の実引数はモデルIDではなくモデルルートパス
-  （ModelDownloadService.getModelPath がルートを返すため全モデル削除の可能性。
-   契約コメントに注記済み、動作変更は別途対応）
+- ~~既知の残課題: `models:removeModel` の実引数はモデルIDではなくモデルルートパス~~
+  → `c2e868d` で修正（getModelPath を models--<org>--<name> へ + main 側ガード）
+
+### Phase T1: 録音周りのテスト拡充（v2改修計画の前倒し安全網）
+
+- 過去の実害（exe誤起動・レンダラ飽和・manifest番号ズレ・WS障害）を踏まえ、
+  録音パイプラインの振る舞いを担保するテストを追加（226 → 269 tests）
+- `tests/unit/RecordingContext.test.tsx`（10件）:
+  AudioWorkletRecordingService / AdvancedRecordingFileService をモック化し、
+  開始→チャンク保存→文字起こし追記→停止の全経路を検証。
+  「保存失敗・文字起こし失敗でも録音は継続する」不変条件を固定
+- `tests/unit/transcriptionWebSocket.test.ts`（12件）:
+  FakeWebSocket で接続・送信形式・chunkNumber 紐付け・切断・再接続を検証。
+  chunkNumber 欠落時は「推測しないで onError」になることを固定
+- `tests/unit/fileLibrary.test.ts`（16件）:
+  分類・ペアリング（純粋関数）+ listFiles を実 tmp ディレクトリで統合検証
+- `tests/unit/modelRemove.test.ts`（5件）:
+  removeModel バグの回帰防止（renderer のパス解決 + main の rm ガード）
+- 検証: `npm run verify`（tsc clean + 269 tests）通過
 
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
