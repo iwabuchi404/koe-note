@@ -286,13 +286,13 @@ Step 5: 旧書き込み経路（AdvancedRecordingFileService）は削除
 
 ---
 
-## 7. 未決事項（Phase 1 開始前に決める）
+## 7. 決定事項（Phase 1 開始前に確定）
 
-1. **session-id の形式** — `YYYYMMDD_HHMMSS_<rand4>` 案。旧 baseName との併記をどうするか
-2. **デスクトップ音声の個別トラック** — 現行は mix のみ。AudioWorklet の2ストリーム同時録音を新設計に入れるか、Phase 1 で「mic 個別 + desktop 個別」まで行くか範囲要確認
-3. **renderer→main→WS 移行のタイミング** — Phase 1 で即やるか、renderer WS を `TranscriptionEngine` の暫定実装として残すか。後者なら IPC 契約変更を Phase 2 に遅らせられる
-4. **WAV チャンクのサンプルレート** — AudioContext ネイティブ（48k等）のまま書くか 16kHz にリサンプルするか（ASR 入力との一致を考える）
-5. **lamejs の去留** — 分割 WAV 原本化によりエクスポート用のみに縮小。`@breezystack/lamejs` 移行 or エクスポート機能側で再検討
+1. **session-id の形式** — **`YYYYMMDD_HHMMSS_<rand4>`**（例: `20261115_134200_x4f2`）。日時ソート可能・可読・同一秒衝突は rand4 で回避。ディレクトリが `sessions/` なので `session_` プレフィックスは不要
+2. **デスクトップ音声の個別トラック** — **Phase 2 以降**。Phase 1 の録音ソースは現行どおり mic（+mix）で、Session スキーマの `sources[]` は複数ソースを表現できる設計だけ先行確保する
+3. **renderer→main→WS 移行** — **Phase 2**。Phase 1 では renderer の `TranscriptionWebSocketService` を `TranscriptionEngine` の暫定実装として残す（IPC 契約変更不要）。エンジンを main に寄せる本格移行は speech.cpp 統合と同じ Phase 2/3 で行う
+4. **WAV チャンクのサンプルレート** — **設定で選択可能にする**（例: 16kHz / 44.1kHz / ネイティブ）。`CaptureConfig` に `sampleRate` を持たせ、Worklet 内でリサンプルする実装と、ネイティブレートで保存する実装の両方を用意する
+5. **lamejs の去留** — **エクスポート用途のみに縮小**。録音の原本保存からは外れる。`@breezystack/lamejs` 移行はエクスポート機能を実装する際に再検討（優先度低）
 
 ---
 
