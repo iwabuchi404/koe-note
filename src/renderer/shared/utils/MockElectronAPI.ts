@@ -224,6 +224,29 @@ export const createMockElectronAPI = (): ElectronAPI => ({
   },
   getWorkingDirectory: async () => '/mock/path',
 
+  // セッション（v2 録音保存形式）
+  sessionCreate: async (meta) => {
+    console.log('Mock sessionCreate:', meta)
+    return { id: '20261115_134200_x4f2' }
+  },
+  sessionAppendChunk: async (req) => {
+    console.log('Mock sessionAppendChunk:', req.sessionId, req.sourceId)
+    return { file: `audio/${req.sourceId}/chunk_000.wav` }
+  },
+  sessionUpdate: async (sessionId, patch) => {
+    console.log('Mock sessionUpdate:', sessionId, patch)
+  },
+  sessionSaveTranscript: async (sessionId, transcript) => {
+    console.log('Mock sessionSaveTranscript:', sessionId, transcript.id)
+  },
+  sessionList: async () => [],
+  sessionLoad: async (sessionId) => {
+    throw new Error(`セッションが見つかりません: ${sessionId}`)
+  },
+  sessionLoadTranscript: async (sessionId, transcriptId) => {
+    throw new Error(`transcript が見つかりません: ${sessionId}/${transcriptId}`)
+  },
+
   // ログ（モックでは標準出力へ）
   logWrite: async (message: string) => {
     console.log('[mock log]', message)

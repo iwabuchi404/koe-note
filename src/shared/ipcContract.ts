@@ -18,6 +18,13 @@ import type {
   TranscriptionFile,
   TranscriptionResult,
 } from './types'
+import type {
+  CreateSessionParams,
+  Session,
+  SessionState,
+  SessionTranscriptRef
+} from './session'
+import type { TranscriptResult } from './transcript'
 
 /** ファイル選択ダイアログのフィルタ */
 export interface FileFilter {
@@ -82,6 +89,15 @@ export interface IpcContract {
   'models:downloadWhisperModel': { req: [modelId: string]; res: void }
   'models:cancelDownload': { req: [modelId: string]; res: void }
 
+  // ---- セッション（v2 録音保存形式） ----
+  'sessions:create': { req: [meta: CreateSessionParams]; res: { id: string } }
+  'sessions:appendChunk': { req: [req: SessionAppendChunkRequest]; res: { file: string } }
+  'sessions:update': { req: [sessionId: string, patch: SessionUpdateRequest]; res: void }
+  'sessions:saveTranscript': { req: [sessionId: string, transcript: TranscriptResult]; res: void }
+  'sessions:list': { req: []; res: Session[] }
+  'sessions:load': { req: [sessionId: string]; res: Session }
+  'sessions:loadTranscript': { req: [sessionId: string, transcriptId: string]; res: TranscriptResult }
+
   // ---- ウィンドウ操作 ----
   'window:minimize': { req: []; res: void }
   'window:maximize': { req: []; res: void }
@@ -110,6 +126,26 @@ export interface ModelDownloadProgressEvent {
   /** ダウンロード後の検証結果。未検証の進捗通知では省略される */
   verified?: boolean
   errors?: string[]
+}
+
+/** sessions:appendChunk の引数 */
+export interface SessionAppendChunkRequest {
+  sessionId: string
+  sourceId: string
+  /** チャンクのバイナリ（WAV/PCM 等。wire 型は Uint8Array） */
+  data: Uint8Array
+  audioOffsetSeconds: number
+  durationSeconds: number
+  recordedAt: string
+}
+
+/** sessions:update の patch（明示フィールドのみ更新可能） */
+export interface SessionUpdateRequest {
+  state?: SessionState
+  endedAt?: string
+  durationSeconds?: number
+  /** transcript 参照の部分更新（status/error のみ） */
+  transcriptRef?: { id: string } & Partial<Pick<SessionTranscriptRef, 'status' | 'error'>>
 }
 
 /** push イベントチャンネル → ペイロード */

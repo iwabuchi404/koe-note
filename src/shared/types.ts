@@ -18,8 +18,12 @@ import type {
   FileFilter,
   ModelDownloadProgressEvent,
   SelectedFileResult,
+  SessionAppendChunkRequest,
+  SessionUpdateRequest,
   SpeechServerStatusEvent,
 } from './ipcContract'
+import type { CreateSessionParams, Session } from './session'
+import type { TranscriptResult } from './transcript'
 
 // =============================================================================
 // ファイル・録音
@@ -304,6 +308,17 @@ export interface ModelVerificationResult {
 // =============================================================================
 
 /**
+ * sessionAppendChunk の renderer 向け引数
+ *
+ * wire 型（ipcContract.SessionAppendChunkRequest）の data は Uint8Array だが、
+ * renderer は Blob/ArrayBuffer を持っているため preload が変換する。
+ */
+export interface SessionAppendChunkInput
+  extends Omit<SessionAppendChunkRequest, 'data'> {
+  data: ArrayBuffer | Blob
+}
+
+/**
  * renderer が window.electronAPI として参照する API
  *
  * 実装は src/preload/api.ts。ワイヤ上の引数・戻り値の契約は
@@ -369,6 +384,19 @@ export interface ElectronAPI {
   downloadWhisperModel: (modelId: string) => Promise<void>
   cancelModelDownload: (modelId: string) => Promise<void>
   removeModel: (modelId: string) => Promise<void>
+
+  // ---- セッション（v2 録音保存形式） ----
+  /** 録音セッションを作成する（sessions/<id>/ + session.json） */
+  sessionCreate: (meta: CreateSessionParams) => Promise<{ id: string }>
+  /** チャンクを保存する（chunk ファイル → session.json 更新） */
+  sessionAppendChunk: (req: SessionAppendChunkInput) => Promise<{ file: string }>
+  /** 録音状態・transcript 参照の部分更新 */
+  sessionUpdate: (sessionId: string, patch: SessionUpdateRequest) => Promise<void>
+  /** 文字起こし結果を保存する（transcripts/<id>.json + 参照 upsert） */
+  sessionSaveTranscript: (sessionId: string, transcript: TranscriptResult) => Promise<void>
+  sessionList: () => Promise<Session[]>
+  sessionLoad: (sessionId: string) => Promise<Session>
+  sessionLoadTranscript: (sessionId: string, transcriptId: string) => Promise<TranscriptResult>
 
   // ---- ウィンドウ操作 ----
   windowMinimize: () => Promise<void>

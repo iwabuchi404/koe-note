@@ -111,6 +111,15 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
     cancelModelDownload: vi.fn().mockResolvedValue(undefined),
     removeModel: vi.fn().mockResolvedValue(undefined),
 
+    // ---- セッション（v2 録音保存形式） ----
+    sessionCreate: vi.fn().mockResolvedValue({ id: '20261115_134200_x4f2' }),
+    sessionAppendChunk: vi.fn().mockResolvedValue({ file: 'audio/microphone/chunk_000.wav' }),
+    sessionUpdate: vi.fn().mockResolvedValue(undefined),
+    sessionSaveTranscript: vi.fn().mockResolvedValue(undefined),
+    sessionList: vi.fn().mockResolvedValue([]),
+    sessionLoad: vi.fn().mockRejectedValue(new Error('セッションが見つかりません')),
+    sessionLoadTranscript: vi.fn().mockRejectedValue(new Error('transcript が見つかりません')),
+
     // ---- ウィンドウ操作 ----
     windowMinimize: vi.fn().mockResolvedValue(undefined),
     windowMaximize: vi.fn().mockResolvedValue(undefined),

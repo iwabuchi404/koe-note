@@ -9,6 +9,7 @@ import { registerWindowIpc } from './window'
 import { registerTranscriptionIpc } from './transcription'
 import { registerSpeechIpc } from './speech'
 import { registerModelsIpc } from './models'
+import { registerSessionsIpc } from './sessions'
 
 export function registerAllIpc(ctx: MainContext): void {
   registerDialogIpc(ctx)
@@ -18,4 +19,5 @@ export function registerAllIpc(ctx: MainContext): void {
   registerTranscriptionIpc()
   registerSpeechIpc(ctx)
   registerModelsIpc(ctx)
+  registerSessionsIpc()
 }

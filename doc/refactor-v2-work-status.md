@@ -172,6 +172,51 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
     `NSAudioCaptureUsageDescription` が必要（E39 〜。Windows 主体なら後回し可）
   - `ws` パッケージは Node 22 のネイティブ WebSocket で置き換え可能（任意）
 
+## 4b. v2 改修計画（doc/KoeNote v2 改修計画.txt の実施状況）
+
+### Phase 0: 設計（完了）
+
+- `001410e` `doc/v2-phase0-design.md` — v2 アーキテクチャ・スキーマ・互換ポリシーの設計
+- `51d9cc5` 未決事項を確定:
+  - session-id: `YYYYMMDD_HHMMSS_<rand4>`
+  - desktop 個別トラック → Phase 2（スキーマは `sources[]` で拡張余地あり）
+  - renderer→main→WS 移行 → Phase 2（Phase 1 は既存 WS を継続利用）
+  - WAV サンプルレートは設定で選択可能
+  - lamejs はエクスポート用途のみに縮小
+- `3e1cc9f` `doc/research-speechcpp.md` — speech.cpp スパイク調査
+  （OpenAI 互換 HTTP で TranscriptionEngine ポートに適合することを実測確認。
+  parakeet-ja q8_0 で 3s チャンク HTTP 往復 ~200ms）
+
+### Phase 1: 録音・保存基盤
+
+| Step | 内容 | 状態 |
+|---|---|---|
+| 1 | `shared/session.ts` + `shared/transcript.ts`（`4f54987`、+41 tests） | 完了 |
+| 2 | main 側 fs `sessionStore.ts` + `sessions:*` IPC | 完了（下記） |
+| 3 | renderer `IpcSessionStore` + RecordingContext を usecase 経由に | 未着手 |
+| 4 | fileLibrary を sessions/ 読み対応に拡張 | 未着手 |
+| 5 | 旧書き込み経路（AdvancedRecordingFileService）削除 | 未着手 |
+
+#### Step 2 の内容
+
+- `src/main/services/sessionStore.ts` — Electron 非依存の fs 実装（rootDir 注入）。
+  チャンク tmp→rename・session.json 原子書き込み・ID 検証（SAFE_ID）・
+  読み出し時の interrupted 正規化（クラッシュ復旧）
+- `src/main/ipc/sessions.ts` — `sessions:create/appendChunk/update/saveTranscript/
+  list/load/loadTranscript` の7チャンネル（typed `handle()` 契約準拠）
+- `src/shared/ipcContract.ts` — 上記契約 + `SessionAppendChunkRequest` /
+  `SessionUpdateRequest`
+- `src/shared/types.ts` / `src/preload/api.ts` — `session*` メソッド追加。
+  chunk の data は renderer 側 Blob/ArrayBuffer → wire 上 Uint8Array に preload で変換
+- `tests/unit/sessionStore.test.ts` — 23 tests（作成・一覧・連番・複数ソース・
+  transcript roundtrip・パストラバーサル拒否・破損スキップ・interrupted 正規化）
+- 実装中に検出・修正したバグ:
+  - 読み出し正規化が書き込み経路に漏れて state を interrupted 汚染する
+    → `loadSessionRaw`（内部用）と `loadSession`（正規化）を分離
+  - `appendSessionChunk` の戻り値が Windows で `\` 区切りになる
+    → POSIX 相対パスで返すよう修正
+- 検証: `npm run verify`（tsc clean + 333 tests）・`npm run build` 通過
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）

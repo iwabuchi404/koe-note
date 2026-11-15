@@ -104,6 +104,26 @@ export const api: ElectronAPI = {
 
   onModelDownloadProgress: (callback) => subscribe('models:downloadProgress', callback),
 
+  // ---- セッション（v2 録音保存形式） ----
+  sessionCreate: (meta) => invoke('sessions:create', meta),
+
+  sessionAppendChunk: async (req) => {
+    const arrayBuffer = req.data instanceof Blob ? await req.data.arrayBuffer() : req.data
+    return invoke('sessions:appendChunk', { ...req, data: Buffer.from(arrayBuffer) })
+  },
+
+  sessionUpdate: (sessionId, patch) => invoke('sessions:update', sessionId, patch),
+
+  sessionSaveTranscript: (sessionId, transcript) =>
+    invoke('sessions:saveTranscript', sessionId, transcript),
+
+  sessionList: () => invoke('sessions:list'),
+
+  sessionLoad: (sessionId) => invoke('sessions:load', sessionId),
+
+  sessionLoadTranscript: (sessionId, transcriptId) =>
+    invoke('sessions:loadTranscript', sessionId, transcriptId),
+
   // ---- ウィンドウ操作 ----
   windowMinimize: () => invoke('window:minimize'),
 
