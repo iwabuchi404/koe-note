@@ -14,6 +14,7 @@
 import { spawn, execSync, type ChildProcess, type SpawnOptions } from 'child_process'
 import fs from 'fs'
 import path from 'path'
+import net from 'net'
 import WebSocket from 'ws'
 
 /** サーバー起動状態 */
@@ -68,6 +69,61 @@ export function buildExeCandidates(paths: WhisperServerPaths): string[] {
     // ソースからビルドして実行する場合: onedir（現在の形式）
     path.join(projectRoot, 'whisper-server', 'dist', 'whisper-server', 'whisper-server.exe')
   ]
+}
+
+/** ポートが使用中か（起動前チェック・外部サーバー検出用） */
+export function isPortInUse(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(1500);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => {
+      // ECONNREFUSED 等は未使用とみなす
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+
+// Python環境チェック関数
+export function checkPythonAvailability(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const pythonProcess = spawn('python', ['--version'], { stdio: 'pipe' });
+    pythonProcess.on('close', (code) => {
+      resolve(code === 0);
+    });
+    pythonProcess.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
+// 開発時に使う python を解決する（venv を優先）
+//
+// システムの python には faster-whisper / websockets が入っていないため、
+// 単に checkPythonAvailability() で「python があるか」だけ見ると
+// 起動に失敗する（実測で確認）。
+export async function resolveDevPython(
+  bundleDir: string,
+  log: (message: string) => void
+): Promise<string | null> {
+  // app.getAppPath() は dist/ を指すため、リポジトリルートを基準に探索する
+  const projectRoot = resolveProjectRoot(bundleDir);
+  const candidates = buildDevPythonCandidates(projectRoot);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      log(`Using venv python: ${candidate}`);
+      return candidate;
+    }
+  }
+  return (await checkPythonAvailability()) ? 'python' : null;
 }
 
 export interface WhisperServerDeps {
