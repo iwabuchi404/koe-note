@@ -265,33 +265,6 @@ export function registerFileIpc(): void {
     }
   });
 
-  // バイナリファイル追記ハンドラー（録音チャンクの書き込み）
-  //
-  // 録音はチャンクごとにこの IPC を呼ぶ。saveToPath で「既存を読み込み →
-  // 新規と結合 → 全体書き戻し」をすると O(n²) になり、長時間録音では
-  // ファイル全体の読み書きが支配的になるため、追記専用の IPC を用意する。
-  handle('file:appendToPath', async (event, filePath: string, buffer: Uint8Array): Promise<boolean> => {
-    try {
-      const target = resolveWithinRoot(workspaceRoot(), filePath);
-
-      const directory = path.dirname(target);
-      if (!fs.existsSync(directory)) {
-        fs.mkdirSync(directory, { recursive: true });
-      }
-
-      fs.appendFileSync(target, buffer);
-
-      // 追記後の総サイズをログに残す（manifest の totalBytes と突き合わせるため）
-      const total = fs.statSync(target).size;
-      writeLog(`バイナリファイル追記完了: ${target} (+${buffer.length} bytes, 合計 ${total} bytes)`);
-
-      return true;
-    } catch (error) {
-      writeLog(`バイナリファイル追記エラー: ${error}`);
-      throw toAppError(error, 'バイナリファイルの追記に失敗しました');
-    }
-  });
-
   // 作業ディレクトリ取得ハンドラー
   handle('file:getWorkingDirectory', async (): Promise<string> => {
     try {

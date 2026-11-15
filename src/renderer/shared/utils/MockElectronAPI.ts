@@ -218,10 +218,6 @@ export const createMockElectronAPI = (): ElectronAPI => ({
     console.log('Mock saveTextFile:', filePath, content)
     return true
   },
-  appendFileToPath: async (filePath: string, data: Blob | ArrayBuffer) => {
-    console.log('Mock appendFileToPath:', filePath, data)
-    return true
-  },
   getWorkingDirectory: async () => '/mock/path',
 
   // セッション（v2 録音保存形式）

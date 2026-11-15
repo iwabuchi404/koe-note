@@ -75,7 +75,6 @@ export function createElectronAPI(overrides: Overrides = {}): ElectronAPIMock {
     saveFile: vi.fn().mockResolvedValue('/mock/path/file.mp3'),
     saveFileToPath: vi.fn().mockResolvedValue(true),
     saveTextFile: vi.fn().mockResolvedValue(true),
-    appendFileToPath: vi.fn().mockResolvedValue(true),
     getFileList: vi.fn().mockResolvedValue([]),
     deleteFile: vi.fn().mockResolvedValue(true),
     loadAudioFile: vi.fn().mockResolvedValue(SILENT_WAV_DATA_URL),

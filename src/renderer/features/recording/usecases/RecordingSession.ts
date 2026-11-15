@@ -86,6 +86,14 @@ export class RecordingSession {
   }
 
   /**
+   * ライブ transcript のセッション内相対パス（transcription 無効なら undefined）
+   * 録音中の表示用に使う（例: `transcripts/live-001.json`）
+   */
+  get transcriptFile(): string | undefined {
+    return this.transcript ? `transcripts/${this.transcript.id}.json` : undefined
+  }
+
+  /**
    * セッションを開始する（sessions/<id>/ + session.json を作る）
    *
    * 以降の appendChunk / appendTranscription / finalize はこの id を

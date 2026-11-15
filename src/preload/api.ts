@@ -45,11 +45,6 @@ export const api: ElectronAPI = {
   saveTextFile: (filePath: string, content: string) =>
     invoke('file:saveText', filePath, content),
 
-  appendFileToPath: async (filePath: string, data: ArrayBuffer | Blob) => {
-    const arrayBuffer = data instanceof Blob ? await data.arrayBuffer() : data
-    return invoke('file:appendToPath', filePath, Buffer.from(arrayBuffer))
-  },
-
   getFileList: (folderPath: string) => invoke('file:getList', folderPath),
 
   deleteFile: (filePath: string) => invoke('file:delete', filePath),

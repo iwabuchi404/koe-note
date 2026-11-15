@@ -63,7 +63,6 @@ export interface IpcContract {
   'file:loadAudio': { req: [filePath: string]; res: string }
   'file:saveText': { req: [filePath: string, content: string]; res: boolean }
   'file:saveToPath': { req: [filePath: string, data: Uint8Array]; res: boolean }
-  'file:appendToPath': { req: [filePath: string, data: Uint8Array]; res: boolean }
   'file:getWorkingDirectory': { req: []; res: string }
 
   // ---- 設定 ----

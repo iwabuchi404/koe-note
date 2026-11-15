@@ -187,7 +187,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   （OpenAI 互換 HTTP で TranscriptionEngine ポートに適合することを実測確認。
   parakeet-ja q8_0 で 3s チャンク HTTP 往復 ~200ms）
 
-### Phase 1: 録音・保存基盤
+### Phase 1: 録音・保存基盤（完了）
 
 | Step | 内容 | 状態 |
 |---|---|---|
@@ -195,7 +195,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 | 2 | main 側 fs `sessionStore.ts` + `sessions:*` IPC | 完了（下記） |
 | 3 | renderer `IpcSessionStore` + RecordingContext を usecase 経由に | 完了（下記） |
 | 4 | fileLibrary を sessions/ 読み対応に拡張 | 完了（下記） |
-| 5 | 旧書き込み経路（AdvancedRecordingFileService）削除 | 未着手 |
+| 5 | 旧書き込み経路（AdvancedRecordingFileService）削除 | 完了（下記） |
 
 #### Step 2 の内容
 
@@ -256,6 +256,27 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 - テスト: `fileLibrary.test.ts` +3（セッション列挙・transcript ペア・旧形式と並存）、
   `sessionStore.test.ts` +3（mp3 連結・wav ヘッダ書き換え・空セッションでエラー）
 - 検証: `npm run verify`（tsc clean + 354 tests）・`npm run build` 通過
+
+#### Step 5 の内容（旧書き込み経路の削除）
+
+- `RecordingContext` — dual-write を解除し v2 セッションのみに:
+  - `AdvancedRecordingFileService`（saveChunk / appendTranscription /
+    updateTranscriptionInManifest / ensureManifest）の呼び出しを全廃
+  - 旧 trans.txt ヘッダ用の補助 ref（chunkSizes / segmentCount / startedAt）を削除
+  - `recordingFile`（録音中マーカー）はセッション ID を表示名にし
+    `isSession`/`sessionId` を付与。transcriptionPath は
+    `RecordingSession.transcriptFile`（`transcripts/live-001.json`）を返す
+  - session.json の meta は `legacyBaseName` → `displayName` に改称
+- `AdvancedRecordingFileService.ts` + そのテスト（17件）を削除
+- `file:appendToPath` IPC を全層から削除（旧経路専用だった）:
+  ipcContract / ipc/files.ts / preload api.ts / types.ts ElectronAPI /
+  モック2箇所
+- 残したもの: `recordingManifest.ts` / `transcriptFile.ts`（旧形式の読み出し
+  SSOT。書き込みヘルパーはテストのフィクスチャ用途で残置）、
+  `transcription:exists/getPath`（旧形式の read 経路）
+- `RecordingContext.test.tsx` — fileService モックを除去し、
+  セッション経路の不変条件で再構成（16 tests）
+- 検証: `npm run verify`（tsc clean + 336 tests）・`npm run build` 通過
 
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 

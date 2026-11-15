@@ -10,10 +10,8 @@ import type {
   ChunkTranscriptionResult,
   ChunkTranscriptionProgress
 } from '@shared/types'
-import { AdvancedRecordingFileService } from './services/AdvancedRecordingFileService'
 import { RecordingSession } from './usecases/RecordingSession'
 import { IpcSessionStore } from './services/IpcSessionStore'
-import { durationFromBytes } from '@shared/transcriptFile'
 import { DEFAULT_ENCODING } from '@shared/audioFormat'
 import type { SessionSourceKind } from '@shared/session'
 import { AdvancedRecordingTabData } from '@renderer/features/tabs/TabTypes'
@@ -109,14 +107,8 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const audioWorkletServiceRef = useRef<AudioWorkletRecordingService | null>(null)
   const recordingStartTimeRef = useRef<number>(0)
   const baseFileNameRef = useRef<string>('')
-  // v2 セッション永続化（旧 manifest 経路と並走する dual-write）
+  // v2 セッション永続化
   const recordingSessionRef = useRef<RecordingSession | null>(null)
-
-  // 文字起こしヘッダーのメタデータを実測値で書くための補助ref
-  // （非同期コールバックの中から最新のReact stateを参照できないため）
-  const chunkSizesRef = useRef<Map<number, number>>(new Map())
-  const transcribedSegmentCountRef = useRef<number>(0)
-  const transcriptionStartedAtRef = useRef<string>('')
 
   // エラー追加ヘルパー
   const addError = useCallback((type: 'recording' | 'transcription' | 'encoding', message: string) => {
@@ -146,34 +138,12 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       transcriptionStatus: 'pending' as const
     }
 
-    // 文字起こしヘッダー（duration）とセグメント位置（audioOffset）の算出に必要な
-    // バイト数を、Reactのstateと別に保持する。非同期コールバックの中から
-    // 最新stateを参照できないため。
-    chunkSizesRef.current.set(event.chunkNumber, event.size)
-
     setRecordingData(prev => ({
       ...prev,
       chunks: [...prev.chunks, newChunk]
     }))
 
-    // チャンク毎の自動保存
-    try {
-      const format = currentConfigRef.current.recordingSettings.format
-      const filePath = await AdvancedRecordingFileService.saveChunk(
-        event.chunk,
-        event.chunkNumber,
-        baseFileNameRef.current,
-        format
-      )
-      logger.info(`グローバル録音 チャンク#${event.chunkNumber}自動保存完了`, { filePath })
-
-      // 初回チャンク保存時は左ペインが自動更新
-    } catch (error) {
-      const errorMessage = `チャンク#${event.chunkNumber}自動保存失敗: ${error instanceof Error ? error.message : String(error)}`
-      addError('recording', errorMessage)
-    }
-
-    // v2 セッションへの保存（dual-write。失敗しても録音は継続する）
+    // セッションへの保存（失敗しても録音は継続する）
     try {
       await recordingSessionRef.current?.appendChunk(
         event.chunkNumber,
@@ -184,7 +154,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const errorMessage = `チャンク#${event.chunkNumber}セッション保存失敗: ${error instanceof Error ? error.message : String(error)}`
       addError('recording', errorMessage)
     }
-  }, [addError, setRecordingFile])
+  }, [addError])
 
   // 録音統計更新コールバック
   const handleStatsUpdate = useCallback((stats: RecordingStats) => {
@@ -207,7 +177,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // エラーコールバック
   const handleError = useCallback((error: Error) => {
     addError('recording', error.message)
-  }, [addError, setRecordingFile])
+  }, [addError])
 
   // 文字起こし結果コールバック
   const handleTranscriptionResult = useCallback(async (result: ChunkTranscriptionResult) => {
@@ -222,61 +192,9 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       )
     }))
 
-    // 文字起こし結果をファイルに追記
+    // 文字起こし結果をセッションの transcript に反映
+    // （失敗しても録音は継続する）
     if (result.text && result.text.trim()) {
-      try {
-        const config = currentConfigRef.current
-        const sizes = chunkSizesRef.current
-
-        // このチャンクより前のバイト数合計 = 音声上での開始位置
-        let bytesBefore = 0
-        let totalBytes = 0
-        sizes.forEach((size, chunkNumber) => {
-          totalBytes += size
-          if (chunkNumber < result.chunkNumber) {
-            bytesBefore += size
-          }
-        })
-
-        transcribedSegmentCountRef.current += 1
-        if (!transcriptionStartedAtRef.current) {
-          transcriptionStartedAtRef.current = new Date().toISOString()
-        }
-
-        const filePath = await AdvancedRecordingFileService.appendTranscription({
-          chunkNumber: result.chunkNumber,
-          audioOffsetSeconds: durationFromBytes(bytesBefore),
-          text: result.text,
-          baseName: baseFileNameRef.current,
-          audioFileName: `${baseFileNameRef.current}.${config.recordingSettings.format}`,
-          model: config.transcriptionSettings.model,
-          language: config.transcriptionSettings.language,
-          segmentCount: transcribedSegmentCountRef.current,
-          durationSeconds: durationFromBytes(totalBytes),
-          transcribedAt: transcriptionStartedAtRef.current
-        })
-        // Phase E: manifest の文字起こし情報も同期に更新する（セグメント数などが增えたかより）
-        await AdvancedRecordingFileService.updateTranscriptionInManifest(
-          baseFileNameRef.current,
-          {
-            enabled: true,
-            model: config.transcriptionSettings.model,
-            language: config.transcriptionSettings.language,
-            file: `${baseFileNameRef.current}.trans.txt`,
-            segmentCount: transcribedSegmentCountRef.current,
-            transcribedAt: transcriptionStartedAtRef.current
-          }
-        )
-
-        logger.info(`グローバル録音 チャンク#${result.chunkNumber}文字起こし追記完了`, { filePath, text: result.text.substring(0, 30) + '...' })
-
-        // 文字起こしファイル保存後は左ペインが自動更新
-      } catch (error) {
-        const errorMessage = `チャンク#${result.chunkNumber}文字起こし追記失敗: ${error instanceof Error ? error.message : String(error)}`
-        addError('transcription', errorMessage)
-      }
-
-      // v2 セッションの transcript に反映（dual-write。失敗しても録音は継続する）
       try {
         await recordingSessionRef.current?.appendTranscription(result.chunkNumber, result.text)
       } catch (error) {
@@ -284,7 +202,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         addError('transcription', errorMessage)
       }
     }
-  }, [addError, setRecordingFile])
+  }, [addError])
 
   // 文字起こし進捗コールバック
   const handleTranscriptionProgress = useCallback((progress: ChunkTranscriptionProgress) => {
@@ -328,15 +246,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         .slice(0, 15) // YYYYMMDD_HHMMSS
       baseFileNameRef.current = `recording_${timestamp}`
 
-      // Phase E: 録音のチャンク索引（manifest）を開始化する。
-      // 以降はチャンクごとに書き込みられる。
-      AdvancedRecordingFileService.ensureManifest(
-        baseFileNameRef.current,
-        config.recordingSettings.format,
-        new Date().toISOString()
-      )
-
-      // v2 セッション開始（dual-write。失敗しても録音は継続する）
+      // v2 セッション開始（失敗しても録音は継続する）
       recordingSessionRef.current = null
       try {
         const session = new RecordingSession(new IpcSessionStore())
@@ -359,7 +269,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 language: config.transcriptionSettings.language
               }
             : undefined,
-          meta: { legacyBaseName: baseFileNameRef.current }
+          meta: { displayName: baseFileNameRef.current }
         })
         recordingSessionRef.current = session
         logger.info('v2 セッション開始', { sessionId: session.id })
@@ -367,11 +277,6 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const errorMessage = `セッション作成失敗: ${error instanceof Error ? error.message : String(error)}`
         addError('recording', errorMessage)
       }
-
-      // 文字起こしメタデータ用の補助refをセッション単位でリセット
-      chunkSizesRef.current = new Map()
-      transcribedSegmentCountRef.current = 0
-      transcriptionStartedAtRef.current = ''
 
       // AudioWorkletRecordingServiceインスタンス作成
       audioWorkletServiceRef.current = new AudioWorkletRecordingService(
@@ -416,9 +321,14 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }))
 
       // 左ペインとの連携: 録音中ファイル情報を設定
+      // セッションが作れている場合はセッション ID を表示名にする
+      // （停止後にライブラリへ現れる項目と一致させるため）
+      const sessionId = recordingSessionRef.current?.id
       const recordingFileInfo = {
-        id: baseFileNameRef.current,
-        filename: `${baseFileNameRef.current}.${config.recordingSettings.format}`,
+        id: sessionId ?? baseFileNameRef.current,
+        filename: sessionId ?? `${baseFileNameRef.current}.${config.recordingSettings.format}`,
+        isSession: sessionId != null,
+        sessionId: sessionId ?? undefined,
         filepath: '', // 保存先は後で決定
         format: config.recordingSettings.format,
         size: 0,
@@ -426,8 +336,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         duration: 0,
         isRecording: true,
         hasTranscriptionFile: config.transcriptionSettings.enabled,
-        transcriptionPath: config.transcriptionSettings.enabled ? 
-          `${baseFileNameRef.current}.trans.txt` : undefined,
+        transcriptionPath: recordingSessionRef.current?.transcriptFile,
         isPairedFile: config.transcriptionSettings.enabled
       }
       setRecordingFile(recordingFileInfo)

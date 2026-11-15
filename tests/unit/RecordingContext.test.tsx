@@ -2,9 +2,9 @@
  * RecordingContext の録音オーケストレーション
  *
  * 録音周りで過去に壊れた経路を担保する:
- * - 開始時に manifest 初期化 → サービス起動 → isRecording/recordingFile 設定
- * - チャンク到着 → 自動保存（失敗しても録音は継続する）
- * - 文字起こし結果 → 追記 + manifest 更新（失敗は transcription エラー、録音は継続）
+ * - 開始時にセッション作成 → サービス起動 → isRecording/recordingFile 設定
+ * - チャンク到着 → セッション保存（失敗しても録音は継続する）
+ * - 文字起こし結果 → transcript 反映（失敗は transcription エラー、録音は継続）
  * - 停止 → pending チャンクをキャンセル扱い、状態クリア
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -61,18 +61,6 @@ vi.mock('@renderer/features/recording/services/AudioWorkletRecordingService', ()
       serviceState.instances.push(this)
     }
   }
-}))
-
-// ---- AdvancedRecordingFileService のモック ----
-const fileService = vi.hoisted(() => ({
-  ensureManifest: vi.fn(),
-  saveChunk: vi.fn(),
-  appendTranscription: vi.fn(),
-  updateTranscriptionInManifest: vi.fn()
-}))
-
-vi.mock('@renderer/features/recording/services/AdvancedRecordingFileService', () => ({
-  AdvancedRecordingFileService: fileService
 }))
 
 // ---- IpcSessionStore（v2 セッション永続化）のモック ----
@@ -156,9 +144,6 @@ describe('RecordingContext', () => {
   beforeEach(() => {
     serviceState.instances = []
     vi.clearAllMocks()
-    fileService.saveChunk.mockResolvedValue('/work/chunk.mp3')
-    fileService.appendTranscription.mockResolvedValue('/work/x.trans.txt')
-    fileService.updateTranscriptionInManifest.mockResolvedValue(undefined)
     sessionStore.createSession.mockResolvedValue({ id: '20261115_134200_x4f2' })
     sessionStore.appendChunk.mockResolvedValue({ file: 'audio/microphone/chunk_000.wav' })
     sessionStore.updateSession.mockResolvedValue(undefined)
@@ -166,7 +151,7 @@ describe('RecordingContext', () => {
     probe.ctx = null
   })
 
-  it('開始: manifest 初期化 → サービス起動 → isRecording/recordingFile 設定', async () => {
+  it('開始: セッション作成 → サービス起動 → isRecording/recordingFile 設定', async () => {
     await renderProvider()
 
     await act(async () => {
@@ -175,16 +160,12 @@ describe('RecordingContext', () => {
 
     expect(probe.ctx!.isRecording).toBe(true)
     expect(probe.ctx!.recordingFile?.isRecording).toBe(true)
-    // 実際のファイル名は recording_YYYY_MM_DD_HHMM 形式
-    expect(probe.ctx!.recordingFile?.filename).toMatch(/^recording_\d{4}_\d{2}_\d{2}_\d{4}\.mp3$/)
+    // 録音中マーカーはセッション ID を表示名にする
+    // （停止後にライブラリへ現れる項目と一致する）
+    expect(probe.ctx!.recordingFile?.filename).toBe('20261115_134200_x4f2')
+    expect(probe.ctx!.recordingFile?.isSession).toBe(true)
+    expect(probe.ctx!.recordingFile?.transcriptionPath).toBe('transcripts/live-001.json')
 
-    const baseName = fileService.ensureManifest.mock.calls[0][0]
-    expect(baseName).toMatch(/^recording_\d{4}_\d{2}_\d{2}_\d{4}$/)
-    expect(fileService.ensureManifest).toHaveBeenCalledWith(
-      baseName,
-      'mp3',
-      expect.any(String)
-    )
     expect(lastService().setTranscriptionConfig).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: true, serverUrl: 'ws://localhost:8770' })
     )
@@ -204,7 +185,7 @@ describe('RecordingContext', () => {
     expect(serviceState.instances).toHaveLength(1)
   })
 
-  it('チャンク到着で自動保存され、一覧に追加される', async () => {
+  it('チャンク到着でセッションに保存され、一覧に追加される', async () => {
     await renderProvider()
     await act(async () => {
       await probe.ctx!.startRecording(makeConfig())
@@ -214,34 +195,14 @@ describe('RecordingContext', () => {
     await emitChunk(2, 200)
 
     expect(probe.ctx!.recordingData.chunks).toHaveLength(2)
-    expect(fileService.saveChunk).toHaveBeenCalledTimes(2)
-    expect(fileService.saveChunk).toHaveBeenNthCalledWith(
+    expect(sessionStore.appendChunk).toHaveBeenCalledTimes(2)
+    expect(sessionStore.appendChunk).toHaveBeenNthCalledWith(
       2,
-      expect.any(Blob),
-      2,
-      expect.stringMatching(/^recording_/),
-      'mp3'
+      expect.objectContaining({ sessionId: '20261115_134200_x4f2' })
     )
   })
 
-  it('チャンク保存が失敗しても録音は継続する（error 記録のみ）', async () => {
-    fileService.saveChunk.mockRejectedValueOnce(new Error('disk full'))
-    await renderProvider()
-    await act(async () => {
-      await probe.ctx!.startRecording(makeConfig())
-    })
-
-    await emitChunk(1)
-
-    await waitFor(() => {
-      expect(probe.ctx!.recordingData.errors.some((e) => e.type === 'recording')).toBe(true)
-    })
-    expect(probe.ctx!.isRecording).toBe(true)
-    // 失敗してもチャンク自体は state に残る
-    expect(probe.ctx!.recordingData.chunks).toHaveLength(1)
-  })
-
-  it('文字起こし結果で追記 + manifest 更新 + チャンク completed', async () => {
+  it('文字起こし結果で transcript 保存 + チャンク completed', async () => {
     await renderProvider()
     await act(async () => {
       await probe.ctx!.startRecording(makeConfig())
@@ -250,17 +211,14 @@ describe('RecordingContext', () => {
     await emitTranscription(1, 'こんにちは')
 
     await waitFor(() => {
-      expect(fileService.appendTranscription).toHaveBeenCalledWith(
-        expect.objectContaining({ chunkNumber: 1, text: 'こんにちは' })
-      )
+      expect(sessionStore.saveTranscript).toHaveBeenCalled()
     })
-    expect(fileService.updateTranscriptionInManifest).toHaveBeenCalled()
     expect(probe.ctx!.recordingData.chunks[0].transcriptionStatus).toBe('completed')
     expect(probe.ctx!.recordingData.chunks[0].transcriptionText).toBe('こんにちは')
   })
 
-  it('文字起こし追記の失敗は transcription エラーになり録音は継続する', async () => {
-    fileService.appendTranscription.mockRejectedValueOnce(new Error('write failed'))
+  it('transcript 保存の失敗は transcription エラーになり録音は継続する', async () => {
+    sessionStore.saveTranscript.mockRejectedValueOnce(new Error('write failed'))
     await renderProvider()
     await act(async () => {
       await probe.ctx!.startRecording(makeConfig())
@@ -379,7 +337,7 @@ describe('RecordingContext', () => {
     )
   })
 
-  it('開始: セッション作成に失敗しても録音は継続する（dual-write の旧経路が残る）', async () => {
+  it('開始: セッション作成に失敗しても録音は継続する', async () => {
     sessionStore.createSession.mockRejectedValueOnce(new Error('session create failed'))
     await renderProvider()
 
@@ -431,8 +389,8 @@ describe('RecordingContext', () => {
       expect(probe.ctx!.recordingData.errors.some((e) => e.type === 'recording')).toBe(true)
     })
     expect(probe.ctx!.isRecording).toBe(true)
-    // 旧経路の保存は成功している（dual-write なので片方失敗は致命的でない）
-    expect(fileService.saveChunk).toHaveBeenCalled()
+    // 失敗してもチャンク自体は state に残る
+    expect(probe.ctx!.recordingData.chunks).toHaveLength(1)
   })
 
   it('文字起こし結果はセッション transcript にも保存する', async () => {
