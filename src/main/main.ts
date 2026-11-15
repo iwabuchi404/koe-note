@@ -154,14 +154,16 @@ function createWindow(): void {
   });
 
   // レンダラープロセスのコンソールログを監視
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    const logMessage = `[Renderer Console ${level}] ${message} (${sourceId}:${line})`;
+  // Electron 35 以降: console-message の引数はイベントオブジェクト形式
+  mainWindow.webContents.on('console-message', (details) => {
+    const logMessage = `[Renderer Console ${details.level}] ${details.message} (${details.sourceId}:${details.lineNumber})`;
     writeLog(logMessage);
   });
 
   // レンダラープロセスでクラッシュした場合
-  mainWindow.webContents.on('crashed', (event, killed) => {
-    console.error('Renderer process crashed:', { killed });
+  // ('crashed' は Electron 33 で非推奨・後に削除。render-process-gone を使う)
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('Renderer process gone:', details);
   });
 
   // ウィンドウが閉じられたときの処理
