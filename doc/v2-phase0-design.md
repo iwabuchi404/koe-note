@@ -250,17 +250,16 @@ KoeNote/sessions/<session-id>/
 
 ---
 
-## 5. speech.cpp スパイク計画（Phase 0 の検証作業）
+## 5. speech.cpp スパイク — **実施済み（適合確認）**
 
-目的: `TranscriptionEngine` ポートが speech.cpp に本当に適合するかを、実装前に潰す。
+結果: `doc/research-speechcpp.md` に記録。要点:
 
-1. **バイナリ調達**: Windows で speech.cpp をビルド or リリース取得。HTTP サーバーモードの有無確認（無ければ CLI 呼び出しアダプタ案も検討）
-2. **推論確認**: P0 モデル（Parakeet TDT-CTC 0.6B JA）を1つロードし、既存録音 WAV を推論させる
-3. **API 形状の記録**: リクエスト/レスポンス・タイムスタンプ形式・セグメント分割の粒度を `TranscribeRequest/TranscriptSegment` にマッピングできるか確認
-4. **レイテンシ**: 3秒チャンクの推論時間を計測（Live 利用可否の目安）
-5. **失敗時挙動**: プロセス異常終了・モデル未ロード時の応答を確認 → EngineRegistry の状態管理設計に反映
-
-成果物: `doc/research-speechcpp.md`（Cortex research/ にも転載候補）
+- `speech serve`（OpenAI 互換 HTTP）で `TranscriptionEngine` に適合することを実測確認
+- parakeet-ja q8_0 on Vulkan: 3s チャンク往復 ~200ms、RTFx 40+、ワード粒度タイムスタンプ対応
+- VAD/話者分離は `chunking_strategy`/`diarized_json` として API 上に既存 → Phase 4 の経路確保済み
+- 制約: WAV 入力のみ・1リクエスト直列・25MB 上限 → いずれも v2 設計と整合
+- プロセス管理・モデル管理（`pull`/`rm`/`models`）の実装方針確定
+- スパイク資産: `D:\work\speech-spike\`（リポジトリ外）
 
 ---
 
