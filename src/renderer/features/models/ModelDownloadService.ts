@@ -9,7 +9,7 @@ import {
   ModelDownloadOptions,
   ModelDownloadService as IModelDownloadService
 } from './ModelTypes'
-import { MODEL_CATALOG, findModelById, formatModelSize } from '@shared/modelCatalog'
+import { MODEL_CATALOG, findModelById, formatModelSize, repoToFolder } from '@shared/modelCatalog'
 
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_FILE_MANAGER)
@@ -295,9 +295,12 @@ const fullModelInfo: ModelInfo = {
    */
   private async getModelPath(modelId: string): Promise<string> {
     const modelsPath = await window.electronAPI.getModelsPath()
+    const config = findModelById(modelId)
+    if (!config) {
+      throw new Error(`Unknown model: ${modelId}`)
+    }
     // Main 側は models--<org>--<name>/snapshots/main に配置
-    // ここではユーザー向け表示用にルート直下の表現を返すのみ
-    return `${modelsPath}`
+    return `${modelsPath}/${repoToFolder(config.huggingFaceRepo)}`
   }
 }
 

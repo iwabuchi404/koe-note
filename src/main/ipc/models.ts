@@ -14,6 +14,8 @@ import {
   verifyModelInternal
 } from '../services/modelStore'
 import { writeLog } from '../services/appLog'
+import { AppError } from '../core/errors'
+import { resolveWithinRoot } from '../core/paths'
 import { handle } from './handle'
 import type { ModelDownloadProgressEvent } from '@shared/ipcContract'
 import type { MainContext } from './context'
@@ -69,17 +71,25 @@ export function registerModelsIpc(ctx: MainContext): void {
   });
 
   handle('models:removeModel', async (event, modelPath: string): Promise<void> => {
-    try {
-      writeLog(`Removing model: ${modelPath}`);
+    // 任意パスを rm -rf できる状態だったため、モデルルート配下に限定する。
+    // 加えてルート自身（=全モデル一括削除）は常に拒否する。
+    const modelsRoot = resolveModelsRoot();
+    const target = resolveWithinRoot(modelsRoot, modelPath);
+    if (path.resolve(target).toLowerCase() === path.resolve(modelsRoot).toLowerCase()) {
+      throw new AppError('FORBIDDEN_PATH', 'モデルルート自身は削除できません');
+    }
 
-      if (fs.existsSync(modelPath)) {
-        fs.rmSync(modelPath, { recursive: true, force: true });
-        writeLog(`Model removed successfully: ${modelPath}`);
+    try {
+      writeLog(`Removing model: ${target}`);
+
+      if (fs.existsSync(target)) {
+        fs.rmSync(target, { recursive: true, force: true });
+        writeLog(`Model removed successfully: ${target}`);
       } else {
-        writeLog(`Model path does not exist: ${modelPath}`);
+        writeLog(`Model path does not exist: ${target}`);
       }
     } catch (error) {
-      writeLog(`Failed to remove model: ${modelPath}, error: ${error}`);
+      writeLog(`Failed to remove model: ${target}, error: ${error}`);
       throw error;
     }
   });
