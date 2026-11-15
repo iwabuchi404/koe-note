@@ -156,6 +156,22 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   removeModel バグの回帰防止（renderer のパス解決 + main の rm ガード）
 - 検証: `npm run verify`（tsc clean + 269 tests）通過
 
+### Phase T2: Electron 28(EOL) → 45.3.2 更新
+
+- electron: `^28.1.0` → `^45.3.2`（Node 22 / Chromium 同梱の最新安定）
+- electron-builder: `^24.13.3` → `^26.18.0`（新 Electron とのパッケージング互換）
+- API 追従（影響箇所は2箇所のみ）:
+  - `console-message`: 位置引数 → イベントオブジェクト形式（E35 非推奨・E47 削除予定）
+  - `crashed` イベント → `render-process-gone`（E33 非推奨・削除済み）
+- 検証: tsc clean / 269 tests / build / 起動スモーク
+  （レンダラー描画・ファイル一覧・Whisper サーバー自動起動まで実動作確認）
+- 残課題:
+  - `npm audit` 62件（5 critical）は推移的依存由来が中心。別途棚卸し要
+  - KamoX 実機 E2E は未実行。録音・デスクトップ音声の実機確認を推奨
+  - macOS で desktopCapturer 音声を使う場合は Info.plist に
+    `NSAudioCaptureUsageDescription` が必要（E39 〜。Windows 主体なら後回し可）
+  - `ws` パッケージは Node 22 のネイティブ WebSocket で置き換え可能（任意）
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）
