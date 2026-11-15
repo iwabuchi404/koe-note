@@ -12,7 +12,7 @@ import {
   assertSystemAudioTrack,
   toUserFacingDesktopAudioError,
   DesktopAudioUnavailableError
-} from '@renderer/audio/services/core/desktopAudioSource'
+} from '@renderer/features/recording/services/desktopAudioSource'
 
 const makeTrack = (label: string): MediaStreamTrack =>
   ({ label, kind: 'audio' }) as MediaStreamTrack

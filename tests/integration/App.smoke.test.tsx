@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, within, waitFor } from '@testing-library/react'
-import App from '@renderer/App'
+import App from '@renderer/app/App'
 import { installElectronAPI } from '../mocks/electronAPI'
 import type { AudioFile } from '@shared/types'
 

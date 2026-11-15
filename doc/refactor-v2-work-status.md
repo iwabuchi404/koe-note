@@ -103,6 +103,26 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
   未使用 import（ipcMain / execSync / ChildProcess / SpawnOptions / aiChatPathFor）
 - 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
 
+### Phase G2: renderer feature 再編 + AppContext 解体（607ed63〜）
+
+- **G2a AppContext 解体**（`607ed63`）:
+  - `fileList`/`setFileList` → 新設 `LibraryContext`
+  - `recordingFile` → RecordingContext に統合（生成元が所有）
+  - `currentModel` → SettingsModal のローカル state に降格（参照者がそこだけ）
+  - dead state 削除: `selectedFile`・`transcriptionDisplayData`（書き込み専用）、
+    `isRecording`/`isPlaying`/`isTranscribing`（実状態は RecordingContext・PlayerCard ローカルが持つ）
+  - App.tsx は Provider 合成のみに（Settings → Library → Recording → Tab）
+- **G2b feature-based 再編**: `components/`・`contexts/`・`audio/`・`services/`・`utils/`・`types/` を解体し:
+  - `renderer/app/` … index.tsx/index.html, App.tsx, シェルUI (TitleBar/MainLayout/MainControlPanel)
+  - `renderer/features/{library,player,recording,models,settings,tabs}/` … ドメイン別
+  - `renderer/shared/` … TextDisplay, utils(Logger系), config, types
+  - 境界越えの import は `@renderer/` エイリアスに統一、同一 feature 内は `./` 相対
+  - webpack.renderer.config.js の entry/template を `app/` 配下に変更
+  - CLAUDE.md の構成記述・配置基準を新構造に更新
+- 検証: `npm run verify`（tsc clean + 226 tests）/`npm run build` 共に通過
+- 注: SettingsModal の `currentModel` は `'small'` 初期値のローカル state（元の AppContext と同等）。
+  `settings.transcription.model` との二重管理は残課題（G3 以降で整理）
+
 ## 5. 現在のプロセス状態（2026-10-05 記録時）
 
 - KamoX: 起動中（port 3000 で listen 確認、window 未確認）
@@ -118,7 +138,7 @@ HEAD: `63daf2b refactor: main.ts を起動専用に縮小し ipc/* と services/
 3. Phase F の次: F2（未文字起こしチャンクの再文字起こし、`selectMissingChunkNumbers` は用意済み）、F3（mp3 の再構成）
 4. E2E の CI 組み込み（`npm run verify` とは別フローで固定する案あり）
 5. G 系の残り:
-   - G2: renderer の feature 再編 + AppContext（god context）解体
+   - ~~G2: renderer の feature 再編 + AppContext（god context）解体~~ → Phase G2 で済
    - G3: IPC 型付き契約（shared に req/res 型。preload/main を契約準拠に）
    - 基盤: Electron 28(EOL) 更新、lamejs scriptタグ読み込み → ESM import 化、（任意で electron-vite）
    - whisper-server: pyproject.toml の pyinstaller → dev 移動、asyncio-mqtt 要否確認

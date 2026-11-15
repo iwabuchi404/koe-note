@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { Logger, LogLevel } from '@renderer/utils/Logger'
+import { Logger, LogLevel } from '@renderer/shared/utils/Logger'
 
 describe('Logger', () => {
   let consoleSpy: any

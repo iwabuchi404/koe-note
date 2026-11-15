@@ -5,7 +5,7 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   target: 'web',
-  entry: './src/renderer/index.tsx',
+  entry: './src/renderer/app/index.tsx',
   output: {
     path: path.resolve(__dirname, 'dist/renderer'),
     filename: 'renderer.js',
@@ -46,7 +46,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './src/renderer/index.html',
+      template: './src/renderer/app/index.html',
       filename: 'index.html',
     }),
     new webpack.DefinePlugin({

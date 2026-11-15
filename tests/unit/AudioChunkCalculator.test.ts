@@ -16,7 +16,7 @@
  * 関連: src/shared/audioFormat.ts / src/shared/recordingManifest.ts
  */
 import { describe, it, expect } from 'vitest'
-import { AudioChunkCalculator } from '@renderer/utils/AudioChunkCalculator'
+import { AudioChunkCalculator } from '@renderer/shared/utils/AudioChunkCalculator'
 import { bytesPerSecond, chunkBytesForDuration } from '@shared/audioFormat'
 
 /** 実バイト数（lamejs 128kbps） */

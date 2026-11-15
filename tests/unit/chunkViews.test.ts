@@ -9,7 +9,7 @@ import {
   MAX_VISIBLE_CHUNKS,
   selectVisibleChunks,
   countHiddenChunks
-} from '../../src/renderer/components/AdvancedRecording/ChunkViews'
+} from '@renderer/features/recording/components/ChunkViews'
 
 describe('selectVisibleChunks', () => {
   it('上限以下ならそのまま全件を返す', () => {

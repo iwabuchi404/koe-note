@@ -7,7 +7,7 @@
  * 固定する。
  */
 import { describe, it, expect, vi } from 'vitest'
-import { extractText } from '@renderer/audio/services/TranscriptionWebSocketService'
+import { extractText } from '@renderer/features/recording/services/TranscriptionWebSocketService'
 import type {
   ServerMessage,
   WhisperTranscriptionResult

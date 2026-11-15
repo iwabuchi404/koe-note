@@ -8,7 +8,7 @@
  *   4. ディレクトリへのパスでしか書き込まない（パスガード）
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { AdvancedRecordingFileService } from '@renderer/services/AdvancedRecordingFileService'
+import { AdvancedRecordingFileService } from '@renderer/features/recording/services/AdvancedRecordingFileService'
 import { parseManifest, validateManifest } from '@shared/recordingManifest'
 import { installElectronAPI, type ElectronAPIMock } from '../mocks/electronAPI'
 
