@@ -1,80 +1,25 @@
-import React, { useState, createContext, useContext, useEffect } from 'react'
-import type { AudioFile } from '@shared/types'
+import React, { useEffect } from 'react'
 import './styles/global.css'
 import TitleBar from './components/TitleBar/TitleBar'
 import MainLayout from './components/MainLayout/MainLayout'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { TabProvider } from './contexts/TabContext'
 import { RecordingProvider } from './contexts/RecordingContext'
+import { LibraryProvider } from './contexts/LibraryContext'
 import { LoggerFactory, LogCategories } from './utils/LoggerFactory'
 import { initializeLogger, enableLoggerDebugMode } from './utils/LoggerInitializer'
-
-// 選択されたファイルの型定義
-interface SelectedFile {
-  id: string
-  filename: string
-  filepath: string
-  format: 'wav' | 'mp3'
-  duration?: number // オプショナルに変更
-  size: number
-  createdAt: Date
-}
-
-// 選択されたファイルの型定義
-interface SelectedFile {
-  id: string
-  filename: string
-  filepath: string
-  format: 'wav' | 'mp3'
-  duration?: number // オプショナルに変更
-  size: number
-  createdAt: Date
-}
-
-// アプリケーション状態のコンテキスト
-interface AppContextType {
-  fileList: AudioFile[]
-  setFileList: React.Dispatch<React.SetStateAction<AudioFile[]>>
-  selectedFile: AudioFile | null
-  setSelectedFile: (file: AudioFile | null) => void
-  transcriptionDisplayData: any
-  setTranscriptionDisplayData: (data: any) => void
-  isRecording: boolean
-  setIsRecording: (isRecording: boolean) => void
-  isPlaying: boolean
-  setIsPlaying: (isPlaying: boolean) => void
-  currentModel: string
-  setCurrentModel: (model: string) => void
-  isTranscribing: boolean
-  setIsTranscribing: (isTranscribing: boolean) => void
-  recordingFile: AudioFile | null  // 現在録音中のファイル情報
-  setRecordingFile: (file: AudioFile | null) => void
-}
-const AppContext = createContext<AppContextType | null>(null)
-
-// アプリケーション状態を使用するためのカスタムフック
-export const useAppContext = () => {
-  const context = useContext(AppContext)
-  if (!context) {
-    throw new Error('useAppContext must be used within AppProvider')
-  }
-  return context
-}
 
 /**
  * メインアプリケーションコンポーネント
  * VSCodeライクなレイアウトを提供
+ *
+ * 状態管理はドメイン別 Context に分離:
+ *   SettingsContext … ユーザー設定（localStorage 永続化）
+ *   LibraryContext  … ファイル一覧
+ *   RecordingContext … 録音状態（録音中ファイル情報を含む）
+ *   TabContext      … タブ
  */
 const App: React.FC = () => {
-  const [fileList, setFileList] = useState<AudioFile[]>([])
-  const [selectedFile, setSelectedFile] = useState<AudioFile | null>(null)
-  const [transcriptionDisplayData, setTranscriptionDisplayData] = useState<any>(null)
-  const [isRecording, setIsRecording] = useState<boolean>(false)
-  const [isPlaying, setIsPlaying] = useState<boolean>(false)
-  const [currentModel, setCurrentModel] = useState<string>('small')
-  const [isTranscribing, setIsTranscribing] = useState<boolean>(false)
-  const [recordingFile, setRecordingFile] = useState<AudioFile | null>(null)
-
   // ログシステム初期化
   useEffect(() => {
     const initializeLogging = async () => {
@@ -104,28 +49,9 @@ const App: React.FC = () => {
     initializeLogging()
   }, [])
 
-  const contextValue: AppContextType = {
-    fileList,
-    setFileList,
-    selectedFile,
-    setSelectedFile,
-    transcriptionDisplayData,
-    setTranscriptionDisplayData,
-    isRecording,
-    setIsRecording,
-    isPlaying,
-    setIsPlaying,
-    currentModel,
-    setCurrentModel,
-    isTranscribing,
-    setIsTranscribing,
-    recordingFile,
-    setRecordingFile
-  }
-
   return (
     <SettingsProvider>
-      <AppContext.Provider value={contextValue}>
+      <LibraryProvider>
         <RecordingProvider>
           <TabProvider>
             <div className="app">
@@ -134,7 +60,7 @@ const App: React.FC = () => {
             </div>
           </TabProvider>
         </RecordingProvider>
-      </AppContext.Provider>
+      </LibraryProvider>
     </SettingsProvider>
   )
 }

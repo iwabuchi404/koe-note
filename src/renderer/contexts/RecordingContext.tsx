@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react'
 import { AudioWorkletRecordingService, AudioSourceConfig, ChunkReadyEvent, RecordingStats } from '../audio/services/AudioWorkletRecordingService'
 import type {
+  AudioFile,
   ChunkTranscriptionResult,
   ChunkTranscriptionProgress
 } from '@shared/types'
@@ -13,7 +14,6 @@ import { AdvancedRecordingFileService } from '../services/AdvancedRecordingFileS
 import { durationFromBytes } from '@shared/transcriptFile'
 import { AdvancedRecordingTabData } from '../types/TabTypes'
 import { LoggerFactory, LogCategories } from '../utils/LoggerFactory'
-import { useAppContext } from '../App'
 
 const logger = LoggerFactory.getLogger(LogCategories.SERVICE_RECORDING)
 
@@ -38,6 +38,8 @@ interface RecordingContextType {
   // 状態
   recordingData: AdvancedRecordingTabData
   isRecording: boolean
+  /** 現在録音中のファイル情報（ライブラリの「録音中」表示用） */
+  recordingFile: AudioFile | null
   
   // アクション
   startRecording: (config: AdvancedRecordingConfig) => Promise<void>
@@ -61,8 +63,8 @@ interface RecordingContextType {
 const RecordingContext = createContext<RecordingContextType | null>(null)
 
 export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Appコンテキストとの連携
-  const { setRecordingFile } = useAppContext()
+  // 録音中ファイル情報（AppContext から移管。ライブラリ側が参照する）
+  const [recordingFile, setRecordingFile] = useState<AudioFile | null>(null)
   // 現在の設定を保持
   const currentConfigRef = useRef<AdvancedRecordingConfig>({
     recordingSettings: {
@@ -515,6 +517,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // 状態
     recordingData,
     isRecording: recordingData.isRecording,
+    recordingFile,
 
     // アクション
     startRecording,

@@ -9,8 +9,9 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { useAppContext } from '../../App'
 import type { AudioFile } from '@shared/types'
+import { useLibraryContext } from '../../contexts/LibraryContext'
+import { useRecordingContext } from '../../contexts/RecordingContext'
 import { useTabContext } from '../../contexts/TabContext'
 import { TabType } from '../../types/TabTypes'
 import SettingsModal from '../SettingsModal/SettingsModal'
@@ -22,7 +23,8 @@ import SimpleFileList from './SimpleFileList'
 
 const LeftPanel: React.FC = () => {
   // アプリケーション全体の状態管理
-  const { selectedFile, setSelectedFile, setTranscriptionDisplayData, fileList, setFileList, recordingFile } = useAppContext()
+  const { fileList, setFileList } = useLibraryContext()
+  const { recordingFile } = useRecordingContext()
   const { createTab } = useTabContext()
   
   // ログシステム
@@ -156,7 +158,6 @@ const LeftPanel: React.FC = () => {
   const handleFileSelect = useCallback((fileId: string) => {
     const file = fileList.find(f => f.id === fileId) as ExtendedAudioFile
     if (file) {
-      setSelectedFile(file)
       setSelectedFileId(fileId)
       
       // ファイルタイプに応じてタブデータを作成
@@ -176,7 +177,7 @@ const LeftPanel: React.FC = () => {
       })
       logger.info('ファイル選択', { filename: file.filename, fileId, fileType })
     }
-  }, [fileList, setSelectedFile, createTab, logger])
+  }, [fileList, createTab, logger])
 
   // ファイル操作ハンドラー
   const handleFileAction = useCallback(async (action: string, fileId: string, ...args: any[]) => {
@@ -217,7 +218,6 @@ const LeftPanel: React.FC = () => {
         case 'toggleTranscription':
           if (file.hasTranscriptionFile && file.transcriptionPath) {
             const transcriptionData = await window.electronAPI.loadTranscriptionFile(file.transcriptionPath)
-            setTranscriptionDisplayData(transcriptionData)
             createTab(TabType.PLAYER, {
               filePath: file.transcriptionPath,
               fileName: `${file.filename} - 文字起こし`,
@@ -238,7 +238,7 @@ const LeftPanel: React.FC = () => {
     } catch (error) {
       logger.error('ファイル操作エラー', error as Error)
     }
-  }, [fileList, selectedFolder, loadFileList, setTranscriptionDisplayData, createTab, setSelectedFile, setSelectedFileId, logger])
+  }, [fileList, selectedFolder, loadFileList, createTab, setSelectedFileId, logger])
 
   // コンテキストメニュー（将来的に実装）
   const handleContextMenu = useCallback((event: React.MouseEvent, file: ExtendedAudioFile) => {

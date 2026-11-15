@@ -1,6 +1,5 @@
 import { LoggerFactory, LogCategories } from '../../utils/LoggerFactory'
 import React, { useState, useEffect } from 'react'
-import { useAppContext } from '../../App'
 import { useSettings } from '../../contexts/SettingsContext'
 import { ModelManager } from '../ModelManagement/ModelManager'
 import { modelDownloadService } from '../../services/ModelDownloadService'
@@ -62,7 +61,8 @@ interface SettingsError {
  * アプリケーション全体の設定を集約管理
  */
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const { currentModel, setCurrentModel } = useAppContext()
+  // モーダル内のモデル選択状態（AppContext からローカルへ降格）
+  const [currentModel, setCurrentModel] = useState<string>('small')
   const { 
     settings,
     updateRecordingSettings,
